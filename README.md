@@ -2,23 +2,34 @@
 
 A browser-based venue booking whiteboard.
 
-- Displays bookings in a date/room grid: days down the left, rooms across the top.
-- Booking blocks are locked by default and can be explicitly unlocked for editing.
-- Provides a separate markup layer for text notes and arrows.
-- Markup remains in place when a new booking file is loaded; only booking data refreshes.
-- Initial data source: `30 day forecast-2026-11-19-14-35-40.xls` and `config/Crown_melb.yaml` from `WhiteboardGenerator`.
+GitHub Pages serves the built application from the `docs/` folder on `main`.
 
-## Development
+## Deployment
+
+1. Build the app:
 
 ```bash
 npm install
-npm run dev
+npm run build
 ```
 
-## Planned data flow
+2. Commit and push the generated `docs/` folder to `main`.
 
-1. Load a venue configuration YAML to establish rooms, display order, and venue metadata.
-2. Load a booking forecast XLS file.
-3. Parse bookings into normalized records containing date, room, start/end time, title, and status.
-4. Render booking blocks on the grid.
-5. Store markup separately from bookings so replacing the booking dataset does not move annotations.
+3. In GitHub, set:
+
+- **Settings → Pages → Source:** Deploy from a branch
+- **Branch:** `main`
+- **Folder:** `/docs`
+
+The site will be available at:
+
+https://bthompson91.github.io/whiteboard/
+
+## Usage
+
+- Load `crown_melb.yaml` to establish the venue, room order, aliases, mappings, exclusions, and allowed booking statuses.
+- Load `30 day forecast-2026-11-19-14-35-40.xls` to display bookings.
+- Days run down the left; rooms run across the top.
+- Booking blocks are locked by default. Use **Unlock bookings** to edit them.
+- Use the markup layer to add text notes and arrows.
+- Markup is stored in browser localStorage and remains in place when a new booking file is loaded.
