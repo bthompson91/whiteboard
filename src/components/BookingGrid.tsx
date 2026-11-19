@@ -1,118 +1,38 @@
 import { CSSProperties } from 'react';
 import { Booking } from '../types';
+import { BoardBooking } from '../lib/bookingImport';
 import { ParsedVenueConfig } from '../lib/venueConfig';
-
-interface BookingGridProps {
-  venue: ParsedVenueConfig | null;
-  bookings: Booking[];
-  editingEnabled: boolean;
-  onBookingsChange: (bookings: Booking[]) => void;
-}
-
-const DAY_HEIGHT = 720;
-
-function timeToMinutes(value: string): number {
-  const match = /^(\d{1,2}):(\d{2})/.exec(value.trim());
-  if (!match) return 0;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  return Math.min(24 * 60, Math.max(0, hours * 60 + minutes));
-}
-
-function getSpan(booking: Booking, venue: ParsedVenueConfig): CSSProperties {
-  const indexes = booking.roomIds
-    .map((roomId) => venue.rooms.findIndex((room) => room.id === roomId))
-    .filter((index) => index >= 0);
-
-  if (indexes.length === 0) {
-    return {};
-  }
-
-  const first = Math.min(...indexes) + 2;
-  const last = Math.max(...indexes) + 2;
-
-  return { gridColumn: `${first} / ${last + 1}` };
-}
-
-export default function BookingGrid({
-  venue,
-  bookings,
-  editingEnabled,
-  onBookingsChange
-}: BookingGridProps) {
-  if (!venue) {
-    return <div className="empty-state">Load a venue YAML file to begin.</div>;
-  }
-
-  const dates = Array.from(new Set(bookings.map((booking) => booking.date))).sort();
-  const columnTemplate = `160px repeat(${venue.rooms.length}, minmax(220px, 1fr))`;
-  const gridStyle = { '--columns': columnTemplate } as CSSProperties;
-
-  return (
-    <div className="booking-grid" style={gridStyle}>
-      <div className="grid-header">
-        <div className="corner">Date</div>
-        {venue.rooms.map((room) => (
-          <div key={room.id} className="room-header">
-            {room.name}
+import '../board.css';
+interface Props { venue: ParsedVenueConfig | null; bookings: Booking[]; editingEnabled: boolean; onBookingsChange: (bookings: Booking[]) => void }
+const HEIGHT = 720;
+function minutes(s: string) { const m = /^(\d{1,2}):(\d{2})/.exec(s); return m ? Number(m[1])*60+Number(m[2]) : 0; }
+export default function BookingGrid({venue, bookings, editingEnabled, onBookingsChange}: Props) {
+  if (!venue) return <div className="empty-state">Load a venue YAML file to begin.</div>;
+  const dates = [...new Set(bookings.map(b => b.date))].sort();
+  const style = { '--columns': `160px repeat(${venue.rooms.length}, 220px)`, width: 160 + venue.rooms.length * 220 } as CSSProperties;
+  return <div className="booking-grid" style={style}>
+    <div className="grid-header"><div className="corner">Date / time</div>{venue.rooms.map(r => <div className="room-header" key={r.id}>{r.name}</div>)}</div>
+    {!dates.length && <div className="empty-state">Load a booking file to display bookings.</div>}
+    {dates.map(date => <div className="grid-row" key={date}>
+      <div className="date-cell"><div className="date-label">{date}</div>{Array.from({length:24},(_,h) => <span className="hour-label" key={h} style={{top:h*30+16}}>{String(h).padStart(2,'0')}:00</span>)}</div>
+      {venue.rooms.map(r => <div className="room-cell" key={r.id} />)}
+      {(bookings as BoardBooking[]).filter(b => b.date === date).map(b => {
+        const indices = (b.roomIds || [b.roomId]).map(id => venue.rooms.findIndex(r => r.id === id)).filter(i => i >= 0).sort((a,c)=>a-c);
+        if (!indices.length) return null;
+        const timeline = b.timeline || [];
+        const start = Math.min(minutes(b.startTime), ...timeline.map(t => minutes(t.start)));
+        const end = Math.max(minutes(b.endTime), ...timeline.map(t => minutes(t.end)));
+        const runs: number[][] = [];
+        indices.forEach(i => { const run = runs[runs.length-1]; if (run && i === run[run.length-1]+1) run.push(i); else runs.push([i]); });
+        return runs.map((run, n) => <div key={`${b.id}-${n}`} className={`booking-block ${editingEnabled ? 'editable' : 'locked'}`} style={{gridColumn:`${run[0]+2} / ${run[run.length-1]+3}`,gridRow:1,top:start/1440*HEIGHT,height:Math.max(2,(end-start)/1440*HEIGHT)}} title={`${b.title}\n${b.startTime}–${b.endTime}`}>
+          <div className="booking-facts">
+            {timeline.filter(t => /setup/i.test(t.label)).map((t,i) => <div key={`s${i}`}>{t.label} {t.start}–{t.end}</div>)}
+            <div>{b.startTime}</div><div>{b.endTime}</div>
+            {timeline.filter(t => !/setup/i.test(t.label)).map((t,i) => <div key={`t${i}`}>{t.label} {t.start}–{t.end}</div>)}
           </div>
-        ))}
-      </div>
-
-      {dates.length === 0 && (
-        <div className="empty-state">Load a booking XLS file to display bookings.</div>
-      )}
-
-      {dates.map((date) => (
-        <div key={date} className="grid-row">
-          <div className="date-cell">{date}</div>
-          {venue.rooms.map((room) => (
-            <div key={room.id} className="room-cell">
-              <div className="hour-lines">
-                {Array.from({ length: 24 }, (_, hour) => (
-                  <div key={hour} className="hour-line" />
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {bookings
-            .filter((booking) => booking.date === date)
-            .map((booking) => {
-              const start = timeToMinutes(booking.startTime);
-              const end = timeToMinutes(booking.endTime);
-              const duration = Math.max(15, end - start);
-              const top = (start / (24 * 60)) * DAY_HEIGHT;
-              const height = (duration / (24 * 60)) * DAY_HEIGHT;
-
-              return (
-                <div
-                  key={booking.id}
-                  className={`booking-block ${editingEnabled ? 'editable' : 'locked'}`}
-                  style={{
-                    top: `${top}px`,
-                    height: `${height}px`,
-                    ...getSpan(booking, venue)
-                  }}
-                  contentEditable={editingEnabled}
-                  suppressContentEditableWarning
-                  onBlur={(event) => {
-                    const title = event.currentTarget.textContent ?? '';
-                    onBookingsChange(
-                      bookings.map((item) =>
-                        item.id === booking.id ? { ...item, title } : item
-                      )
-                    );
-                  }}
-                >
-                  <div className="booking-title">{booking.title}</div>
-                  {booking.notes && <div className="booking-subtitle">{booking.notes}</div>}
-                  <div className="booking-time">{booking.startTime}–{booking.endTime}</div>
-                </div>
-              );
-            })}
-        </div>
-      ))}
-    </div>
-  );
+          <div className="booking-title" contentEditable={editingEnabled} suppressContentEditableWarning onBlur={e => {if(editingEnabled) {const title=e.currentTarget.textContent || ''; onBookingsChange(bookings.map(x=>x.id===b.id?{...x,title}:x));}}}>{b.title}</div>
+        </div>);
+      })}
+    </div>)}
+  </div>;
 }

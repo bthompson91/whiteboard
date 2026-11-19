@@ -1,95 +1,68 @@
 import * as XLSX from 'xlsx';
+import yaml from 'js-yaml';
 import { Booking } from '../types';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
-
-function cellToString(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10);
+export type BoardBooking = Booking & { activity?: string; timeline?: { label: string; start: string; end: string }[] };
+const text = (v: unknown) => v == null ? '' : String(v).trim();
+function dateValue(v: unknown, date1904: boolean): string {
+  if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+  if (typeof v === 'number' || /^\d{5}(\.\d+)?$/.test(text(v))) {
+    const d = XLSX.SSF.parse_date_code(Number(v), { date1904 });
+    if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
   }
-  return String(value).trim();
+  const s = text(v);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  const m = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/.exec(s);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  throw new Error(`Unrecognised booking date: ${s}`);
 }
-
-function normalizeDate(value: string): string {
-  if (!value) return '';
-
-  const iso = /^\d{4}-\d{2}-\d{2}/.exec(value);
-  if (iso) return iso[0];
-
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString().slice(0, 10);
+function timeValue(v: unknown): string {
+  if (v instanceof Date) return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+  if (typeof v === 'number') {
+    const n = Math.round((v % 1) * 1440);
+    return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
   }
-
-  return value;
+  const s = text(v);
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i.exec(s);
+  if (!m) throw new Error(`Unrecognised booking time: ${s}`);
+  let h = Number(m[1]);
+  if (m[3]) h = h % 12 + (m[3].toUpperCase() === 'PM' ? 12 : 0);
+  return `${String(h).padStart(2,'0')}:${m[2]}`;
 }
-
-export async function parseBookingWorkbook(
-  file: File,
-  venue: ParsedVenueConfig
-): Promise<Booking[]> {
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, {
-    type: 'array',
-    cellDates: true
-  });
-
-  const bookings: Booking[] = [];
-
+export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig): Promise<Booking[]> {
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
+  let labels: string[] = [];
+  try {
+    const config = yaml.load(localStorage.getItem('whiteboard-venue-yaml') || '') as { timeline_items?: string[] };
+    labels = config?.timeline_items || [];
+  } catch { /* Config was already validated by the venue loader. */ }
+  const rows: BoardBooking[] = [];
   for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      defval: ''
-    });
-
-    rows.forEach((row, index) => {
-      const get = (fieldKey: string) => {
-        const columnName = venue.fields[fieldKey];
-        return columnName ? cellToString(row[columnName]) : '';
-      };
-
-      const date = normalizeDate(get('event_date'));
-      const roomName = get('room_name');
-      const primary = get(venue.display.primaryLabel);
-      const secondary = get(venue.display.secondaryLabel);
-      const status = get('booking_status');
-      const startTime = get('start_time');
-      const endTime = get('end_time');
-
-      if (!date || !roomName || !primary) return;
-
-      if (
-        venue.display.allowedStatuses.length > 0 &&
-        !venue.display.allowedStatuses.includes(status)
-      ) {
-        return;
-      }
-
-      const roomIds = resolveRooms(roomName, venue);
-      if (roomIds.length === 0) return;
-
-      bookings.push({
-        id: `${sheetName}-${index}-${crypto.randomUUID()}`,
-        date,
-        roomId: roomIds[0],
-        roomIds,
-        startTime,
-        endTime,
-        title: primary,
-        status,
-        notes:
-          venue.display.suppressSecondaryWhenEqual && secondary === primary
-            ? ''
-            : secondary
-      });
+    const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '' });
+    records.forEach((row, index) => {
+      const get = (key: string) => row[venue.fields[key]];
+      const title = text(get(venue.display.primaryLabel));
+      const roomIds = resolveRooms(text(get('room_name')), venue).filter(id => venue.rooms.some(r => r.id === id));
+      const status = text(get('booking_status'));
+      if (!title || !roomIds.length || !get('event_date')) return;
+      if (venue.display.allowedStatuses.length && !venue.display.allowedStatuses.includes(status)) return;
+      const activity = text(get('activity_name'));
+      rows.push({ id: `${sheetName}-${index}`, title, activity, notes: activity === title ? '' : activity, status,
+        date: dateValue(get('event_date'), !!workbook.Workbook?.WBProps?.date1904),
+        startTime: timeValue(get('start_time')), endTime: timeValue(get('end_time')),
+        roomId: roomIds[0], roomIds });
     });
   }
-
-  if (bookings.length === 0) {
-    throw new Error(
-      'No matching bookings found. Check that the XLS headers match the YAML field mappings and that bookings use an allowed status.'
-    );
+  const key = (b: BoardBooking) => JSON.stringify([b.title, b.date, [...b.roomIds].sort()]);
+  const isTimeline = (b: BoardBooking) => labels.some(l => l.toLowerCase() === b.activity?.toLowerCase());
+  const result: BoardBooking[] = rows.filter(b => !isTimeline(b));
+  for (const b of rows.filter(isTimeline)) {
+    const candidates = result.filter(r => key(r) === key(b) && !isTimeline(r));
+    if (candidates.length === 1) {
+      const target = candidates[0];
+      target.timeline = [...(target.timeline || []), { label: b.activity || '', start: b.startTime, end: b.endTime }];
+    } else result.push(b);
   }
-
-  return bookings;
+  if (!result.length) throw new Error('No matching bookings found. Check headers, room mappings and allowed statuses.');
+  return result;
 }
