@@ -1,3 +1,5 @@
+export type BoardRole = 'viewer' | 'contributor' | 'master';
+
 export interface VenueRoom {
   id: string;
   name: string;
@@ -25,6 +27,24 @@ export interface Booking {
 export interface BookingSnapshot {
   importedAt: string;
   bookings: Booking[];
+}
+
+export interface ContributorSubmission {
+  id: string;
+  bookingId: string;
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  base: Booking;
+  proposed: Booking;
+}
+
+export interface SharedBoardFile {
+  format: 'whiteboard-shared-board';
+  version: 1;
+  exportedAt: string;
+  bookings: Booking[];
+  submissions: ContributorSubmission[];
 }
 
 export type MarkupItem =
