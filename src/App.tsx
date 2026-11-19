@@ -15,9 +15,12 @@ import {
 } from './lib/bookingImport';
 import { BookingChange, compareImports } from './lib/importComparison';
 import {
+  createContributorFile,
   createSharedFile,
   createSubmission,
+  downloadContributorFile,
   downloadSharedFile,
+  parseContributorFile,
   parseSharedFile
 } from './lib/sharedFile';
 import { parseVenueConfig } from './lib/venueConfig';
@@ -227,10 +230,10 @@ export default function App() {
     setSubmissions(submissions.filter(item => item.id !== submission.id));
     setProcessedSubmissionIds(current => [...current, submission.id]);
   };
-  const exportSharedFile = () => downloadSharedFile(
+  const exportPublishedBoard = () => downloadSharedFile(
     createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory)
   );
-  const importSharedFile = async (file: File) => {
+  const importPublishedBoard = async (file: File) => {
     try {
       const shared = parseSharedFile(await file.text());
       setBookings(shared.bookings);
@@ -238,6 +241,38 @@ export default function App() {
       setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
       setRevision(shared.revision);
       setImportHistory(shared.history);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const exportVenueConfig = () => {
+    const blob = new Blob([yamlText], { type: 'text/yaml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'whiteboard-venue.yaml';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const exportContributorFile = () => downloadContributorFile(
+    createContributorFile('Contributor', revision, submissions)
+  );
+  const importContributorFile = async (file: File) => {
+    try {
+      const contributorFile = parseContributorFile(await file.text());
+      const incoming = contributorFile.submissions.filter(
+        submission => !processedSubmissionIds.includes(submission.id)
+      );
+      setSubmissions(current => {
+        const merged = [...current];
+        for (const submission of incoming) {
+          const existingIndex = merged.findIndex(item => item.id === submission.id);
+          if (existingIndex >= 0) merged[existingIndex] = submission;
+          else merged.push(submission);
+        }
+        return merged;
+      });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -265,8 +300,11 @@ export default function App() {
         onError={setError}
         onRoleChange={setRole}
         onOpenSubmissions={() => setSubmissionsOpen(true)}
-        onExportSharedFile={exportSharedFile}
-        onImportSharedFile={importSharedFile}
+        onExportPublishedBoard={exportPublishedBoard}
+        onImportPublishedBoard={importPublishedBoard}
+        onExportVenueConfig={exportVenueConfig}
+        onExportContributorFile={exportContributorFile}
+        onImportContributorFile={importContributorFile}
         onRevertLastImport={revertLastImport}
       />
       <main className="board-container">

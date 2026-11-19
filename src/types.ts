@@ -63,6 +63,15 @@ export interface SharedBoardFile {
   history: ImportHistoryEntry[];
 }
 
+export interface ContributorFile {
+  format: 'whiteboard-contributor-file';
+  version: 1;
+  contributor: string;
+  revisionBase: number;
+  exportedAt: string;
+  submissions: ContributorSubmission[];
+}
+
 export type MarkupItem =
   | {
       id: string;

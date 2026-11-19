@@ -19,14 +19,18 @@ interface Props {
   onError: (message: string) => void;
   onRoleChange: (role: BoardRole) => void;
   onOpenSubmissions: () => void;
-  onExportSharedFile: () => void;
-  onImportSharedFile: (file: File) => void;
+  onExportPublishedBoard: () => void;
+  onImportPublishedBoard: (file: File) => void;
+  onExportVenueConfig: () => void;
+  onExportContributorFile: () => void;
+  onImportContributorFile: (file: File) => void;
   onRevertLastImport: () => void;
 }
 export default function Toolbar({
   venue, bookingCount, role, editingEnabled, markupMode, error, submissionCount, revision, canRevert,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration, onBookingsLoaded, onError,
-  onRoleChange, onOpenSubmissions, onExportSharedFile, onImportSharedFile, onRevertLastImport
+  onRoleChange, onOpenSubmissions, onExportPublishedBoard, onImportPublishedBoard,
+  onExportVenueConfig, onExportContributorFile, onImportContributorFile, onRevertLastImport
 }: Props) {
   const [loading, setLoading] = useState(false);
   const handleBookingFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -43,10 +47,15 @@ export default function Toolbar({
       setLoading(false);
     }
   };
-  const handleSharedFile = (event: ChangeEvent<HTMLInputElement>) => {
+  const handlePublishedBoard = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
-    if (file) onImportSharedFile(file);
+    if (file) onImportPublishedBoard(file);
+  };
+  const handleContributorFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (file) onImportContributorFile(file);
   };
   return (
     <header className="toolbar">
@@ -64,15 +73,35 @@ export default function Toolbar({
             <input type="file" accept=".xls,.xlsx" onChange={handleBookingFile} disabled={!venue || loading} />
           </label>
           <label>
-            Open shared file
-            <input type="file" accept=".json" onChange={handleSharedFile} />
+            Import contributor file
+            <input type="file" accept=".json" onChange={handleContributorFile} />
           </label>
-          <button onClick={onExportSharedFile}>Export shared file</button>
+          <button onClick={onExportPublishedBoard}>Export published board</button>
+          <button onClick={onExportVenueConfig} disabled={!yamlText}>Export venue config</button>
           <button onClick={onOpenSubmissions}>
             Review submissions{submissionCount ? ` (${submissionCount})` : ''}
           </button>
           <button onClick={onRevertLastImport} disabled={!canRevert}>Revert last import</button>
         </>
+      )}
+      {role === 'contributor' && (
+        <>
+          <label>
+            Open published board
+            <input type="file" accept=".json" onChange={handlePublishedBoard} />
+          </label>
+          <button onClick={onExportContributorFile}>Export my contributions</button>
+          <label>
+            Import my contributions
+            <input type="file" accept=".json" onChange={handleContributorFile} />
+          </label>
+        </>
+      )}
+      {role === 'viewer' && (
+        <label>
+          Open published board
+          <input type="file" accept=".json" onChange={handlePublishedBoard} />
+        </label>
       )}
       <span>{loading ? 'Importing…' : `${bookingCount} bookings · rev ${revision}`}</span>
       {role !== 'viewer' && (
