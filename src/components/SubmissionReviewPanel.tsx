@@ -5,19 +5,20 @@ import './importReview.css';
 interface Props {
   submissions: ContributorSubmission[];
   bookings: Booking[];
+  currentRevision: number;
   onAccept: (submission: ContributorSubmission) => void;
   onReject: (submission: ContributorSubmission) => void;
   onForceAccept: (submission: ContributorSubmission) => void;
   onClose: () => void;
 }
 const describe = (booking: Booking) => `${booking.title} — ${booking.date} ${booking.startTime}–${booking.endTime}`;
-export default function SubmissionReviewPanel({ submissions, bookings, onAccept, onReject, onForceAccept, onClose }: Props) {
+export default function SubmissionReviewPanel({ submissions, bookings, currentRevision, onAccept, onReject, onForceAccept, onClose }: Props) {
   return (
     <div className="review-overlay">
       <section className="review-panel" aria-label="Review contributor submissions">
         <header>
           <h2>Contributor submissions</h2>
-          <p>{submissions.length} pending change{submissions.length === 1 ? '' : 's'}</p>
+          <p>{submissions.length} pending change{submissions.length === 1 ? '' : 's'} · published revision {currentRevision}</p>
         </header>
         <div className="review-list">
           {submissions.length === 0 && <p className="review-empty">No contributor submissions are waiting for review.</p>}
@@ -26,13 +27,18 @@ export default function SubmissionReviewPanel({ submissions, bookings, onAccept,
             const conflict = hasConflict(submission, current);
             const changes = submissionChanges(submission);
             const conflicts = conflictingFields(submission, current);
+            const stale = submission.revisionBase !== undefined && submission.revisionBase !== currentRevision;
             return (
               <div key={submission.id} className={`review-item ${conflict ? 'disappeared' : 'changed'}`}>
                 <div>
                   <strong>{submission.author}</strong>
                   <span>{describe(submission.proposed)}</span>
+                  <small>
+                    Based on revision {submission.revisionBase ?? 'unknown'}
+                    {stale ? ' · the published board has since changed' : ''}
+                  </small>
                   <small>Changes: {changes.length ? changes.join(', ') : 'none'}</small>
-                  {conflict && <small>Conflicts: {conflicts.join(', ')}. The booking changed after this submission was created.</small>}
+                  {conflict && <small>Conflicts: {conflicts.join(', ')}.</small>}
                 </div>
                 <div className="submission-actions">
                   {!conflict && <button onClick={() => onAccept(submission)}>Accept</button>}

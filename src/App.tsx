@@ -28,6 +28,7 @@ import { boardSettings, readConfiguration } from './lib/configuration';
 const MARKUP_KEY = 'whiteboard-markup';
 const VENUE_YAML_KEY = 'whiteboard-venue-yaml';
 const ROLE_KEY = 'whiteboard-role';
+const CONTRIBUTOR_KEY = 'whiteboard-contributor-name';
 const SUBMISSIONS_KEY = 'whiteboard-contributor-submissions';
 const BOARD_CACHE_KEY = 'whiteboard-board-cache';
 const REVISION_KEY = 'whiteboard-board-revision';
@@ -84,6 +85,7 @@ export default function App() {
     [venue, settings]
   );
   const [role, setRole] = useState<BoardRole>(() => (localStorage.getItem(ROLE_KEY) as BoardRole) || 'master');
+  const [contributorName, setContributorName] = useState(() => localStorage.getItem(CONTRIBUTOR_KEY) || 'Contributor');
   const [bookings, setBookings] = useState<Booking[]>(storedBoard);
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
@@ -107,6 +109,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(ROLE_KEY, role);
   }, [role]);
+  useEffect(() => {
+    localStorage.setItem(CONTRIBUTOR_KEY, contributorName);
+  }, [contributorName]);
   useEffect(() => {
     try {
       localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
@@ -215,7 +220,7 @@ export default function App() {
           updatedAt: new Date().toISOString()
         };
       } else {
-        updated.push(createSubmission(booking, current, 'Contributor'));
+        updated.push(createSubmission(booking, current, contributorName || 'Contributor', revision));
       }
     }
     setSubmissions(updated);
@@ -256,14 +261,18 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
   const exportContributorFile = () => downloadContributorFile(
-    createContributorFile('Contributor', revision, submissions)
+    createContributorFile(contributorName || 'Contributor', revision, submissions)
   );
   const importContributorFile = async (file: File) => {
     try {
       const contributorFile = parseContributorFile(await file.text());
-      const incoming = contributorFile.submissions.filter(
-        submission => !processedSubmissionIds.includes(submission.id)
-      );
+      const incoming = contributorFile.submissions
+        .filter(submission => !processedSubmissionIds.includes(submission.id))
+        .map(submission => ({
+          ...submission,
+          author: contributorFile.contributor,
+          revisionBase: contributorFile.revisionBase
+        }));
       setSubmissions(current => {
         const merged = [...current];
         for (const submission of incoming) {
@@ -284,6 +293,7 @@ export default function App() {
         venue={venue}
         bookingCount={bookings.length}
         role={role}
+        contributorName={contributorName}
         editingEnabled={editingEnabled}
         markupMode={markupMode}
         error={error}
@@ -299,6 +309,7 @@ export default function App() {
         onBookingsLoaded={handleBookingsLoaded}
         onError={setError}
         onRoleChange={setRole}
+        onContributorNameChange={setContributorName}
         onOpenSubmissions={() => setSubmissionsOpen(true)}
         onExportPublishedBoard={exportPublishedBoard}
         onImportPublishedBoard={importPublishedBoard}
@@ -337,6 +348,7 @@ export default function App() {
         <SubmissionReviewPanel
           submissions={submissions}
           bookings={bookings}
+          currentRevision={revision}
           onAccept={acceptSubmission}
           onReject={rejectSubmission}
           onForceAccept={acceptSubmission}

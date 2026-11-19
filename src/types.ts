@@ -46,6 +46,7 @@ export interface ContributorSubmission {
   id: string;
   bookingId: string;
   author: string;
+  revisionBase?: number;
   createdAt: string;
   updatedAt: string;
   base: Booking;

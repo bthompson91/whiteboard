@@ -6,6 +6,7 @@ interface Props {
   venue: ParsedVenueConfig | null;
   bookingCount: number;
   role: BoardRole;
+  contributorName: string;
   editingEnabled: boolean;
   markupMode: 'none' | 'text' | 'arrow';
   error: string | null;
@@ -18,6 +19,7 @@ interface Props {
   onBookingsLoaded: (result: ImportResult) => void;
   onError: (message: string) => void;
   onRoleChange: (role: BoardRole) => void;
+  onContributorNameChange: (name: string) => void;
   onOpenSubmissions: () => void;
   onExportPublishedBoard: () => void;
   onImportPublishedBoard: (file: File) => void;
@@ -27,9 +29,9 @@ interface Props {
   onRevertLastImport: () => void;
 }
 export default function Toolbar({
-  venue, bookingCount, role, editingEnabled, markupMode, error, submissionCount, revision, canRevert,
+  venue, bookingCount, role, contributorName, editingEnabled, markupMode, error, submissionCount, revision, canRevert,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration, onBookingsLoaded, onError,
-  onRoleChange, onOpenSubmissions, onExportPublishedBoard, onImportPublishedBoard,
+  onRoleChange, onContributorNameChange, onOpenSubmissions, onExportPublishedBoard, onImportPublishedBoard,
   onExportVenueConfig, onExportContributorFile, onImportContributorFile, onRevertLastImport
 }: Props) {
   const [loading, setLoading] = useState(false);
@@ -65,6 +67,14 @@ export default function Toolbar({
         <option value="contributor">Contributor</option>
         <option value="master">Master</option>
       </select>
+      {role === 'contributor' && (
+        <input
+          value={contributorName}
+          onChange={event => onContributorNameChange(event.target.value)}
+          placeholder="Your name"
+          aria-label="Contributor name"
+        />
+      )}
       {role === 'master' && (
         <>
           <button onClick={onOpenConfiguration}>Configuration</button>

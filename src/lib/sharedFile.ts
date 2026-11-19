@@ -3,12 +3,18 @@ import { Booking, ContributorFile, ContributorSubmission, ImportHistoryEntry, Sh
 const SHARED_FILE_FORMAT = 'whiteboard-shared-board';
 const CONTRIBUTOR_FILE_FORMAT = 'whiteboard-contributor-file';
 
-export function createSubmission(booking: Booking, current: Booking, author: string): ContributorSubmission {
+export function createSubmission(
+  booking: Booking,
+  current: Booking,
+  author: string,
+  revisionBase: number
+): ContributorSubmission {
   const now = new Date().toISOString();
   return {
     id: `submission-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     bookingId: booking.id,
     author,
+    revisionBase,
     createdAt: now,
     updatedAt: now,
     base: { ...current },
@@ -114,6 +120,7 @@ export function parseContributorFile(text: string): ContributorFile {
   }
   return {
     ...parsed,
+    contributor: parsed.contributor || 'Contributor',
     revisionBase: typeof parsed.revisionBase === 'number' ? parsed.revisionBase : 1
   };
 }
