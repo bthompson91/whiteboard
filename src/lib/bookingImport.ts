@@ -1,8 +1,13 @@
 import * as XLSX from 'xlsx';
 import yaml from 'js-yaml';
 import { Booking, BookingSnapshot } from '../types';
+import { ImportComparison, compareImports } from './importComparison';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 export type BoardBooking = Booking & { activity?: string; timeline?: { label: string; start: string; end: string }[] };
+export interface ImportResult {
+  bookings: Booking[];
+  comparison: ImportComparison;
+}
 const text = (v: unknown) => v == null ? '' : String(v).trim();
 const PREVIOUS_IMPORT_KEY = 'whiteboard-previous-import';
 const normalizeIdentity = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -80,7 +85,7 @@ function timeValue(v: unknown): string {
   if (m[3]) h = h % 12 + (m[3].toUpperCase() === 'PM' ? 12 : 0);
   return `${String(h).padStart(2,'0')}:${m[2]}`;
 }
-export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig): Promise<Booking[]> {
+export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig): Promise<ImportResult> {
   const workbook = await readWorkbook(file);
   let labels: string[] = [];
   try {
@@ -135,6 +140,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
     } else result.push(b);
   }
   if (!result.length) throw new Error('No matching bookings found. Check headers, room mappings and allowed statuses.');
+  const comparison = compareImports(previous?.bookings || null, result, venue.name);
   writePreviousImport(result);
-  return result;
+  return { bookings: result, comparison };
 }
