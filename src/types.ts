@@ -17,8 +17,14 @@ export interface Booking {
   startTime: string;
   endTime: string;
   title: string;
+  jobNumber?: string;
   status?: string;
   notes?: string;
+}
+
+export interface BookingSnapshot {
+  importedAt: string;
+  bookings: Booking[];
 }
 
 export type MarkupItem =

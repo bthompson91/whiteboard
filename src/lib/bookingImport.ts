@@ -1,9 +1,44 @@
 import * as XLSX from 'xlsx';
 import yaml from 'js-yaml';
-import { Booking } from '../types';
+import { Booking, BookingSnapshot } from '../types';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 export type BoardBooking = Booking & { activity?: string; timeline?: { label: string; start: string; end: string }[] };
 const text = (v: unknown) => v == null ? '' : String(v).trim();
+const PREVIOUS_IMPORT_KEY = 'whiteboard-previous-import';
+const normalizeIdentity = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+const normalizeJobNumber = (value: string) => {
+  const trimmed = value.trim();
+  return trimmed ? trimmed.replace(/^0+(?=\d)/, '') : '';
+};
+const stableHash = (value: string) => {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i++) hash = ((hash << 5) + hash + value.charCodeAt(i)) >>> 0;
+  return hash.toString(36).padStart(7, '0');
+};
+const identityKey = (booking: BoardBooking, venueName: string) => JSON.stringify([
+  normalizeIdentity(venueName),
+  booking.date,
+  normalizeJobNumber(booking.jobNumber || ''),
+  normalizeIdentity(booking.title),
+  [...booking.roomIds].sort()
+]);
+function readPreviousImport(): BookingSnapshot | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PREVIOUS_IMPORT_KEY) || 'null');
+    if (!parsed || !Array.isArray(parsed.bookings)) return null;
+    return { importedAt: typeof parsed.importedAt === 'string' ? parsed.importedAt : '', bookings: parsed.bookings };
+  } catch {
+    return null;
+  }
+}
+function writePreviousImport(bookings: Booking[]) {
+  try {
+    const snapshot: BookingSnapshot = { importedAt: new Date().toISOString(), bookings };
+    localStorage.setItem(PREVIOUS_IMPORT_KEY, JSON.stringify(snapshot));
+  } catch {
+    /* The import remains usable even if this browser cannot retain the snapshot. */
+  }
+}
 async function readWorkbook(file: File): Promise<XLSX.WorkBook> {
   const buffer = await file.arrayBuffer();
   const probe = new TextDecoder('windows-1252').decode(buffer.slice(0,8192));
@@ -52,6 +87,12 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
     const config = yaml.load(localStorage.getItem('whiteboard-venue-yaml') || '') as { timeline_items?: string[] };
     labels = config?.timeline_items || [];
   } catch { /* Config was already validated by the venue loader. */ }
+  const previous = readPreviousImport();
+  const previousByIdentity = new Map<string, Booking>();
+  for (const booking of previous?.bookings || []) {
+    const identity = identityKey(booking as BoardBooking, venue.name);
+    if (!previousByIdentity.has(identity)) previousByIdentity.set(identity, booking);
+  }
   const rows: BoardBooking[] = [];
   for (const sheetName of workbook.SheetNames) {
     const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '', raw: true });
@@ -63,10 +104,24 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
       if (!title || !roomIds.length || !get('event_date')) return;
       if (venue.display.allowedStatuses.length && !venue.display.allowedStatuses.includes(status)) return;
       const activity = text(get('activity_name'));
-      rows.push({ id: `${sheetName}-${index}`, title, activity, notes: activity === title ? '' : activity, status,
+      const jobNumber = venue.fields.job_number ? text(get('job_number')) : '';
+      const booking: BoardBooking = {
+        id: '',
+        title,
+        activity,
+        notes: activity === title ? '' : activity,
+        status,
         date: dateValue(get('event_date'), !!workbook.Workbook?.WBProps?.date1904),
-        startTime: timeValue(get('start_time')), endTime: timeValue(get('end_time')),
-        roomId: roomIds[0], roomIds });
+        startTime: timeValue(get('start_time')),
+        endTime: timeValue(get('end_time')),
+        roomId: roomIds[0],
+        roomIds
+      };
+      if (jobNumber) booking.jobNumber = jobNumber;
+      booking.id = `booking-${stableHash(identityKey(booking, venue.name))}`;
+      const existing = previousByIdentity.get(identityKey(booking, venue.name));
+      if (existing?.id) booking.id = existing.id;
+      rows.push(booking);
     });
   }
   const key = (b: BoardBooking) => JSON.stringify([b.title, b.date, [...b.roomIds].sort()]);
@@ -80,5 +135,6 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
     } else result.push(b);
   }
   if (!result.length) throw new Error('No matching bookings found. Check headers, room mappings and allowed statuses.');
+  writePreviousImport(result);
   return result;
 }
