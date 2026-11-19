@@ -3,9 +3,10 @@ import BookingGrid from './components/BookingGrid';
 import MarkupLayer from './components/MarkupLayer';
 import Toolbar from './components/Toolbar';
 import { Booking, MarkupItem, VenueConfig } from './types';
-import { ParsedVenueConfig } from './lib/venueConfig';
+import { ParsedVenueConfig, parseVenueConfig } from './lib/venueConfig';
 
 const MARKUP_KEY = 'whiteboard-markup';
+const VENUE_YAML_KEY = 'whiteboard-venue-yaml';
 
 export default function App() {
   const [venue, setVenue] = useState<ParsedVenueConfig | null>(null);
@@ -16,10 +17,19 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem(MARKUP_KEY);
-    if (saved) {
+    const savedYaml = localStorage.getItem(VENUE_YAML_KEY);
+    if (savedYaml) {
       try {
-        setMarkup(JSON.parse(saved) as MarkupItem[]);
+        setVenue(parseVenueConfig(savedYaml));
+      } catch (exception) {
+        setError(exception instanceof Error ? exception.message : String(exception));
+      }
+    }
+
+    const savedMarkup = localStorage.getItem(MARKUP_KEY);
+    if (savedMarkup) {
+      try {
+        setMarkup(JSON.parse(savedMarkup) as MarkupItem[]);
       } catch {
         setMarkup([]);
       }
@@ -29,6 +39,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(MARKUP_KEY, JSON.stringify(markup));
   }, [markup]);
+
+  const handleVenueLoaded = (yamlText: string) => {
+    localStorage.setItem(VENUE_YAML_KEY, yamlText);
+    setVenue(parseVenueConfig(yamlText));
+    setError(null);
+  };
 
   return (
     <div className="app">
@@ -40,10 +56,7 @@ export default function App() {
         error={error}
         onToggleEditing={() => setEditingEnabled((value) => !value)}
         onSetMarkupMode={setMarkupMode}
-        onVenueLoaded={(loadedVenue) => {
-          setVenue(loadedVenue);
-          setError(null);
-        }}
+        onVenueLoaded={handleVenueLoaded}
         onBookingsLoaded={(loadedBookings) => {
           setBookings(loadedBookings);
           setError(null);

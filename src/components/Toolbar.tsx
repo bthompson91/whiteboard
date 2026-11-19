@@ -10,7 +10,7 @@ interface ToolbarProps {
   error: string | null;
   onToggleEditing: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
-  onVenueLoaded: (venue: ParsedVenueConfig) => void;
+  onVenueLoaded: (yamlText: string) => void;
   onBookingsLoaded: (bookings: Booking[]) => void;
   onError: (message: string) => void;
   onMarkupChange: (markup: MarkupItem[]) => void;
@@ -26,17 +26,15 @@ export default function Toolbar({
   onSetMarkupMode,
   onVenueLoaded,
   onBookingsLoaded,
-  onError,
-  onMarkupChange
+  onError
 }: ToolbarProps) {
   const handleVenueFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      const yaml = await file.text();
-      const { parseVenueConfig } = await import('../lib/venueConfig');
-      onVenueLoaded(parseVenueConfig(yaml));
+      const yamlText = await file.text();
+      onVenueLoaded(yamlText);
     } catch (exception) {
       onError(exception instanceof Error ? exception.message : String(exception));
     }
