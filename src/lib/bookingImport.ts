@@ -27,7 +27,7 @@ const identityKey = (booking: BoardBooking, venueName: string) => JSON.stringify
   normalizeIdentity(booking.title),
   [...booking.roomIds].sort()
 ]);
-function readPreviousImport(): BookingSnapshot | null {
+export function readPreviousImport(): BookingSnapshot | null {
   try {
     const parsed = JSON.parse(localStorage.getItem(PREVIOUS_IMPORT_KEY) || 'null');
     if (!parsed || !Array.isArray(parsed.bookings)) return null;
@@ -36,7 +36,7 @@ function readPreviousImport(): BookingSnapshot | null {
     return null;
   }
 }
-function writePreviousImport(bookings: Booking[]) {
+export function savePreviousImport(bookings: Booking[]) {
   try {
     const snapshot: BookingSnapshot = { importedAt: new Date().toISOString(), bookings };
     localStorage.setItem(PREVIOUS_IMPORT_KEY, JSON.stringify(snapshot));
@@ -141,6 +141,5 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
   }
   if (!result.length) throw new Error('No matching bookings found. Check headers, room mappings and allowed statuses.');
   const comparison = compareImports(previous?.bookings || null, result, venue.name);
-  writePreviousImport(result);
   return { bookings: result, comparison };
 }
