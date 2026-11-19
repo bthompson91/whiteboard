@@ -7,6 +7,7 @@ export interface BookingMatch {
   previous: Booking;
   score: number;
   classification: MatchClassification;
+  reason?: string;
 }
 
 export interface BookingChange {
@@ -124,7 +125,49 @@ export function compareImports(previous: Booking[] | null, current: Booking[], v
   const unmatchedPrevious = (previous || []).filter(booking => !matchedPreviousIds.has(booking.id));
   const linkedPreviousIds = new Set<string>();
 
+  // Tier 2 — single-field change: same date, and exactly one of title, time
+  // or rooms differs. Events are renamed, re-timed or moved between rooms,
+  // but rarely more than one of those at once, so a lone difference against
+  // an otherwise identical booking is a strong match. A differing job
+  // number on both sides rules it out: that points at a different booking.
+  // The candidate must also be unique — if two previous bookings each
+  // differ in one field, fall through to fuzzy scoring instead of guessing.
+  const singleFieldChange = (current: Booking, candidate: Booking): string | null => {
+    if (current.date !== candidate.date) return null;
+    const diffs: string[] = [];
+    if (normalizeText(current.title) !== normalizeText(candidate.title)) diffs.push('title');
+    if (current.startTime !== candidate.startTime || current.endTime !== candidate.endTime) diffs.push('time');
+    if (JSON.stringify([...current.roomIds].sort()) !== JSON.stringify([...candidate.roomIds].sort())) diffs.push('rooms');
+    if (diffs.length !== 1) return null;
+    if (
+      current.jobNumber && candidate.jobNumber &&
+      normalizeJobNumber(current.jobNumber) !== normalizeJobNumber(candidate.jobNumber)
+    ) return null;
+    return diffs[0];
+  };
+  const singleFieldLabel: Record<string, string> = {
+    title: 'Title changed',
+    time: 'Time changed',
+    rooms: 'Rooms changed'
+  };
+
   for (const booking of unmatchedCurrent) {
+    const tierTwo = unmatchedPrevious
+      .filter(candidate => !linkedPreviousIds.has(candidate.id))
+      .map(candidate => ({ candidate, field: singleFieldChange(booking, candidate) }))
+      .filter((item): item is { candidate: Booking; field: string } => item.field !== null);
+    if (tierTwo.length === 1) {
+      const match = tierTwo[0];
+      linkedPreviousIds.add(match.candidate.id);
+      changes.push({
+        type: 'new',
+        booking,
+        changedFields: [],
+        match: { previous: match.candidate, score: 90, classification: 'strong', reason: singleFieldLabel[match.field] }
+      });
+      continue;
+    }
+    // Tier 3 — fuzzy scoring for the rest (typos, two fields changed).
     const candidates = unmatchedPrevious
       .filter(candidate => !linkedPreviousIds.has(candidate.id))
       .map(candidate => ({ candidate, score: matchScore(booking, candidate) }))
@@ -145,7 +188,7 @@ export function compareImports(previous: Booking[] | null, current: Booking[], v
 
   for (const booking of unmatchedPrevious) {
     if (linkedPreviousIds.has(booking.id)) continue;
-    changes.push({ type: 'disappeared', booking, changedFields: [] });
+    changes.push({ type: 'disappeared', booking, previous: booking, changedFields: [] });
   }
 
   const summary: Record<ImportChangeType, number> = { unchanged: 0, changed: 0, new: 0, disappeared: 0 };

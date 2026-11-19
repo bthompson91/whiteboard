@@ -85,13 +85,17 @@ export default function App() {
     () => venue?.rooms.map(room => settings?.room_widths[settings.room_types[room.id] || 'other'] || 175),
     [venue, settings]
   );
-  const [role, setRole] = useState<BoardRole>(() => (localStorage.getItem(ROLE_KEY) as BoardRole) || 'master');
+  const [role, setRole] = useState<BoardRole>(() => {
+    const stored = localStorage.getItem(ROLE_KEY);
+    return stored === 'viewer' || stored === 'contributor' || stored === 'master' ? stored : 'viewer';
+  });
+  const [pendingRole, setPendingRole] = useState<BoardRole | null>(null);
   const [contributorName, setContributorName] = useState(() => localStorage.getItem(CONTRIBUTOR_KEY) || 'Contributor');
   const [bookings, setBookings] = useState<Booking[]>(storedBoard);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
-  const [originalPendingReview, setOriginalPendingReview] = useState<ImportResult | null>(null);
+  const [linkHistory, setLinkHistory] = useState<ImportResult[]>([]);
   const [submissions, setSubmissions] = useState<ContributorSubmission[]>(storedSubmissions);
   const [processedSubmissionIds, setProcessedSubmissionIds] = useState<string[]>(storedProcessed);
   const [revision, setRevision] = useState<number>(() => Number(localStorage.getItem(REVISION_KEY)) || 1);
@@ -157,7 +161,7 @@ export default function App() {
   };
   const handleBookingsLoaded = (result: ImportResult) => {
     setPendingReview(result);
-    setOriginalPendingReview(null);
+    setLinkHistory([]);
     setError(null);
   };
   const publish = (approved: Booking[], result: ImportResult | null) => {
@@ -174,7 +178,7 @@ export default function App() {
       setLastImport(result);
     }
     setPendingReview(null);
-    setOriginalPendingReview(null);
+    setLinkHistory([]);
   };
   const applyImport = (approved: Booking[]) => publish(approved, pendingReview);
   const revertLastImport = () => {
@@ -192,10 +196,13 @@ export default function App() {
   };
   const linkMatch = (change: BookingChange) => {
     if (!pendingReview || !change.match || !venue) return;
-    if (!originalPendingReview) setOriginalPendingReview(pendingReview);
+    // Capture the match first: narrowing on change.match is lost inside
+    // the map callback below, which is what broke the production build.
+    const match = change.match;
+    setLinkHistory(current => [...current, pendingReview]);
     const linked = pendingReview.bookings.map(booking => {
       if (booking.id !== change.booking.id) return booking;
-      const previous = change.match.previous;
+      const previous = match.previous;
       return {
         ...booking,
         id: previous.id,
@@ -214,9 +221,19 @@ export default function App() {
     setPendingReview({ bookings: linked, comparison, source: pendingReview.source });
   };
   const undoLinkMatch = () => {
-    if (!originalPendingReview) return;
-    setPendingReview(originalPendingReview);
-    setOriginalPendingReview(null);
+    // Undo one link at a time: pop the most recent pre-link review.
+    const previous = linkHistory[linkHistory.length - 1];
+    if (!previous) return;
+    setPendingReview(previous);
+    setLinkHistory(linkHistory.slice(0, -1));
+  };
+  const requestRoleChange = (next: BoardRole) => {
+    // Roles run on trust — this is an internal tool — but switching to a
+    // role that can change the board for everyone should take a deliberate
+    // click, not an idle dropdown change.
+    const rank: Record<BoardRole, number> = { viewer: 0, contributor: 1, master: 2 };
+    if (rank[next] > rank[role]) setPendingRole(next);
+    else setRole(next);
   };
   const handleBookingsChange = (next: Booking[]) => {
     if (role === 'viewer') return;
@@ -325,7 +342,7 @@ export default function App() {
         }}
         onBookingsLoaded={handleBookingsLoaded}
         onError={setError}
-        onRoleChange={setRole}
+        onRoleChange={requestRoleChange}
         onContributorNameChange={setContributorName}
         onOpenSubmissions={() => setSubmissionsOpen(true)}
         onOpenHistory={() => setHistoryOpen(true)}
@@ -366,13 +383,13 @@ export default function App() {
         <ImportReviewPanel
           result={pendingReview}
           hasDuplicate={!!importHistory[0] && importHistory[0].fingerprint === pendingReview.source.fingerprint}
-          canUndoLink={!!originalPendingReview}
+          canUndoLink={linkHistory.length > 0}
           onApply={applyImport}
           onLinkMatch={linkMatch}
           onUndoLink={undoLinkMatch}
           onCancel={() => {
             setPendingReview(null);
-            setOriginalPendingReview(null);
+            setLinkHistory([]);
           }}
         />
       )}
@@ -393,6 +410,24 @@ export default function App() {
           onRestore={restoreImport}
           onClose={() => setHistoryOpen(false)}
         />
+      )}
+      {pendingRole && (
+        <div className="review-overlay">
+          <section className="review-panel" aria-label="Confirm role change">
+            <header>
+              <h2>Switch to {pendingRole}?</h2>
+              <p>
+                {pendingRole === 'master'
+                  ? 'The master can publish changes, review contributor submissions, change the venue configuration and revert imports. Only switch if you are one of the board editors.'
+                  : 'A contributor can edit bookings and send changes for the master to review. Only switch if you are one of the board editors.'}
+              </p>
+            </header>
+            <footer>
+              <button onClick={() => setPendingRole(null)}>Cancel</button>
+              <button className="primary" onClick={() => { setRole(pendingRole); setPendingRole(null); }}>OK, switch to {pendingRole}</button>
+            </footer>
+          </section>
+        </div>
       )}
     </div>
   );

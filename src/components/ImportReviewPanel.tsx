@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Booking } from '../types';
 import { ImportResult } from '../lib/bookingImport';
 import { BookingChange } from '../lib/importComparison';
+import { applyReview, changeKey } from '../lib/reviewApply';
 import './importReview.css';
 interface Props {
   result: ImportResult;
@@ -13,44 +14,24 @@ interface Props {
   onCancel: () => void;
 }
 const formatBooking = (booking: Booking) => `${booking.title} — ${booking.date} ${booking.startTime}–${booking.endTime}`;
+const allSelected = (result: ImportResult) =>
+  Object.fromEntries(
+    result.comparison.changes
+      .filter(change => change.type !== 'unchanged')
+      .map(change => [changeKey(change), true])
+  );
 export default function ImportReviewPanel({ result, hasDuplicate, canUndoLink, onApply, onLinkMatch, onUndoLink, onCancel }: Props) {
   const actionable = useMemo(
     () => result.comparison.changes.filter(change => change.type !== 'unchanged'),
     [result]
   );
-  const [selected, setSelected] = useState<Record<number, boolean>>(
-    () => Object.fromEntries(actionable.map((_, index) => [index, true]))
-  );
-  const toggle = (index: number) => setSelected(current => ({ ...current, [index]: !current[index] }));
-  const apply = () => {
-    const rejected = actionable.filter((_, index) => !selected[index]);
-    const rejectedIds = new Set<string>();
-    for (const change of rejected) {
-      if (change.type === 'new' || change.type === 'changed') rejectedIds.add(change.booking.id);
-      if (change.type === 'disappeared' && change.previous) rejectedIds.add(change.previous.id);
-    }
-    const retainedPrevious = new Map(
-      result.comparison.changes
-        .filter(change => change.previous)
-        .map(change => [change.previous!.id, change.previous!])
-    );
-    const bookings: Booking[] = [];
-    for (const change of result.comparison.changes) {
-      const previousId = change.previous?.id;
-      if (previousId && rejectedIds.has(previousId)) {
-        if (change.type === 'disappeared') bookings.push(change.previous!);
-        continue;
-      }
-      if (change.type === 'disappeared') continue;
-      if (change.type === 'new' && rejectedIds.has(change.booking.id)) continue;
-      if (change.type === 'changed' && rejectedIds.has(change.booking.id)) {
-        if (previousId && retainedPrevious.has(previousId)) bookings.push(retainedPrevious.get(previousId)!);
-        continue;
-      }
-      bookings.push(change.booking);
-    }
-    onApply(bookings);
-  };
+  const [selected, setSelected] = useState<Record<string, boolean>>(() => allSelected(result));
+  // The list is recomputed when a match is linked, so re-derive the ticks
+  // from the new list instead of letting index-based ticks land on
+  // different bookings.
+  useEffect(() => { setSelected(allSelected(result)); }, [result]);
+  const toggle = (key: string) => setSelected(current => ({ ...current, [key]: !(current[key] !== false) }));
+  const apply = () => onApply(applyReview(result.comparison.changes, selected));
   return (
     <div className="review-overlay">
       <section className="review-panel" aria-label="Review imported changes">
@@ -61,35 +42,42 @@ export default function ImportReviewPanel({ result, hasDuplicate, canUndoLink, o
             {result.comparison.summary.disappeared} disappeared · {result.comparison.summary.unchanged} unchanged
           </p>
           {hasDuplicate && <p className="duplicate-warning">This file has the same content fingerprint as the most recent import.</p>}
+          <p>Untick a disappeared booking to keep it on the board. Untick a matched new booking to keep the previous booking instead.</p>
         </header>
         <div className="review-list">
           {actionable.length === 0 && <p className="review-empty">No changes require review.</p>}
-          {actionable.map((change: BookingChange, index: number) => (
-            <div key={`${change.type}-${change.booking.id}-${index}`} className={`review-item ${change.type}`}>
-              {change.type !== 'disappeared' && (
-                <input type="checkbox" checked={selected[index] !== false} onChange={() => toggle(index)} />
-              )}
-              <div>
-                <strong>
-                  {change.type === 'new'
-                    ? change.match
-                      ? `Possible match — ${change.match.classification} (${change.match.score}%)`
-                      : 'New'
-                    : change.type === 'changed'
-                      ? 'Changed'
-                      : 'Disappeared'}
-                </strong>
-                <span>{formatBooking(change.type === 'disappeared' ? change.previous! : change.booking)}</span>
-                {change.type === 'changed' && <small>{change.changedFields.join(', ')}</small>}
-                {change.match && <small>Previous: {formatBooking(change.match.previous)}</small>}
-              </div>
-              {change.match && (
-                <div className="submission-actions">
-                  <button onClick={() => onLinkMatch(change)}>Link match</button>
+          {actionable.map((change: BookingChange) => {
+            const key = changeKey(change);
+            return (
+              <div key={key} className={`review-item ${change.type}`}>
+                <input
+                  type="checkbox"
+                  checked={selected[key] !== false}
+                  onChange={() => toggle(key)}
+                  aria-label={change.type === 'disappeared' ? `Remove ${formatBooking(change.previous ?? change.booking)} (untick to keep)` : `Apply ${change.type} change to ${formatBooking(change.booking)}`}
+                />
+                <div>
+                  <strong>
+                    {change.type === 'new'
+                      ? change.match
+                        ? `Possible match — ${change.match.classification} (${change.match.score}%)`
+                        : 'New'
+                      : change.type === 'changed'
+                        ? 'Changed'
+                        : 'Disappeared — untick to keep'}
+                  </strong>
+                  <span>{formatBooking(change.type === 'disappeared' ? (change.previous ?? change.booking) : change.booking)}</span>
+                  {change.type === 'changed' && <small>{change.changedFields.join(', ')}</small>}
+                  {change.match && <small>Previous: {formatBooking(change.match.previous)}{change.match.reason ? ` — ${change.match.reason}` : ''}</small>}
                 </div>
-              )}
-            </div>
-          ))}
+                {change.match && (
+                  <div className="submission-actions">
+                    <button onClick={() => onLinkMatch(change)}>Link match</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <footer>
           {canUndoLink && <button onClick={onUndoLink}>Undo last link</button>}
