@@ -89,6 +89,7 @@ export default function App() {
   const [bookings, setBookings] = useState<Booking[]>(storedBoard);
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
+  const [originalPendingReview, setOriginalPendingReview] = useState<ImportResult | null>(null);
   const [submissions, setSubmissions] = useState<ContributorSubmission[]>(storedSubmissions);
   const [processedSubmissionIds, setProcessedSubmissionIds] = useState<string[]>(storedProcessed);
   const [revision, setRevision] = useState<number>(() => Number(localStorage.getItem(REVISION_KEY)) || 1);
@@ -153,6 +154,7 @@ export default function App() {
   };
   const handleBookingsLoaded = (result: ImportResult) => {
     setPendingReview(result);
+    setOriginalPendingReview(null);
     setError(null);
   };
   const publish = (approved: Booking[], result: ImportResult | null) => {
@@ -169,6 +171,7 @@ export default function App() {
       setLastImport(result);
     }
     setPendingReview(null);
+    setOriginalPendingReview(null);
   };
   const applyImport = (approved: Booking[]) => publish(approved, pendingReview);
   const revertLastImport = () => {
@@ -181,6 +184,7 @@ export default function App() {
   };
   const linkMatch = (change: BookingChange) => {
     if (!pendingReview || !change.match || !venue) return;
+    if (!originalPendingReview) setOriginalPendingReview(pendingReview);
     const linked = pendingReview.bookings.map(booking => {
       if (booking.id !== change.booking.id) return booking;
       const previous = change.match.previous;
@@ -200,6 +204,11 @@ export default function App() {
       venue.name
     );
     setPendingReview({ bookings: linked, comparison, source: pendingReview.source });
+  };
+  const undoLinkMatch = () => {
+    if (!originalPendingReview) return;
+    setPendingReview(originalPendingReview);
+    setOriginalPendingReview(null);
   };
   const handleBookingsChange = (next: Booking[]) => {
     if (role === 'viewer') return;
@@ -339,9 +348,15 @@ export default function App() {
       {pendingReview && (
         <ImportReviewPanel
           result={pendingReview}
+          hasDuplicate={!!importHistory[0] && importHistory[0].fingerprint === pendingReview.source.fingerprint}
+          canUndoLink={!!originalPendingReview}
           onApply={applyImport}
           onLinkMatch={linkMatch}
-          onCancel={() => setPendingReview(null)}
+          onUndoLink={undoLinkMatch}
+          onCancel={() => {
+            setPendingReview(null);
+            setOriginalPendingReview(null);
+          }}
         />
       )}
       {submissionsOpen && (

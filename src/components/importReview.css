@@ -3,6 +3,7 @@
 .review-panel header{padding:18px 22px;border-bottom:1px solid #dde3ea;}
 .review-panel h2{margin:0 0 6px;font-size:20px;}
 .review-panel p{margin:0;color:#5b6675;font-size:14px;}
+.review-panel .duplicate-warning{margin-top:8px;color:#a15c00;font-weight:600;}
 .review-list{overflow:auto;padding:12px 22px;flex:1;}
 .review-item{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid #dde3ea;border-radius:8px;margin-bottom:8px;cursor:pointer;}
 .review-item.new{border-left:4px solid #2e9e5b;}

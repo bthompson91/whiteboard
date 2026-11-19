@@ -5,12 +5,15 @@ import { BookingChange } from '../lib/importComparison';
 import './importReview.css';
 interface Props {
   result: ImportResult;
+  hasDuplicate: boolean;
+  canUndoLink: boolean;
   onApply: (bookings: Booking[]) => void;
   onLinkMatch: (change: BookingChange) => void;
+  onUndoLink: () => void;
   onCancel: () => void;
 }
 const formatBooking = (booking: Booking) => `${booking.title} — ${booking.date} ${booking.startTime}–${booking.endTime}`;
-export default function ImportReviewPanel({ result, onApply, onLinkMatch, onCancel }: Props) {
+export default function ImportReviewPanel({ result, hasDuplicate, canUndoLink, onApply, onLinkMatch, onUndoLink, onCancel }: Props) {
   const actionable = useMemo(
     () => result.comparison.changes.filter(change => change.type !== 'unchanged'),
     [result]
@@ -57,6 +60,7 @@ export default function ImportReviewPanel({ result, onApply, onLinkMatch, onCanc
             {result.comparison.summary.new} new · {result.comparison.summary.changed} changed ·{' '}
             {result.comparison.summary.disappeared} disappeared · {result.comparison.summary.unchanged} unchanged
           </p>
+          {hasDuplicate && <p className="duplicate-warning">This file has the same content fingerprint as the most recent import.</p>}
         </header>
         <div className="review-list">
           {actionable.length === 0 && <p className="review-empty">No changes require review.</p>}
@@ -77,11 +81,7 @@ export default function ImportReviewPanel({ result, onApply, onLinkMatch, onCanc
                 </strong>
                 <span>{formatBooking(change.type === 'disappeared' ? change.previous! : change.booking)}</span>
                 {change.type === 'changed' && <small>{change.changedFields.join(', ')}</small>}
-                {change.match && (
-                  <small>
-                    Previous: {formatBooking(change.match.previous)}
-                  </small>
-                )}
+                {change.match && <small>Previous: {formatBooking(change.match.previous)}</small>}
               </div>
               {change.match && (
                 <div className="submission-actions">
@@ -92,6 +92,7 @@ export default function ImportReviewPanel({ result, onApply, onLinkMatch, onCanc
           ))}
         </div>
         <footer>
+          {canUndoLink && <button onClick={onUndoLink}>Undo last link</button>}
           <button onClick={onCancel}>Cancel import</button>
           <button className="primary" onClick={apply}>Apply selected changes</button>
         </footer>
