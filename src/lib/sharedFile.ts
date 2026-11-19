@@ -20,6 +20,39 @@ export function hasConflict(submission: ContributorSubmission, current: Booking 
   return JSON.stringify(submission.base) !== JSON.stringify(current);
 }
 
+export function conflictingFields(submission: ContributorSubmission, current: Booking | undefined): string[] {
+  if (!current) return ['booking'];
+  const fields: Array<[string, (booking: Booking) => unknown]> = [
+    ['title', booking => booking.title],
+    ['date', booking => booking.date],
+    ['job number', booking => booking.jobNumber || ''],
+    ['start time', booking => booking.startTime],
+    ['end time', booking => booking.endTime],
+    ['rooms', booking => [...booking.roomIds].sort()],
+    ['status', booking => booking.status || ''],
+    ['notes', booking => booking.notes || '']
+  ];
+  return fields
+    .filter(([field, read]) => field && JSON.stringify(read(submission.base)) !== JSON.stringify(read(current)))
+    .map(([field]) => field);
+}
+
+export function submissionChanges(submission: ContributorSubmission): string[] {
+  const fields: Array<[string, (booking: Booking) => unknown]> = [
+    ['title', booking => booking.title],
+    ['date', booking => booking.date],
+    ['job number', booking => booking.jobNumber || ''],
+    ['start time', booking => booking.startTime],
+    ['end time', booking => booking.endTime],
+    ['rooms', booking => [...booking.roomIds].sort()],
+    ['status', booking => booking.status || ''],
+    ['notes', booking => booking.notes || '']
+  ];
+  return fields
+    .filter(([field, read]) => field && JSON.stringify(read(submission.base)) !== JSON.stringify(read(submission.proposed)))
+    .map(([field]) => field);
+}
+
 export function createSharedFile(bookings: Booking[], submissions: ContributorSubmission[]): SharedBoardFile {
   return {
     format: SHARED_FILE_FORMAT,

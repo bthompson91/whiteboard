@@ -7,13 +7,14 @@ import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
 import { BoardRole, Booking, ContributorSubmission, MarkupItem } from './types';
 import { ImportResult, savePreviousImport } from './lib/bookingImport';
-import { createSharedFile, createSubmission, downloadSharedFile, hasConflict, parseSharedFile } from './lib/sharedFile';
+import { createSharedFile, createSubmission, downloadSharedFile, parseSharedFile } from './lib/sharedFile';
 import { parseVenueConfig } from './lib/venueConfig';
 import { boardSettings, readConfiguration } from './lib/configuration';
 const MARKUP_KEY = 'whiteboard-markup';
 const VENUE_YAML_KEY = 'whiteboard-venue-yaml';
 const ROLE_KEY = 'whiteboard-role';
 const SUBMISSIONS_KEY = 'whiteboard-contributor-submissions';
+const BOARD_CACHE_KEY = 'whiteboard-board-cache';
 function startup() {
   try {
     const text = localStorage.getItem(VENUE_YAML_KEY) || '';
@@ -39,6 +40,14 @@ function storedSubmissions(): ContributorSubmission[] {
     return [];
   }
 }
+function storedBoard(): Booking[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BOARD_CACHE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 export default function App() {
   const [initial] = useState(startup);
   const [yamlText, setYamlText] = useState(initial.text);
@@ -49,7 +58,7 @@ export default function App() {
     [venue, settings]
   );
   const [role, setRole] = useState<BoardRole>(() => (localStorage.getItem(ROLE_KEY) as BoardRole) || 'master');
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>(storedBoard);
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
   const [submissions, setSubmissions] = useState<ContributorSubmission[]>(storedSubmissions);
@@ -76,6 +85,13 @@ export default function App() {
       setError('Contributor submissions could not be saved in this browser.');
     }
   }, [submissions]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOARD_CACHE_KEY, JSON.stringify(bookings));
+    } catch {
+      setError('The local board cache could not be saved in this browser.');
+    }
+  }, [bookings]);
   const saveConfiguration = (text: string) => {
     readConfiguration(text);
     parseVenueConfig(text);
@@ -107,7 +123,11 @@ export default function App() {
       if (JSON.stringify(current) === JSON.stringify(booking)) continue;
       const existing = updated.find(submission => submission.bookingId === booking.id);
       if (existing) {
-        updated[updated.indexOf(existing)] = { ...existing, proposed: { ...booking }, updatedAt: new Date().toISOString() };
+        updated[updated.indexOf(existing)] = {
+          ...existing,
+          proposed: { ...booking },
+          updatedAt: new Date().toISOString()
+        };
       } else {
         updated.push(createSubmission(booking, current, 'Contributor'));
       }
@@ -115,8 +135,6 @@ export default function App() {
     setSubmissions(updated);
   };
   const acceptSubmission = (submission: ContributorSubmission) => {
-    const current = bookings.find(booking => booking.id === submission.bookingId);
-    if (hasConflict(submission, current)) return;
     setBookings(bookings.map(booking => booking.id === submission.bookingId ? submission.proposed : booking));
     setSubmissions(submissions.filter(item => item.id !== submission.id));
   };
@@ -184,6 +202,7 @@ export default function App() {
           bookings={bookings}
           onAccept={acceptSubmission}
           onReject={rejectSubmission}
+          onForceAccept={acceptSubmission}
           onClose={() => setSubmissionsOpen(false)}
         />
       )}
