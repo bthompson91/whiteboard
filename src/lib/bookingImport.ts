@@ -4,6 +4,22 @@ import { Booking } from '../types';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 export type BoardBooking = Booking & { activity?: string; timeline?: { label: string; start: string; end: string }[] };
 const text = (v: unknown) => v == null ? '' : String(v).trim();
+async function readWorkbook(file: File): Promise<XLSX.WorkBook> {
+  const buffer = await file.arrayBuffer();
+  const probe = new TextDecoder('windows-1252').decode(buffer.slice(0,8192));
+  if (!/<(?:html|head|table)\b/i.test(probe)) return XLSX.read(buffer, { type: 'array', cellDates: false });
+  const declared = /charset\s*=\s*["']?([a-z0-9_-]+)/i.exec(probe)?.[1] || 'utf-8';
+  let source: string;
+  try { source = new TextDecoder(declared).decode(buffer); } catch { source = new TextDecoder('windows-1252').decode(buffer); }
+  const document = new DOMParser().parseFromString(source, 'text/html');
+  const workbook = XLSX.utils.book_new();
+  Array.from(document.querySelectorAll('table')).filter(t => !t.parentElement?.closest('table')).forEach((table, i) => {
+    const rows = Array.from(table.rows).map(row => Array.from(row.cells).map(cell => (cell.textContent || '').replace(/\u00a0/g,' ').trim()));
+    if (rows.length) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), `Table ${i+1}`);
+  });
+  if (!workbook.SheetNames.length) throw new Error('The export contains no readable HTML tables.');
+  return workbook;
+}
 function dateValue(v: unknown, date1904: boolean): string {
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
   if (typeof v === 'number' || /^\d{5}(\.\d+)?$/.test(text(v))) {
@@ -30,7 +46,7 @@ function timeValue(v: unknown): string {
   return `${String(h).padStart(2,'0')}:${m[2]}`;
 }
 export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig): Promise<Booking[]> {
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
+  const workbook = await readWorkbook(file);
   let labels: string[] = [];
   try {
     const config = yaml.load(localStorage.getItem('whiteboard-venue-yaml') || '') as { timeline_items?: string[] };
@@ -38,7 +54,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
   } catch { /* Config was already validated by the venue loader. */ }
   const rows: BoardBooking[] = [];
   for (const sheetName of workbook.SheetNames) {
-    const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '' });
+    const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '', raw: true });
     records.forEach((row, index) => {
       const get = (key: string) => row[venue.fields[key]];
       const title = text(get(venue.display.primaryLabel));
