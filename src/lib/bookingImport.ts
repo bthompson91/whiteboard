@@ -29,7 +29,10 @@ export async function parseBookingWorkbook(
   venue: ParsedVenueConfig
 ): Promise<Booking[]> {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array' });
+  const workbook = XLSX.read(buffer, {
+    type: 'array',
+    cellDates: true
+  });
 
   const bookings: Booking[] = [];
 

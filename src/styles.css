@@ -82,25 +82,35 @@ body {
 .board-container {
   position: relative;
   flex: 1;
-  overflow: auto;
+  overflow: scroll;
+  scrollbar-gutter: stable;
   background: var(--panel);
 }
 
 .booking-grid {
   display: grid;
+  grid-template-columns: var(--columns);
   min-width: max-content;
 }
 
-.grid-header,
+.grid-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: var(--columns);
+  background: var(--header);
+}
+
 .grid-row {
-  display: contents;
+  display: grid;
+  grid-template-columns: var(--columns);
 }
 
 .corner {
   position: sticky;
   left: 0;
-  top: 0;
-  z-index: 4;
+  z-index: 22;
   background: var(--header);
   border: 1px solid var(--grid-strong);
   padding: 8px;
@@ -108,14 +118,12 @@ body {
 }
 
 .room-header {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: var(--header);
   border: 1px solid var(--grid-strong);
   padding: 8px;
   font-weight: 600;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .date-cell {

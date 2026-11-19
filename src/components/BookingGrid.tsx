@@ -1,3 +1,4 @@
+import { CSSProperties } from 'react';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 
@@ -30,9 +31,10 @@ export default function BookingGrid({
 
   const dates = Array.from(new Set(bookings.map((booking) => booking.date))).sort();
   const columnTemplate = `160px repeat(${venue.rooms.length}, minmax(220px, 1fr))`;
+  const gridStyle = { '--columns': columnTemplate } as CSSProperties;
 
   return (
-    <div className="booking-grid" style={{ gridTemplateColumns: columnTemplate }}>
+    <div className="booking-grid" style={gridStyle}>
       <div className="grid-header">
         <div className="corner">Date</div>
         {venue.rooms.map((room) => (
