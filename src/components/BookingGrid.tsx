@@ -14,6 +14,8 @@ interface Props {
 
 const MIN_DAY_HEIGHT = 160;
 const DAYS_ON_SCREEN = 7;
+const MIN_ROOM_WIDTH = 150;
+const MAX_ROOM_WIDTH = 200;
 
 function minutes(value: string) {
   const match = /^(\d{1,2}):(\d{2})/.exec(value);
@@ -45,16 +47,17 @@ export default function BookingGrid({ venue, bookings, editingEnabled, onBooking
     if (headerRef.current) observer.observe(headerRef.current);
 
     return () => observer.disconnect();
-  }, []);
+  }, [venue, bookings.length]);
 
   if (!venue) return <div className="empty-state">Load a venue YAML file to begin.</div>;
 
   const dates = [...new Set(bookings.map((booking) => booking.date))].sort();
   const today = format(new Date(), 'yyyy-MM-dd');
   const style = {
-    '--columns': `160px repeat(${venue.rooms.length}, 220px)`,
+    '--columns': `160px repeat(${venue.rooms.length}, minmax(${MIN_ROOM_WIDTH}px, min(${MAX_ROOM_WIDTH}px, 1fr)))`,
     '--day-height': `${dayHeight}px`,
-    width: 160 + venue.rooms.length * 220
+    width: '100%',
+    minWidth: 160 + venue.rooms.length * MIN_ROOM_WIDTH
   } as CSSProperties;
 
   return (
