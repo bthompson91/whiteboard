@@ -13,6 +13,7 @@ export interface Booking {
   id: string;
   date: string;
   roomId: string;
+  roomIds: string[];
   startTime: string;
   endTime: string;
   title: string;

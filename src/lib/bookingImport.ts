@@ -66,21 +66,21 @@ export async function parseBookingWorkbook(
       }
 
       const roomIds = resolveRooms(roomName, venue);
+      if (roomIds.length === 0) return;
 
-      roomIds.forEach((roomId) => {
-        bookings.push({
-          id: `${sheetName}-${index}-${roomId}-${crypto.randomUUID()}`,
-          date,
-          roomId,
-          startTime,
-          endTime,
-          title: primary,
-          status,
-          notes:
-            venue.display.suppressSecondaryWhenEqual && secondary === primary
-              ? ''
-              : secondary
-        });
+      bookings.push({
+        id: `${sheetName}-${index}-${crypto.randomUUID()}`,
+        date,
+        roomId: roomIds[0],
+        roomIds,
+        startTime,
+        endTime,
+        title: primary,
+        status,
+        notes:
+          venue.display.suppressSecondaryWhenEqual && secondary === primary
+            ? ''
+            : secondary
       });
     });
   }
