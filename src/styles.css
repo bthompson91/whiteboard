@@ -48,37 +48,57 @@ body {
 }
 
 .booking-grid {
+  display: grid;
+  grid-template-columns:
+    160px
+    repeat(auto-fill, minmax(0, 1fr));
   min-width: max-content;
 }
 
 .grid-header,
 .grid-row {
-  display: grid;
-  grid-template-columns: 140px repeat(auto-fit, minmax(180px, 1fr));
+  display: contents;
 }
 
-.grid-header {
+.corner {
   position: sticky;
+  left: 0;
   top: 0;
+  z-index: 3;
   background: #222831;
-  z-index: 2;
-}
-
-.corner,
-.room-header,
-.date-cell,
-.room-cell {
   border: 1px solid #333c47;
   padding: 8px;
+  font-weight: 700;
 }
 
 .room-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #222831;
+  border: 1px solid #333c47;
+  padding: 8px;
   font-weight: 600;
+  white-space: nowrap;
+  min-width: 220px;
+}
+
+.date-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #1b2027;
+  border: 1px solid #333c47;
+  padding: 8px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .room-cell {
-  min-height: 90px;
-  position: relative;
+  border: 1px solid #333c47;
+  padding: 6px;
+  min-height: 84px;
+  min-width: 220px;
 }
 
 .booking-block {
