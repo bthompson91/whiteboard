@@ -31,6 +31,17 @@ export interface BookingSnapshot {
   bookings: Booking[];
 }
 
+export interface ImportSource {
+  name: string;
+  fingerprint: string;
+  importedAt: string;
+}
+
+export interface ImportHistoryEntry extends ImportSource {
+  id: string;
+  bookings: Booking[];
+}
+
 export interface ContributorSubmission {
   id: string;
   bookingId: string;
@@ -44,9 +55,12 @@ export interface ContributorSubmission {
 export interface SharedBoardFile {
   format: 'whiteboard-shared-board';
   version: 1;
+  revision: number;
   exportedAt: string;
   bookings: Booking[];
   submissions: ContributorSubmission[];
+  processedSubmissionIds: string[];
+  history: ImportHistoryEntry[];
 }
 
 export type MarkupItem =

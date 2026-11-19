@@ -1,19 +1,26 @@
 import * as XLSX from 'xlsx';
 import yaml from 'js-yaml';
-import { Booking, BookingSnapshot } from '../types';
+import { Booking, BookingSnapshot, ImportHistoryEntry, ImportSource } from '../types';
 import { ImportComparison, compareImports } from './importComparison';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 export type BoardBooking = Booking & { activity?: string; timeline?: { label: string; start: string; end: string }[] };
 export interface ImportResult {
   bookings: Booking[];
   comparison: ImportComparison;
+  source: ImportSource;
 }
 const text = (v: unknown) => v == null ? '' : String(v).trim();
 const PREVIOUS_IMPORT_KEY = 'whiteboard-previous-import';
+const IMPORT_HISTORY_KEY = 'whiteboard-import-history';
 const normalizeIdentity = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
 const normalizeJobNumber = (value: string) => {
   const trimmed = value.trim();
   return trimmed ? trimmed.replace(/^0+(?=\d)/, '') : '';
+};
+const hashBytes = (bytes: Uint8Array) => {
+  let hash = 5381;
+  for (let i = 0; i < bytes.length; i++) hash = ((hash << 5) + hash + bytes[i]) >>> 0;
+  return hash.toString(36);
 };
 const stableHash = (value: string) => {
   let hash = 5381;
@@ -44,10 +51,32 @@ export function savePreviousImport(bookings: Booking[]) {
     /* The import remains usable even if this browser cannot retain the snapshot. */
   }
 }
-async function readWorkbook(file: File): Promise<XLSX.WorkBook> {
+export function readImportHistory(): ImportHistoryEntry[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(IMPORT_HISTORY_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+export function saveImportHistory(entry: ImportHistoryEntry) {
+  const history = [entry, ...readImportHistory()].slice(0, 10);
+  try {
+    localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    /* Import history is a convenience cache and must not prevent publishing. */
+  }
+}
+export function revertToImport(entry: ImportHistoryEntry): Booking[] {
+  savePreviousImport(entry.bookings);
+  return entry.bookings;
+}
+async function readWorkbook(file: File): Promise<{ workbook: XLSX.WorkBook; fingerprint: string }> {
   const buffer = await file.arrayBuffer();
-  const probe = new TextDecoder('windows-1252').decode(buffer.slice(0,8192));
-  if (!/<(?:html|head|table)\b/i.test(probe)) return XLSX.read(buffer, { type: 'array', cellDates: false });
+  const bytes = new Uint8Array(buffer);
+  const fingerprint = hashBytes(bytes);
+  const probe = new TextDecoder('windows-1252').decode(bytes.slice(0, 8192));
+  if (!/<(?:html|head|table)\b/i.test(probe)) return { workbook: XLSX.read(buffer, { type: 'array', cellDates: false }), fingerprint };
   const declared = /charset\s*=\s*["']?([a-z0-9_-]+)/i.exec(probe)?.[1] || 'utf-8';
   let source: string;
   try { source = new TextDecoder(declared).decode(buffer); } catch { source = new TextDecoder('windows-1252').decode(buffer); }
@@ -58,7 +87,7 @@ async function readWorkbook(file: File): Promise<XLSX.WorkBook> {
     if (rows.length) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), `Table ${i+1}`);
   });
   if (!workbook.SheetNames.length) throw new Error('The export contains no readable HTML tables.');
-  return workbook;
+  return { workbook, fingerprint };
 }
 function dateValue(v: unknown, date1904: boolean): string {
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
@@ -86,7 +115,7 @@ function timeValue(v: unknown): string {
   return `${String(h).padStart(2,'0')}:${m[2]}`;
 }
 export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig): Promise<ImportResult> {
-  const workbook = await readWorkbook(file);
+  const { workbook, fingerprint } = await readWorkbook(file);
   let labels: string[] = [];
   try {
     const config = yaml.load(localStorage.getItem('whiteboard-venue-yaml') || '') as { timeline_items?: string[] };
@@ -147,5 +176,9 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
   }
   if (!result.length) throw new Error('No matching bookings found. Check headers, room mappings and allowed statuses.');
   const comparison = compareImports(previous?.bookings || null, result, venue.name);
-  return { bookings: result, comparison };
+  return {
+    bookings: result,
+    comparison,
+    source: { name: file.name, fingerprint, importedAt: new Date().toISOString() }
+  };
 }

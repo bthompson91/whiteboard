@@ -5,10 +5,21 @@ import SubmissionReviewPanel from './components/SubmissionReviewPanel';
 import MarkupLayer from './components/MarkupLayer';
 import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
-import { BoardRole, Booking, ContributorSubmission, MarkupItem } from './types';
-import { ImportResult, savePreviousImport } from './lib/bookingImport';
+import { BoardRole, Booking, ContributorSubmission, ImportHistoryEntry, MarkupItem } from './types';
+import {
+  ImportResult,
+  readImportHistory,
+  revertToImport,
+  saveImportHistory,
+  savePreviousImport
+} from './lib/bookingImport';
 import { BookingChange, compareImports } from './lib/importComparison';
-import { createSharedFile, createSubmission, downloadSharedFile, parseSharedFile } from './lib/sharedFile';
+import {
+  createSharedFile,
+  createSubmission,
+  downloadSharedFile,
+  parseSharedFile
+} from './lib/sharedFile';
 import { parseVenueConfig } from './lib/venueConfig';
 import { boardSettings, readConfiguration } from './lib/configuration';
 const MARKUP_KEY = 'whiteboard-markup';
@@ -16,6 +27,9 @@ const VENUE_YAML_KEY = 'whiteboard-venue-yaml';
 const ROLE_KEY = 'whiteboard-role';
 const SUBMISSIONS_KEY = 'whiteboard-contributor-submissions';
 const BOARD_CACHE_KEY = 'whiteboard-board-cache';
+const REVISION_KEY = 'whiteboard-board-revision';
+const PROCESSED_KEY = 'whiteboard-processed-submissions';
+const HISTORY_KEY = 'whiteboard-import-history';
 function startup() {
   try {
     const text = localStorage.getItem(VENUE_YAML_KEY) || '';
@@ -49,6 +63,14 @@ function storedBoard(): Booking[] {
     return [];
   }
 }
+function storedProcessed(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROCESSED_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 export default function App() {
   const [initial] = useState(startup);
   const [yamlText, setYamlText] = useState(initial.text);
@@ -63,6 +85,9 @@ export default function App() {
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
   const [submissions, setSubmissions] = useState<ContributorSubmission[]>(storedSubmissions);
+  const [processedSubmissionIds, setProcessedSubmissionIds] = useState<string[]>(storedProcessed);
+  const [revision, setRevision] = useState<number>(() => Number(localStorage.getItem(REVISION_KEY)) || 1);
+  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(readImportHistory);
   const [submissionsOpen, setSubmissionsOpen] = useState(false);
   const [markup, setMarkup] = useState<MarkupItem[]>(storedMarkup);
   const [editingEnabled, setEditingEnabled] = useState(false);
@@ -93,6 +118,23 @@ export default function App() {
       setError('The local board cache could not be saved in this browser.');
     }
   }, [bookings]);
+  useEffect(() => {
+    localStorage.setItem(REVISION_KEY, String(revision));
+  }, [revision]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROCESSED_KEY, JSON.stringify(processedSubmissionIds));
+    } catch {
+      setError('Processed submission history could not be saved in this browser.');
+    }
+  }, [processedSubmissionIds]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(importHistory));
+    } catch {
+      setError('Import history could not be saved in this browser.');
+    }
+  }, [importHistory]);
   const saveConfiguration = (text: string) => {
     readConfiguration(text);
     parseVenueConfig(text);
@@ -105,11 +147,29 @@ export default function App() {
     setPendingReview(result);
     setError(null);
   };
-  const applyImport = (approved: Booking[]) => {
+  const publish = (approved: Booking[], result: ImportResult | null) => {
     setBookings(approved);
-    if (pendingReview) setLastImport(pendingReview);
     savePreviousImport(approved);
+    setRevision(current => current + 1);
+    if (result) {
+      const entry: ImportHistoryEntry = {
+        id: `import-${result.source.importedAt}-${result.source.fingerprint}`,
+        ...result.source,
+        bookings: approved
+      };
+      setImportHistory(current => [entry, ...current].slice(0, 10));
+      setLastImport(result);
+    }
     setPendingReview(null);
+  };
+  const applyImport = (approved: Booking[]) => publish(approved, pendingReview);
+  const revertLastImport = () => {
+    const [current, previous] = importHistory;
+    if (!current || !previous) return;
+    const restored = revertToImport(previous);
+    setBookings(restored);
+    setImportHistory(importHistory.slice(1));
+    setRevision(currentRevision => currentRevision + 1);
   };
   const linkMatch = (change: BookingChange) => {
     if (!pendingReview || !change.match || !venue) return;
@@ -131,7 +191,7 @@ export default function App() {
       linked,
       venue.name
     );
-    setPendingReview({ bookings: linked, comparison });
+    setPendingReview({ bookings: linked, comparison, source: pendingReview.source });
   };
   const handleBookingsChange = (next: Booking[]) => {
     if (role === 'viewer') return;
@@ -160,16 +220,24 @@ export default function App() {
   const acceptSubmission = (submission: ContributorSubmission) => {
     setBookings(bookings.map(booking => booking.id === submission.bookingId ? submission.proposed : booking));
     setSubmissions(submissions.filter(item => item.id !== submission.id));
+    setProcessedSubmissionIds(current => [...current, submission.id]);
+    setRevision(current => current + 1);
   };
   const rejectSubmission = (submission: ContributorSubmission) => {
     setSubmissions(submissions.filter(item => item.id !== submission.id));
+    setProcessedSubmissionIds(current => [...current, submission.id]);
   };
-  const exportSharedFile = () => downloadSharedFile(createSharedFile(bookings, submissions));
+  const exportSharedFile = () => downloadSharedFile(
+    createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory)
+  );
   const importSharedFile = async (file: File) => {
     try {
       const shared = parseSharedFile(await file.text());
       setBookings(shared.bookings);
-      setSubmissions(shared.submissions);
+      setSubmissions(shared.submissions.filter(submission => !processedSubmissionIds.includes(submission.id)));
+      setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
+      setRevision(shared.revision);
+      setImportHistory(shared.history);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -185,6 +253,8 @@ export default function App() {
         markupMode={markupMode}
         error={error}
         submissionCount={submissions.length}
+        revision={revision}
+        canRevert={importHistory.length > 1}
         onToggleEditing={() => setEditingEnabled(value => !value)}
         onSetMarkupMode={setMarkupMode}
         onOpenConfiguration={() => {
@@ -197,6 +267,7 @@ export default function App() {
         onOpenSubmissions={() => setSubmissionsOpen(true)}
         onExportSharedFile={exportSharedFile}
         onImportSharedFile={importSharedFile}
+        onRevertLastImport={revertLastImport}
       />
       <main className="board-container">
         <BookingGrid

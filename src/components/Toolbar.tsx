@@ -10,6 +10,8 @@ interface Props {
   markupMode: 'none' | 'text' | 'arrow';
   error: string | null;
   submissionCount: number;
+  revision: number;
+  canRevert: boolean;
   onToggleEditing: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
@@ -19,11 +21,12 @@ interface Props {
   onOpenSubmissions: () => void;
   onExportSharedFile: () => void;
   onImportSharedFile: (file: File) => void;
+  onRevertLastImport: () => void;
 }
 export default function Toolbar({
-  venue, bookingCount, role, editingEnabled, markupMode, error, submissionCount,
+  venue, bookingCount, role, editingEnabled, markupMode, error, submissionCount, revision, canRevert,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration, onBookingsLoaded, onError,
-  onRoleChange, onOpenSubmissions, onExportSharedFile, onImportSharedFile
+  onRoleChange, onOpenSubmissions, onExportSharedFile, onImportSharedFile, onRevertLastImport
 }: Props) {
   const [loading, setLoading] = useState(false);
   const handleBookingFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -68,9 +71,10 @@ export default function Toolbar({
           <button onClick={onOpenSubmissions}>
             Review submissions{submissionCount ? ` (${submissionCount})` : ''}
           </button>
+          <button onClick={onRevertLastImport} disabled={!canRevert}>Revert last import</button>
         </>
       )}
-      <span>{loading ? 'Importing…' : `${bookingCount} bookings`}</span>
+      <span>{loading ? 'Importing…' : `${bookingCount} bookings · rev ${revision}`}</span>
       {role !== 'viewer' && (
         <button onClick={onToggleEditing}>
           {editingEnabled ? 'Lock bookings' : 'Unlock bookings'}

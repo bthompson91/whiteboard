@@ -1,4 +1,4 @@
-import { Booking, ContributorSubmission, SharedBoardFile } from '../types';
+import { Booking, ContributorSubmission, ImportHistoryEntry, SharedBoardFile } from '../types';
 
 const SHARED_FILE_FORMAT = 'whiteboard-shared-board';
 
@@ -53,13 +53,22 @@ export function submissionChanges(submission: ContributorSubmission): string[] {
     .map(([field]) => field);
 }
 
-export function createSharedFile(bookings: Booking[], submissions: ContributorSubmission[]): SharedBoardFile {
+export function createSharedFile(
+  bookings: Booking[],
+  submissions: ContributorSubmission[],
+  revision: number,
+  processedSubmissionIds: string[],
+  history: ImportHistoryEntry[]
+): SharedBoardFile {
   return {
     format: SHARED_FILE_FORMAT,
     version: 1,
+    revision,
     exportedAt: new Date().toISOString(),
     bookings,
-    submissions
+    submissions,
+    processedSubmissionIds,
+    history
   };
 }
 
@@ -71,7 +80,12 @@ export function parseSharedFile(text: string): SharedBoardFile {
   if (!Array.isArray(parsed.bookings) || !Array.isArray(parsed.submissions)) {
     throw new Error('The shared-board file is missing bookings or contributor submissions.');
   }
-  return parsed;
+  return {
+    ...parsed,
+    revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
+    processedSubmissionIds: Array.isArray(parsed.processedSubmissionIds) ? parsed.processedSubmissionIds : [],
+    history: Array.isArray(parsed.history) ? parsed.history : []
+  };
 }
 
 export function downloadSharedFile(file: SharedBoardFile) {
@@ -79,7 +93,7 @@ export function downloadSharedFile(file: SharedBoardFile) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `whiteboard-shared-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `whiteboard-shared-rev${file.revision}-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
