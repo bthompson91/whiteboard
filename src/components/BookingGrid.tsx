@@ -4,7 +4,7 @@ import { Booking } from '../types';
 import { BoardBooking } from '../lib/bookingImport';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import '../board.css';
-interface Props { venue: ParsedVenueConfig | null; bookings: Booking[]; editingEnabled: boolean; onBookingsChange: (bookings: Booking[]) => void }
+interface Props { venue: ParsedVenueConfig | null; bookings: Booking[]; editingEnabled: boolean; onBookingsChange: (bookings: Booking[]) => void; roomBaseWidths?:number[] }
 interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[] }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
@@ -34,21 +34,25 @@ function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
   }
   return spans;
 }
-export default function BookingGrid({venue,bookings,editingEnabled,onBookingsChange}:Props) {
+export default function BookingGrid({venue,bookings,editingEnabled,onBookingsChange,roomBaseWidths}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
-  const [size,setSize]=useState({day:100,room:150});
+  const [size,setSize]=useState({day:100,availableWidth:0});
   useLayoutEffect(()=>{
     const parent=root.current?.parentElement;if(!parent||!venue)return;
-    const measure=()=>{const day=Math.max(1,(parent.clientHeight-(header.current?.offsetHeight||0))/7);const room=Math.max(150,Math.min(200,(parent.clientWidth-160)/Math.max(1,venue.rooms.length)));setSize(old=>old.day===day&&old.room===room?old:{day,room});};
+    const measure=()=>{const day=Math.max(1,(parent.clientHeight-(header.current?.offsetHeight||0))/7);const availableWidth=Math.max(0,parent.clientWidth-160);setSize(old=>old.day===day&&old.availableWidth===availableWidth?old:{day,availableWidth});};
     measure();const observer=new ResizeObserver(measure);observer.observe(parent);if(header.current)observer.observe(header.current);return()=>observer.disconnect();
   },[venue]);
-  if(!venue)return <div className="empty-state">Load a venue YAML file to begin.</div>;
+  if(!venue)return <div className="empty-state">Open Configuration to load a venue YAML file.</div>;
+  const baseWidths=venue.rooms.map((_,i)=>Math.max(150,roomBaseWidths?.[i]||175));
+  const total=baseWidths.reduce((sum,width)=>sum+width,0);
+  const scale=Math.max(1,size.availableWidth/Math.max(1,total));
+  const widths=baseWidths.map(width=>width*scale);
   const blocks=blocksFor(bookings,venue);
   const segments=blocks.flatMap(b=>{const result:{block:Block;date:string;start:number;end:number;continuation:boolean}[]=[];for(let offset=0;offset<=Math.floor(Math.max(b.start,b.end-1)/1440);offset++){const start=Math.max(0,b.start-offset*1440),end=Math.min(1440,b.end-offset*1440);if(end>=start)result.push({block:b,date:format(addDays(parseISO(b.date),offset),'yyyy-MM-dd'),start,end,continuation:offset>0});}return result;});
   const sourceDates=[...new Set(segments.map(s=>s.date))].sort();
   const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
-  const columns=`160px repeat(${venue.rooms.length}, ${size.room}px)`;
-  const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+venue.rooms.length*size.room} as CSSProperties;
+  const columns=`160px ${widths.map(width=>`${width}px`).join(' ')}`;
+  const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+widths.reduce((sum,width)=>sum+width,0)} as CSSProperties;
   const today=format(new Date(),'yyyy-MM-dd'),hourStep=size.day>=360?1:size.day>=180?3:6;
   return <div className="booking-grid" ref={root} style={style}>
     <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner">Date / time</div>{venue.rooms.map(r=><div className="room-header" key={r.id}>{r.name}</div>)}</div>
