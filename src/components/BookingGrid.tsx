@@ -5,10 +5,11 @@ import { BoardBooking } from '../lib/bookingImport';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import '../board.css';
 interface Props { venue: ParsedVenueConfig | null; bookings: Booking[]; editingEnabled: boolean; onBookingsChange: (bookings: Booking[]) => void; roomBaseWidths?:number[] }
-interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[] }
+interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
+function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed)return '';return /^\d+$/.test(trimmed)?trimmed.replace(/^0+(?=\d)/,''):trimmed;}
 function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
   const groups=new Map<string,Block>();
   for(const b of bookings as BoardBooking[]) {
@@ -23,7 +24,7 @@ function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
       const key=JSON.stringify([b.date,b.title,room]);
       const old=groups.get(key);
       if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);}
-      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts]});
+      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber});
     }
   }
   const spans:Block[]=[];
@@ -63,6 +64,7 @@ export default function BookingGrid({venue,bookings,editingEnabled,onBookingsCha
       {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day)}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')}>
         <div className="booking-facts">{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}<div>{clock(b.mainStart)}</div><div>{clock(b.mainEnd)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}</div>
         <div className="booking-title" contentEditable={editingEnabled} suppressContentEditableWarning onBlur={e=>{if(editingEnabled){const title=e.currentTarget.textContent||'';onBookingsChange(bookings.map(x=>b.ids.includes(x.id)?{...x,title}:x));}}}>{b.title}</div>
+        <div className="booking-job-number" contentEditable={editingEnabled} suppressContentEditableWarning onBlur={e=>{if(editingEnabled){const jobNumber=normalizeJobNumber(e.currentTarget.textContent||'');onBookingsChange(bookings.map(x=>b.ids.includes(x.id)?(jobNumber?{...x,jobNumber}:{...x,jobNumber:undefined}):x));}}}>{b.jobNumber||''}</div>
         {continuation&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
       </div>)}
     </div>)}

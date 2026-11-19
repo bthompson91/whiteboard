@@ -125,7 +125,13 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
       if (jobNumber) booking.jobNumber = jobNumber;
       booking.id = `booking-${stableHash(identityKey(booking, venue.name))}`;
       const existing = previousByIdentity.get(identityKey(booking, venue.name));
-      if (existing?.id) booking.id = existing.id;
+      if (existing) {
+        if (existing.id) booking.id = existing.id;
+        if (existing.colour) booking.colour = existing.colour;
+        if (existing.hidden !== undefined) booking.hidden = existing.hidden;
+        const existingBoard = existing as BoardBooking;
+        if (existingBoard.timeline?.length) booking.timeline = existingBoard.timeline;
+      }
       rows.push(booking);
     });
   }

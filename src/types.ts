@@ -22,6 +22,8 @@ export interface Booking {
   jobNumber?: string;
   status?: string;
   notes?: string;
+  colour?: string;
+  hidden?: boolean;
 }
 
 export interface BookingSnapshot {
