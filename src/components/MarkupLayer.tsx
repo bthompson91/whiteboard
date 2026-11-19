@@ -4,7 +4,9 @@ import { MarkupItem } from '../types';
 interface Props {
   markup: MarkupItem[];
   mode: 'none' | 'text' | 'arrow';
+  selectedBookingId: string | null;
   onChange: (items: MarkupItem[]) => void;
+  onClearSelectedBooking: () => void;
 }
 
 type Drag = {
@@ -14,7 +16,7 @@ type Drag = {
   part: 'move' | 'start' | 'end';
 };
 
-export default function MarkupLayer({ markup, mode, onChange }: Props) {
+export default function MarkupLayer({ markup, mode, selectedBookingId, onChange, onClearSelectedBooking }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [selected, setSelected] = useState<string | null>(null);
@@ -33,14 +35,12 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
         height: Math.max(parent.clientHeight, board?.scrollHeight || 0)
       });
     };
-
     const resizeObserver = new ResizeObserver(measure);
     resizeObserver.observe(parent);
     if (board) resizeObserver.observe(board);
 
     const mutationObserver = new MutationObserver(() => {
       const nextBoard = parent.querySelector('.booking-grid') as HTMLElement | null;
-
       if (nextBoard !== board) {
         if (board) resizeObserver.unobserve(board);
         board = nextBoard;
@@ -48,7 +48,6 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
         measure();
       }
     });
-
     mutationObserver.observe(parent, { childList: true, subtree: true });
     measure();
 
@@ -67,26 +66,20 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName)) return;
-
       if (selected && (event.key === 'Delete' || event.key === 'Backspace')) {
         event.preventDefault();
         onChange(markup.filter((item) => item.id !== selected));
         setSelected(null);
       }
-
       if (event.key === 'Escape') setSelected(null);
     };
-
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [selected, markup, onChange]);
 
   const point = (event: PE) => {
     const rect = root.current!.getBoundingClientRect();
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
-    };
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
 
   const capture = (event: PE) => {
@@ -102,7 +95,6 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
 
   const edit = (item: MarkupItem) => {
     if (item.type !== 'text') return;
-
     const text = window.prompt('Edit note', item.text);
     if (text !== null) {
       onChange(markup.map((item2) => (item2.id === item.id ? { ...item2, text } : item2)));
@@ -111,18 +103,17 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
 
   const down = (event: PE<SVGSVGElement>) => {
     setSelected(null);
+    onClearSelectedBooking();
     const position = point(event);
-
     if (mode === 'text') {
       const text = window.prompt('Note text');
       if (text) {
         onChange([
           ...markup,
-          { id: crypto.randomUUID(), type: 'text', ...position, text }
+          { id: crypto.randomUUID(), type: 'text', ...position, text, bookingId: selectedBookingId || undefined }
         ]);
       }
     }
-
     if (mode === 'arrow') {
       setDraft({
         id: crypto.randomUUID(),
@@ -130,7 +121,8 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
         x1: position.x,
         y1: position.y,
         x2: position.x,
-        y2: position.y
+        y2: position.y,
+        bookingId: selectedBookingId || undefined
       });
       capture(event);
     }
@@ -138,19 +130,15 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
 
   const move = (event: PE) => {
     const position = point(event);
-
     if (draft) {
       setDraft({ ...draft, x2: position.x, y2: position.y });
       return;
     }
-
     if (!drag) return;
-
     const deltaX = position.x - drag.x;
     const deltaY = position.y - drag.y;
     const item = drag.item;
     let next: MarkupItem;
-
     if (item.type === 'text') {
       next = { ...item, x: item.x + deltaX, y: item.y + deltaY };
     } else if (drag.part === 'start') {
@@ -166,7 +154,6 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
         y2: item.y2 + deltaY
       };
     }
-
     onChange(markup.map((item2) => (item2.id === item.id ? next : item2)));
   };
 
@@ -174,14 +161,13 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
     if (draft && Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) > 5) {
       onChange([...markup, draft]);
     }
-
     setDraft(null);
     setDrag(null);
   };
 
   const active = markup.find((item) => item.id === selected);
   const arrowActionX = active && active.type === 'arrow' ? (active.x1 + active.x2) / 2 : 0;
-  const arrowActionY = active && active.type === 'arrow' ? (active.y1 + active.y2) / 2 : 0;
+  const arrowActionY = active && active.type === 'arrow' ? (active.x1 + active.x2) / 2 : 0;
 
   return (
     <div ref={root} className={`markup-layer ${mode}`} style={size}>
@@ -200,66 +186,21 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
             <path d="M0 0L8 4L0 8Z" fill="#6a3fb5" />
           </marker>
         </defs>
-
         {markup.map((item) =>
           item.type === 'arrow' ? (
             <g key={item.id}>
-              <line
-                x1={item.x1}
-                y1={item.y1}
-                x2={item.x2}
-                y2={item.y2}
-                stroke="#6a3fb5"
-                strokeWidth={3}
-                markerEnd="url(#markup-arrow)"
-              />
-              <line
-                className="markup-hit"
-                x1={item.x1}
-                y1={item.y1}
-                x2={item.x2}
-                y2={item.y2}
-                stroke="transparent"
-                strokeWidth={16}
-                onPointerDown={(event) => begin(event, item)}
-              />
+              <line x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="#6a3fb5" strokeWidth={3} markerEnd="url(#markup-arrow)" />
+              <line className="markup-hit" x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="transparent" strokeWidth={16} onPointerDown={(event) => begin(event, item)} />
               {selected === item.id && (
                 <>
-                  <circle
-                    className="markup-handle"
-                    cx={item.x1}
-                    cy={item.y1}
-                    r={6}
-                    fill="white"
-                    stroke="#6a3fb5"
-                    onPointerDown={(event) => begin(event, item, 'start')}
-                  />
-                  <circle
-                    className="markup-handle"
-                    cx={item.x2}
-                    cy={item.y2}
-                    r={6}
-                    fill="white"
-                    stroke="#6a3fb5"
-                    onPointerDown={(event) => begin(event, item, 'end')}
-                  />
+                  <circle className="markup-handle" cx={item.x1} cy={item.y1} r={6} fill="white" stroke="#6a3fb5" onPointerDown={(event) => begin(event, item, 'start')} />
+                  <circle className="markup-handle" cx={item.x2} cy={item.y2} r={6} fill="white" stroke="#6a3fb5" onPointerDown={(event) => begin(event, item, 'end')} />
                 </>
               )}
             </g>
           ) : null
         )}
-
-        {draft && (
-          <line
-            x1={draft.x1}
-            y1={draft.y1}
-            x2={draft.x2}
-            y2={draft.y2}
-            stroke="#6a3fb5"
-            strokeWidth={3}
-          />
-        )}
-
+        {draft && <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#6a3fb5" strokeWidth={3} />}
         {active && active.type === 'arrow' && (
           <foreignObject x={arrowActionX} y={arrowActionY} width={180} height={26}>
             <div className="markup-actions" onPointerDown={(event) => event.stopPropagation()}>
@@ -269,7 +210,6 @@ export default function MarkupLayer({ markup, mode, onChange }: Props) {
           </foreignObject>
         )}
       </svg>
-
       {markup.map((item) =>
         item.type === 'text' ? (
           <div

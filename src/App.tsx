@@ -88,6 +88,7 @@ export default function App() {
   const [role, setRole] = useState<BoardRole>(() => (localStorage.getItem(ROLE_KEY) as BoardRole) || 'master');
   const [contributorName, setContributorName] = useState(() => localStorage.getItem(CONTRIBUTOR_KEY) || 'Contributor');
   const [bookings, setBookings] = useState<Booking[]>(storedBoard);
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
   const [originalPendingReview, setOriginalPendingReview] = useState<ImportResult | null>(null);
@@ -340,10 +341,18 @@ export default function App() {
           venue={venue}
           bookings={bookings}
           editingEnabled={editingEnabled && role !== 'viewer'}
+          selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}
+          onSelectedBookingChange={setSelectedBookingId}
           roomBaseWidths={roomBaseWidths}
         />
-        <MarkupLayer markup={markup} mode={markupMode} onChange={setMarkup} />
+        <MarkupLayer
+          markup={markup}
+          mode={markupMode}
+          selectedBookingId={selectedBookingId}
+          onChange={setMarkup}
+          onClearSelectedBooking={() => setSelectedBookingId(null)}
+        />
       </main>
       {configurationOpen && (
         <ConfigurationPage

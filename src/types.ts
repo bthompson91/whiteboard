@@ -80,6 +80,7 @@ export type MarkupItem =
       x: number;
       y: number;
       text: string;
+      bookingId?: string;
     }
   | {
       id: string;
@@ -88,4 +89,5 @@ export type MarkupItem =
       y1: number;
       x2: number;
       y2: number;
+      bookingId?: string;
     };
