@@ -29,9 +29,10 @@ export default function BookingGrid({
   }
 
   const dates = Array.from(new Set(bookings.map((booking) => booking.date))).sort();
+  const columnTemplate = `160px repeat(${venue.rooms.length}, minmax(220px, 1fr))`;
 
   return (
-    <div className="booking-grid">
+    <div className="booking-grid" style={{ gridTemplateColumns: columnTemplate }}>
       <div className="grid-header">
         <div className="corner">Date</div>
         {venue.rooms.map((room) => (

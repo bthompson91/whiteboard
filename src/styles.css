@@ -88,7 +88,6 @@ body {
 
 .booking-grid {
   display: grid;
-  grid-template-columns: 160px repeat(auto-fill, minmax(0, 1fr));
   min-width: max-content;
 }
 
@@ -117,7 +116,6 @@ body {
   padding: 8px;
   font-weight: 600;
   white-space: nowrap;
-  min-width: 220px;
 }
 
 .date-cell {
@@ -134,7 +132,6 @@ body {
 .room-cell {
   position: relative;
   height: var(--day-height);
-  min-width: 220px;
   border: 1px solid var(--grid-strong);
   background: var(--panel);
 }
