@@ -1,55 +1,66 @@
 import { CSSProperties, useLayoutEffect, useRef, useState } from 'react';
-import { eachDayOfInterval, format, parseISO } from 'date-fns';
+import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { BoardBooking } from '../lib/bookingImport';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import '../board.css';
 interface Props { venue: ParsedVenueConfig | null; bookings: Booking[]; editingEnabled: boolean; onBookingsChange: (bookings: Booking[]) => void }
-function minutes(s: string) { const m = /^(\d{1,2}):(\d{2})/.exec(s); return m ? Number(m[1])*60+Number(m[2]) : 0; }
-export default function BookingGrid({venue, bookings, editingEnabled, onBookingsChange}: Props) {
-  const root = useRef<HTMLDivElement>(null);
-  const header = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({day:100, room:150});
-  useLayoutEffect(() => {
-    const parent = root.current?.parentElement;
-    if (!parent || !venue) return;
-    const measure = () => {
-      const day = Math.max(1, (parent.clientHeight - (header.current?.offsetHeight || 0))/7);
-      const room = Math.max(150, Math.min(200, (parent.clientWidth-160)/Math.max(1,venue.rooms.length)));
-      setSize(old => old.day === day && old.room === room ? old : {day,room});
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(parent);
-    if (header.current) observer.observe(header.current);
-    return () => observer.disconnect();
-  }, [venue]);
-  if (!venue) return <div className="empty-state">Load a venue YAML file to begin.</div>;
-  const sourceDates = [...new Set(bookings.map(b=>b.date))].sort();
-  const dates = sourceDates.length ? eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')) : [];
-  const columns = `160px repeat(${venue.rooms.length}, ${size.room}px)`;
-  const style = {'--columns':columns,'--day-height':`${size.day}px`,width:160+venue.rooms.length*size.room} as CSSProperties;
-  const today = format(new Date(),'yyyy-MM-dd');
-  const hourStep = size.day >= 360 ? 1 : size.day >= 180 ? 3 : 6;
+interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[] }
+function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
+function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
+function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
+function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
+  const groups=new Map<string,Block>();
+  for(const b of bookings as BoardBooking[]) {
+    const [mainStart,mainEnd]=range(b.startTime,b.endTime);
+    const timeline=(b.timeline||[]).map(t=>({label:t.label,times:range(t.start,t.end)}));
+    const start=Math.min(mainStart,...timeline.map(t=>t.times[0]));
+    const end=Math.max(mainEnd,...timeline.map(t=>t.times[1]));
+    const facts=timeline.map(t=>`${t.label} ${clock(t.times[0])}–${clock(t.times[1])}`);
+    for(const roomId of new Set(b.roomIds||[b.roomId])) {
+      const room=venue.rooms.findIndex(r=>r.id===roomId);
+      if(room<0)continue;
+      const key=JSON.stringify([b.date,b.title,room]);
+      const old=groups.get(key);
+      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);}
+      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts]});
+    }
+  }
+  const spans:Block[]=[];
+  for(const b of [...groups.values()].sort((a,c)=>a.rooms[0]-c.rooms[0])) {
+    b.ids=[...new Set(b.ids)].sort();b.facts=[...new Set(b.facts)];
+    const previous=spans.find(p=>p.date===b.date&&p.title===b.title&&p.start===b.start&&p.end===b.end&&JSON.stringify(p.ids)===JSON.stringify(b.ids)&&p.rooms[p.rooms.length-1]+1===b.rooms[0]);
+    if(previous)previous.rooms.push(b.rooms[0]);else spans.push(b);
+  }
+  return spans;
+}
+export default function BookingGrid({venue,bookings,editingEnabled,onBookingsChange}:Props) {
+  const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
+  const [size,setSize]=useState({day:100,room:150});
+  useLayoutEffect(()=>{
+    const parent=root.current?.parentElement;if(!parent||!venue)return;
+    const measure=()=>{const day=Math.max(1,(parent.clientHeight-(header.current?.offsetHeight||0))/7);const room=Math.max(150,Math.min(200,(parent.clientWidth-160)/Math.max(1,venue.rooms.length)));setSize(old=>old.day===day&&old.room===room?old:{day,room});};
+    measure();const observer=new ResizeObserver(measure);observer.observe(parent);if(header.current)observer.observe(header.current);return()=>observer.disconnect();
+  },[venue]);
+  if(!venue)return <div className="empty-state">Load a venue YAML file to begin.</div>;
+  const blocks=blocksFor(bookings,venue);
+  const segments=blocks.flatMap(b=>{const result:{block:Block;date:string;start:number;end:number;continuation:boolean}[]=[];for(let offset=0;offset<=Math.floor(Math.max(b.start,b.end-1)/1440);offset++){const start=Math.max(0,b.start-offset*1440),end=Math.min(1440,b.end-offset*1440);if(end>=start)result.push({block:b,date:format(addDays(parseISO(b.date),offset),'yyyy-MM-dd'),start,end,continuation:offset>0});}return result;});
+  const sourceDates=[...new Set(segments.map(s=>s.date))].sort();
+  const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
+  const columns=`160px repeat(${venue.rooms.length}, ${size.room}px)`;
+  const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+venue.rooms.length*size.room} as CSSProperties;
+  const today=format(new Date(),'yyyy-MM-dd'),hourStep=size.day>=360?1:size.day>=180?3:6;
   return <div className="booking-grid" ref={root} style={style}>
     <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner">Date / time</div>{venue.rooms.map(r=><div className="room-header" key={r.id}>{r.name}</div>)}</div>
-    {!dates.length && <div className="empty-state">Load a booking file to display bookings.</div>}
+    {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
     {dates.map(date=><div className={`grid-row${date===today?' today':''}`} key={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell${date===today?' today':''}`}><div className="date-label">{format(parseISO(date),'EEE dd MMM')}</div>{Array.from({length:24/hourStep},(_,i)=>i*hourStep).map(h=><span className="hour-label" key={h} style={{top:h/24*size.day,fontSize:9,lineHeight:'10px'}}>{String(h).padStart(2,'0')}:00</span>)}</div>
       {venue.rooms.map(r=><div className="room-cell" key={r.id}/>)}
-      {(bookings as BoardBooking[]).filter(b=>b.date===date).map(b=>{
-        const indices = [...new Set((b.roomIds || [b.roomId]).map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0))].sort((a,c)=>a-c);
-        if (!indices.length) return null;
-        const timeline = b.timeline || [];
-        const start = Math.min(minutes(b.startTime),...timeline.map(t=>minutes(t.start)));
-        const end = Math.max(minutes(b.endTime),...timeline.map(t=>minutes(t.end)));
-        const runs:number[][]=[];
-        indices.forEach(i=>{const run=runs[runs.length-1];if(run && i===run[run.length-1]+1)run.push(i);else runs.push([i]);});
-        return runs.map((run,n)=><div key={`${b.id}-${n}`} className={`booking-block ${editingEnabled?'editable':'locked'}`} style={{gridColumn:`${run[0]+2} / ${run[run.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day)}} title={`${b.title}\n${b.startTime}–${b.endTime}`}>
-          <div className="booking-facts">{timeline.filter(t=>/setup/i.test(t.label)).map((t,i)=><div key={`s${i}`}>{t.label} {t.start}–{t.end}</div>)}<div>{b.startTime}</div><div>{b.endTime}</div>{timeline.filter(t=>!/setup/i.test(t.label)).map((t,i)=><div key={`t${i}`}>{t.label} {t.start}–{t.end}</div>)}</div>
-          <div className="booking-title" contentEditable={editingEnabled} suppressContentEditableWarning onBlur={e=>{if(editingEnabled){const title=e.currentTarget.textContent || '';onBookingsChange(bookings.map(x=>x.id===b.id?{...x,title}:x));}}}>{b.title}</div>
-        </div>);
-      })}
+      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day)}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')}>
+        <div className="booking-facts">{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}<div>{clock(b.mainStart)}</div><div>{clock(b.mainEnd)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}</div>
+        <div className="booking-title" contentEditable={editingEnabled} suppressContentEditableWarning onBlur={e=>{if(editingEnabled){const title=e.currentTarget.textContent||'';onBookingsChange(bookings.map(x=>b.ids.includes(x.id)?{...x,title}:x));}}}>{b.title}</div>
+        {continuation&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
+      </div>)}
     </div>)}
   </div>;
 }
