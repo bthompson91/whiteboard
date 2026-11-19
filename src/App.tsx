@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import BookingGrid from './components/BookingGrid';
+import ImportHistoryPanel from './components/ImportHistoryPanel';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import SubmissionReviewPanel from './components/SubmissionReviewPanel';
 import MarkupLayer from './components/MarkupLayer';
@@ -95,6 +96,7 @@ export default function App() {
   const [revision, setRevision] = useState<number>(() => Number(localStorage.getItem(REVISION_KEY)) || 1);
   const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(readImportHistory);
   const [submissionsOpen, setSubmissionsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [markup, setMarkup] = useState<MarkupItem[]>(storedMarkup);
   const [editingEnabled, setEditingEnabled] = useState(false);
   const [markupMode, setMarkupMode] = useState<'none' | 'text' | 'arrow'>('none');
@@ -177,10 +179,15 @@ export default function App() {
   const revertLastImport = () => {
     const [current, previous] = importHistory;
     if (!current || !previous) return;
-    const restored = revertToImport(previous);
+    restoreImport(previous);
+  };
+  const restoreImport = (entry: ImportHistoryEntry) => {
+    const restored = revertToImport(entry);
     setBookings(restored);
-    setImportHistory(importHistory.slice(1));
-    setRevision(currentRevision => currentRevision + 1);
+    const entryIndex = importHistory.findIndex(item => item.id === entry.id);
+    if (entryIndex >= 0) setImportHistory(importHistory.slice(entryIndex));
+    setRevision(current => current + 1);
+    setHistoryOpen(false);
   };
   const linkMatch = (change: BookingChange) => {
     if (!pendingReview || !change.match || !venue) return;
@@ -320,6 +327,7 @@ export default function App() {
         onRoleChange={setRole}
         onContributorNameChange={setContributorName}
         onOpenSubmissions={() => setSubmissionsOpen(true)}
+        onOpenHistory={() => setHistoryOpen(true)}
         onExportPublishedBoard={exportPublishedBoard}
         onImportPublishedBoard={importPublishedBoard}
         onExportVenueConfig={exportVenueConfig}
@@ -368,6 +376,13 @@ export default function App() {
           onReject={rejectSubmission}
           onForceAccept={acceptSubmission}
           onClose={() => setSubmissionsOpen(false)}
+        />
+      )}
+      {historyOpen && (
+        <ImportHistoryPanel
+          history={importHistory}
+          onRestore={restoreImport}
+          onClose={() => setHistoryOpen(false)}
         />
       )}
     </div>

@@ -21,6 +21,7 @@ interface Props {
   onRoleChange: (role: BoardRole) => void;
   onContributorNameChange: (name: string) => void;
   onOpenSubmissions: () => void;
+  onOpenHistory: () => void;
   onExportPublishedBoard: () => void;
   onImportPublishedBoard: (file: File) => void;
   onExportVenueConfig: () => void;
@@ -31,7 +32,7 @@ interface Props {
 export default function Toolbar({
   venue, bookingCount, role, contributorName, editingEnabled, markupMode, error, submissionCount, revision, canRevert,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration, onBookingsLoaded, onError,
-  onRoleChange, onContributorNameChange, onOpenSubmissions, onExportPublishedBoard, onImportPublishedBoard,
+  onRoleChange, onContributorNameChange, onOpenSubmissions, onOpenHistory, onExportPublishedBoard, onImportPublishedBoard,
   onExportVenueConfig, onExportContributorFile, onImportContributorFile, onRevertLastImport
 }: Props) {
   const [loading, setLoading] = useState(false);
@@ -91,6 +92,7 @@ export default function Toolbar({
           <button onClick={onOpenSubmissions}>
             Review submissions{submissionCount ? ` (${submissionCount})` : ''}
           </button>
+          <button onClick={onOpenHistory}>Import history</button>
           <button onClick={onRevertLastImport} disabled={!canRevert}>Revert last import</button>
         </>
       )}
