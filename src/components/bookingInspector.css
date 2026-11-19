@@ -1,0 +1,11 @@
+.inspector-overlay{position:fixed;inset:0;background:rgba(15,18,25,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:60;}
+.inspector-panel{background:#fff;color:#18202a;border-radius:12px;width:min(480px,100%);max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+.inspector-panel header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #dde3ea;}
+.inspector-panel h3{margin:0;font-size:18px;}
+.inspector-panel label{display:flex;flex-direction:column;gap:6px;padding:10px 20px;font-size:13px;font-weight:600;color:#4a5561;}
+.inspector-panel input,.inspector-panel textarea{border:1px solid #c6ced8;border-radius:7px;padding:9px 11px;font:inherit;font-weight:400;color:#18202a;}
+.inspector-panel textarea{min-height:80px;resize:vertical;}
+.inspector-panel .checkbox{flex-direction:row;align-items:center;gap:9px;}
+.inspector-panel footer{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #dde3ea;}
+.inspector-panel button{border:1px solid #c6ced8;background:#fff;color:#18202a;border-radius:7px;padding:9px 15px;font-weight:600;cursor:pointer;}
+.inspector-panel button.primary{background:#20536f;border-color:#20536f;color:#fff;}

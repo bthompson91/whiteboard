@@ -4,8 +4,9 @@ import { Booking } from '../types';
 import { BoardBooking } from '../lib/bookingImport';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import '../board.css';
+import './bookingInspector.css';
 interface Props { venue: ParsedVenueConfig | null; bookings: Booking[]; editingEnabled: boolean; onBookingsChange: (bookings: Booking[]) => void; roomBaseWidths?:number[] }
-interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string }
+interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -13,6 +14,7 @@ function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed
 function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
   const groups=new Map<string,Block>();
   for(const b of bookings as BoardBooking[]) {
+    if(b.hidden)continue;
     const [mainStart,mainEnd]=range(b.startTime,b.endTime);
     const timeline=(b.timeline||[]).map(t=>({label:t.label,times:range(t.start,t.end)}));
     const start=Math.min(mainStart,...timeline.map(t=>t.times[0]));
@@ -24,7 +26,7 @@ function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
       const key=JSON.stringify([b.date,b.title,room]);
       const old=groups.get(key);
       if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);}
-      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber});
+      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:b.colour});
     }
   }
   const spans:Block[]=[];
@@ -38,6 +40,16 @@ function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
 export default function BookingGrid({venue,bookings,editingEnabled,onBookingsChange,roomBaseWidths}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
+  const [selectedId,setSelectedId]=useState<string|null>(null);
+  const selected=bookings.find(booking=>booking.id===selectedId)||null;
+  const [draft,setDraft]=useState<Booking|null>(null);
+  const openInspector=(booking:Booking)=>{setSelectedId(booking.id);setDraft({...booking});};
+  const closeInspector=()=>{setSelectedId(null);setDraft(null);};
+  const saveInspector=()=>{
+    if(!draft)return;
+    onBookingsChange(bookings.map(booking=>booking.id===draft.id?{...draft,jobNumber:draft.jobNumber?normalizeJobNumber(draft.jobNumber):undefined}:booking));
+    closeInspector();
+  };
   useLayoutEffect(()=>{
     const parent=root.current?.parentElement;if(!parent||!venue)return;
     const measure=()=>{const day=Math.max(1,(parent.clientHeight-(header.current?.offsetHeight||0))/7);const availableWidth=Math.max(0,parent.clientWidth-160);setSize(old=>old.day===day&&old.availableWidth===availableWidth?old:{day,availableWidth});};
@@ -61,12 +73,25 @@ export default function BookingGrid({venue,bookings,editingEnabled,onBookingsCha
     {dates.map(date=><div className={`grid-row${date===today?' today':''}`} key={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell${date===today?' today':''}`}><div className="date-label">{format(parseISO(date),'EEE dd MMM')}</div>{Array.from({length:24/hourStep},(_,i)=>i*hourStep).map(h=><span className="hour-label" key={h} style={{top:h/24*size.day,fontSize:9,lineHeight:'10px'}}>{String(h).padStart(2,'0')}:00</span>)}</div>
       {venue.rooms.map(r=><div className="room-cell" key={r.id}/>)}
-      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day)}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')}>
+      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day),backgroundColor:b.colour||undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}}}>
         <div className="booking-facts">{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}<div>{clock(b.mainStart)}</div><div>{clock(b.mainEnd)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}</div>
-        <div className="booking-title" contentEditable={editingEnabled} suppressContentEditableWarning onBlur={e=>{if(editingEnabled){const title=e.currentTarget.textContent||'';onBookingsChange(bookings.map(x=>b.ids.includes(x.id)?{...x,title}:x));}}}>{b.title}</div>
-        <div className="booking-job-number" contentEditable={editingEnabled} suppressContentEditableWarning onBlur={e=>{if(editingEnabled){const jobNumber=normalizeJobNumber(e.currentTarget.textContent||'');onBookingsChange(bookings.map(x=>b.ids.includes(x.id)?(jobNumber?{...x,jobNumber}:{...x,jobNumber:undefined}):x));}}}>{b.jobNumber||''}</div>
+        <div className="booking-title" contentEditable={false} suppressContentEditableWarning>{b.title}</div>
+        <div className="booking-job-number">{b.jobNumber||''}</div>
         {continuation&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
       </div>)}
     </div>)}
+    {draft&&(
+      <div className="inspector-overlay" onClick={closeInspector}>
+        <section className="inspector-panel" onClick={event=>event.stopPropagation()} aria-label="Booking details">
+          <header><h3>Booking details</h3><button onClick={closeInspector}>Close</button></header>
+          <label>Title<input value={draft.title} onChange={event=>setDraft({...draft,title:event.target.value})}/></label>
+          <label>Job number<input value={draft.jobNumber||''} onChange={event=>setDraft({...draft,jobNumber:event.target.value})}/></label>
+          <label>Notes<textarea value={draft.notes||''} onChange={event=>setDraft({...draft,notes:event.target.value})}/></label>
+          <label>Colour<input type="color" value={draft.colour||'#4a90d9'} onChange={event=>setDraft({...draft,colour:event.target.value})}/></label>
+          <label className="checkbox"><input type="checkbox" checked={!!draft.hidden} onChange={event=>setDraft({...draft,hidden:event.target.checked})}/>Hide from board</label>
+          <footer><button onClick={closeInspector}>Cancel</button><button className="primary" onClick={saveInspector}>Save booking</button></footer>
+        </section>
+      </div>
+    )}
   </div>;
 }
