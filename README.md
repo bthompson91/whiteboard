@@ -6,20 +6,15 @@ GitHub Pages serves the built application from the `docs/` folder on `main`.
 
 ## Deployment
 
-1. Build the app:
+Every push to `main` runs the GitHub workflow in `.github/workflows/deploy.yml`, which builds the app and commits the generated `docs/` folder. GitHub Pages serves the site from `docs/` on `main` — there is nothing to build or commit by hand.
+
+To build locally:
 
 ```bash
 npm install
 npm run build
+npm test
 ```
-
-2. Commit and push the generated `docs/` folder to `main`.
-
-3. In GitHub, set:
-
-- **Settings → Pages → Source:** Deploy from a branch
-- **Branch:** `main`
-- **Folder:** `/docs`
 
 The site will be available at:
 

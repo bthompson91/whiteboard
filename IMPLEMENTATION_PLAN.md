@@ -49,9 +49,10 @@ Work through the stages in order. Keep each change small, verify the build and r
 - [ ] Retain stable ID, job number, markup, colour, and hidden status for exact matches.
 - [x] Detect changed event names, start/end times, dates, and room sets.
 - [x] Treat room lists as sets so adding or removing a room is a change, not a wholly new booking.
-- [ ] Use fuzzy matching for event names.
-- [ ] Use date, time overlap, room overlap, event-name similarity, and duration as match signals.
-- [ ] Produce a match score and classify results as strong, possible, or unmatched.
+- [x] Use fuzzy matching for event names.
+- [x] Use date, time overlap, room overlap, event-name similarity, and duration as match signals.
+- [x] Produce a match score and classify results as strong, possible, or unmatched.
+- [x] Match a booking that differs in exactly one of title, time or rooms against an otherwise identical previous booking (strong, with the changed field named). A differing job number on both sides vetoes a match.
 - [x] Do not silently overwrite the previous state before the master accepts the import.
 
 ## 6. Import review
@@ -60,10 +61,10 @@ Work through the stages in order. Keep each change small, verify the build and r
 - [x] Show new bookings.
 - [x] Show changed bookings with changed fields highlighted.
 - [ ] Show possible matches side by side.
-- [ ] Let the master accept or reject a proposed match.
+- [x] Let the master accept or reject a proposed match. Accepting merges the new booking onto the previous one (previous id, colour, hidden status and job number carry over); rejecting keeps the previous booking.
 - [ ] Transfer job number and markup only after confirmation for non-exact matches.
-- [x] Mark disappeared bookings as missing rather than silently deleting their links.
-- [ ] Allow reversal of an incorrect match.
+- [x] Mark disappeared bookings as missing rather than silently deleting their links. Disappeared bookings are listed with a checkbox; unticking keeps them on the board.
+- [x] Allow reversal of an incorrect match. Undo link pops one link at a time.
 
 ## 7. Shared-file roles
 
@@ -95,12 +96,12 @@ Work through the stages in order. Keep each change small, verify the build and r
 
 ## 10. Verification
 
-- [ ] Run the production build.
+- [x] Run the production build.
 - [ ] Inspect the deployed GitHub Pages output.
 - [ ] Test forecast import and re-import.
 - [ ] Test stable IDs across reloads and imports.
 - [ ] Test job-number entry, leading-zero removal, blank values, and invalid values.
-- [ ] Test changed event names, times, dates, and room sets.
+- [x] Test changed event names, times, dates, and room sets. Covered by `npm test` (matching logic, review application, date/time parsing); browser click-through still open.
 - [ ] Test room additions and removals.
 - [ ] Test viewer, contributor, and master workflows.
 - [ ] Verify the booking grid, room columns, overnight continuation, and visual merging still render correctly.

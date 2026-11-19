@@ -168,8 +168,11 @@ export function compareImports(previous: Booking[] | null, current: Booking[], v
       continue;
     }
     // Tier 3 — fuzzy scoring for the rest (typos, two fields changed).
+    // A differing job number on both sides vetoes the match outright:
+    // it is the closest thing to an id in the data.
     const candidates = unmatchedPrevious
       .filter(candidate => !linkedPreviousIds.has(candidate.id))
+      .filter(candidate => !(booking.jobNumber && candidate.jobNumber && normalizeJobNumber(booking.jobNumber) !== normalizeJobNumber(candidate.jobNumber)))
       .map(candidate => ({ candidate, score: matchScore(booking, candidate) }))
       .sort((a, b) => b.score - a.score);
     const best = candidates[0];
