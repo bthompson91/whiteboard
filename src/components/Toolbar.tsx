@@ -1,5 +1,5 @@
 import { ChangeEvent } from 'react';
-import { Booking } from '../types';
+import { Booking, MarkupItem } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 
 interface ToolbarProps {
@@ -13,7 +13,7 @@ interface ToolbarProps {
   onVenueLoaded: (venue: ParsedVenueConfig) => void;
   onBookingsLoaded: (bookings: Booking[]) => void;
   onError: (message: string) => void;
-  onMarkupChange: (markup: unknown[]) => void;
+  onMarkupChange: (markup: MarkupItem[]) => void;
 }
 
 export default function Toolbar({
@@ -26,7 +26,8 @@ export default function Toolbar({
   onSetMarkupMode,
   onVenueLoaded,
   onBookingsLoaded,
-  onError
+  onError,
+  onMarkupChange
 }: ToolbarProps) {
   const handleVenueFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
