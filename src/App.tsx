@@ -8,42 +8,68 @@ import { ParsedVenueConfig, parseVenueConfig } from './lib/venueConfig';
 const MARKUP_KEY = 'whiteboard-markup';
 const VENUE_YAML_KEY = 'whiteboard-venue-yaml';
 
+function readStoredMarkup(): MarkupItem[] {
+  try {
+    const stored = localStorage.getItem(MARKUP_KEY);
+    if (!stored) return [];
+
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? (parsed as MarkupItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function App() {
   const [venue, setVenue] = useState<ParsedVenueConfig | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [markup, setMarkup] = useState<MarkupItem[]>([]);
+  const [markup, setMarkup] = useState<MarkupItem[]>(readStoredMarkup);
   const [editingEnabled, setEditingEnabled] = useState(false);
   const [markupMode, setMarkupMode] = useState<'none' | 'text' | 'arrow'>('none');
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const savedYaml = localStorage.getItem(VENUE_YAML_KEY);
+
     if (savedYaml) {
       try {
-        setVenue(parseVenueConfig(savedYaml));
+        const parsedVenue = parseVenueConfig(savedYaml);
+        if (!cancelled) setVenue(parsedVenue);
       } catch (exception) {
-        setError(exception instanceof Error ? exception.message : String(exception));
+        if (!cancelled) {
+          setError(exception instanceof Error ? exception.message : String(exception));
+        }
       }
     }
 
-    const savedMarkup = localStorage.getItem(MARKUP_KEY);
-    if (savedMarkup) {
-      try {
-        setMarkup(JSON.parse(savedMarkup) as MarkupItem[]);
-      } catch {
-        setMarkup([]);
-      }
-    }
+    if (!cancelled) setHydrated(true);
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(MARKUP_KEY, JSON.stringify(markup));
-  }, [markup]);
+    if (!hydrated) return;
+
+    try {
+      localStorage.setItem(MARKUP_KEY, JSON.stringify(markup));
+    } catch {
+      // Storage may be unavailable or full; retain the in-memory markup.
+    }
+  }, [markup, hydrated]);
 
   const handleVenueLoaded = (yamlText: string) => {
-    localStorage.setItem(VENUE_YAML_KEY, yamlText);
-    setVenue(parseVenueConfig(yamlText));
-    setError(null);
+    try {
+      const parsedVenue = parseVenueConfig(yamlText);
+      localStorage.setItem(VENUE_YAML_KEY, yamlText);
+      setVenue(parsedVenue);
+      setError(null);
+    } catch (exception) {
+      setError(exception instanceof Error ? exception.message : String(exception));
+    }
   };
 
   return (

@@ -31,6 +31,8 @@ export interface ParsedVenueConfig extends VenueConfig {
   mappings: Record<string, string[]>;
 }
 
+const normalizeRoomName = (value: string) => value.trim().toLowerCase();
+
 export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
   const data = yaml.load(yamlText) as RawVenue;
 
@@ -60,29 +62,38 @@ export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
   };
 }
 
-export function resolveRooms(
-  roomName: string,
-  venue: ParsedVenueConfig
-): string[] {
-  const normalized = roomName.trim();
+export function resolveRooms(roomName: string, venue: ParsedVenueConfig): string[] {
+  const normalized = normalizeRoomName(roomName);
 
-  if (venue.excludedRooms.includes(normalized)) {
+  if (venue.excludedRooms.some((room) => normalizeRoomName(room) === normalized)) {
     return [];
   }
 
-  if (venue.mappings[normalized]) {
-    return venue.mappings[normalized].map((room) => room.trim());
+  const canonicalRoomId = (name: string) =>
+    venue.rooms.find((room) => normalizeRoomName(room.id) === normalizeRoomName(name))?.id ??
+    name.trim();
+
+  const mappingEntry = Object.entries(venue.mappings).find(
+    ([target]) => normalizeRoomName(target) === normalized
+  );
+
+  if (mappingEntry) {
+    return mappingEntry[1].map(canonicalRoomId);
   }
 
-  for (const [target, aliases] of Object.entries(venue.aliases)) {
-    if (aliases.includes(normalized)) {
-      return [target];
-    }
+  const aliasEntry = Object.entries(venue.aliases).find(
+    ([target, aliases]) =>
+      normalizeRoomName(target) === normalized ||
+      aliases.some((alias) => normalizeRoomName(alias) === normalized)
+  );
+
+  if (aliasEntry) {
+    return [canonicalRoomId(aliasEntry[0])];
   }
 
-  if (venue.rooms.some((room) => room.name === normalized)) {
-    return [normalized];
-  }
+  const exactRoom = venue.rooms.find(
+    (room) => normalizeRoomName(room.id) === normalized
+  );
 
-  return [];
+  return exactRoom ? [exactRoom.id] : [];
 }
