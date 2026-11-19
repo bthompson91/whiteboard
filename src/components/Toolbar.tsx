@@ -77,7 +77,7 @@ export default function Toolbar({
             <input type="file" accept=".json" onChange={handleContributorFile} />
           </label>
           <button onClick={onExportPublishedBoard}>Export published board</button>
-          <button onClick={onExportVenueConfig} disabled={!yamlText}>Export venue config</button>
+          <button onClick={onExportVenueConfig} disabled={!venue}>Export venue config</button>
           <button onClick={onOpenSubmissions}>
             Review submissions{submissionCount ? ` (${submissionCount})` : ''}
           </button>
