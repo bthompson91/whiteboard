@@ -3,6 +3,7 @@ import { VenueConfig, VenueRoom } from '../types';
 
 interface RawVenue {
   site?: { name?: string };
+  file_input?: { date_format?: string };
   fields?: Record<string, string>;
   display?: {
     primary_label?: string;
@@ -20,6 +21,7 @@ interface RawVenue {
 
 export interface ParsedVenueConfig extends VenueConfig {
   fields: Record<string, string>;
+  dateFormat: string;
   display: {
     primaryLabel: string;
     secondaryLabel: string;
@@ -50,6 +52,7 @@ export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
     name: data.site?.name ?? 'Venue',
     rooms,
     fields: data.fields ?? {},
+    dateFormat: data.file_input?.date_format ?? 'DD/MM/YYYY',
     display: {
       primaryLabel: data.display?.primary_label ?? 'booking_name',
       secondaryLabel: data.display?.secondary_label ?? 'activity_name',

@@ -14,6 +14,11 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if(names.some(n=>!n.trim())||new Set(names.map(n=>n.trim().toLowerCase())).size!==names.length)throw new Error('Room names must be non-empty and unique.');
   if(d.site!==undefined&&(!object(d.site)||typeof d.site.name!=='string'))throw new Error('site.name must be text.');
   if(d.fields!==undefined&&(!object(d.fields)||!Object.values(d.fields).every(v=>typeof v==='string')))throw new Error('fields must map names to text column headers.');
+  if(strict&&d.fields!==undefined&&Object.values(d.fields).some(v=>!(v as string).trim()))throw new Error('Field mappings must name a column header; leave job_number out instead of blank.');
+  if(d.file_input!==undefined&&(!object(d.file_input)||(d.file_input.format!==undefined&&typeof d.file_input.format!=='string')||(d.file_input.has_header!==undefined&&typeof d.file_input.has_header!=='boolean')))throw new Error('file_input must map format to text and has_header to true/false.');
+  if(d.file_input?.date_format!==undefined&&!['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD'].includes(String(d.file_input.date_format)))throw new Error('file_input.date_format must be DD/MM/YYYY, MM/DD/YYYY or YYYY-MM-DD.');
+  if(d.time_slots!==undefined&&(!Array.isArray(d.time_slots)||d.time_slots.some(s=>!object(s)||typeof s.label!=='string'||typeof s.start!=='string'||typeof s.end!=='string')))throw new Error('time_slots must be a list of label/start/end entries.');
+  if(d.output!==undefined&&(!object(d.output)||['filename_prefix','title','worksheet_name'].some(k=>d.output[k]!==undefined&&typeof d.output[k]!=='string')||(d.output.show_timeline_panel!==undefined&&typeof d.output.show_timeline_panel!=='boolean')))throw new Error('output must map filename_prefix, title and worksheet_name to text and show_timeline_panel to true/false.');
   if(d.rooms.exclude!==undefined&&!strings(d.rooms.exclude))throw new Error('rooms.exclude must be a list of room names.');
   for(const key of ['room_aliases','room_mappings'])if(d.rooms[key]!==undefined&&(!object(d.rooms[key])||!Object.values(d.rooms[key]).every(strings)))throw new Error(`rooms.${key} must map names to lists of names.`);
   if(d.timeline_items!==undefined&&!strings(d.timeline_items))throw new Error('timeline_items must be a text list.');
@@ -37,4 +42,29 @@ export function boardSettings(d:ConfigDocument):BoardSettings {
   return {room_types:{...(w.room_types||{})},room_widths:{large:200,small:150,other:175,...(w.room_widths||{})},salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p}))};
 }
 export function writeConfiguration(d:ConfigDocument):string { return yaml.dump(d,{noRefs:true,lineWidth:120,sortKeys:false}); }
+// Tidy a configuration document before saving: trim stray whitespace
+// (export files and hand-edited YAML both carry trailing spaces, e.g.
+// "Promenade " as a mapping key) so lookups stop depending on it.
+export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
+  const trimList = (v: unknown) => Array.isArray(v) ? v.map(x => typeof x === 'string' ? x.trim() : x).filter(x => typeof x === 'string' && x) : v;
+  if (d.site && typeof d.site.name === 'string') d.site.name = d.site.name.trim();
+  if (object(d.fields)) for (const k of Object.keys(d.fields)) { const v = d.fields[k]; if (typeof v === 'string') d.fields[k] = v.trim(); }
+  if (object(d.rooms)) {
+    if (Array.isArray(d.rooms.order)) d.rooms.order = [...new Set((d.rooms.order as unknown[]).map(s => typeof s === 'string' ? s.trim() : s).filter((s): s is string => typeof s === 'string' && !!s))];
+    if (Array.isArray(d.rooms.exclude)) d.rooms.exclude = trimList(d.rooms.exclude);
+    for (const key of ['room_aliases','room_mappings']) if (object(d.rooms[key])) {
+      const next: Record<string,string[]> = {};
+      for (const [k,v] of Object.entries(d.rooms[key] as Record<string, unknown>)) {
+        const nk = k.trim();
+        if (!nk) continue;
+        next[nk] = Array.isArray(v) ? (v as unknown[]).map(s => typeof s === 'string' ? s.trim() : s).filter((s): s is string => typeof s === 'string' && !!s) : [];
+      }
+      d.rooms[key] = next;
+    }
+  }
+  if (Array.isArray(d.timeline_items)) d.timeline_items = trimList(d.timeline_items);
+  if (object(d.display) && Array.isArray(d.display.allowed_statuses)) d.display.allowed_statuses = trimList(d.display.allowed_statuses);
+  if (Array.isArray(d.time_slots)) d.time_slots = d.time_slots.map(s => object(s) ? { ...s, label: typeof s.label === 'string' ? s.label.trim() : s.label, start: typeof s.start === 'string' ? s.start.trim() : s.start, end: typeof s.end === 'string' ? s.end.trim() : s.end } : s);
+  return d;
+}
 export const starterConfiguration=writeConfiguration({site:{name:'New venue'},fields:{booking_name:'Booking: Booking Post As',activity_name:'Booking Event: Name',event_date:'Start Date',start_time:'Start Time 24 Hour',end_time:'End Time 24 Hour',room_name:'Function Room',booking_status:'Booking: Status'},display:{primary_label:'booking_name',secondary_label:'activity_name',allowed_statuses:['Definite']},rooms:{order:['Room 1'],exclude:[],room_aliases:{},room_mappings:{}},timeline_items:['Setup','Teardown'],whiteboard:{room_types:{'Room 1':'other'},room_widths:{large:200,small:150,other:175},salespeople:[]}});
