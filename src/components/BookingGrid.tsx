@@ -1,7 +1,8 @@
-import { Booking, VenueConfig } from '../types';
+import { Booking } from '../types';
+import { ParsedVenueConfig } from '../lib/venueConfig';
 
 interface BookingGridProps {
-  venue: VenueConfig | null;
+  venue: ParsedVenueConfig | null;
   bookings: Booking[];
   editingEnabled: boolean;
   onBookingsChange: (bookings: Booking[]) => void;
@@ -60,7 +61,10 @@ export default function BookingGrid({
                     }}
                   >
                     <strong>{booking.title}</strong>
-                    <span>{booking.startTime}–{booking.endTime}</span>
+                    {booking.notes && <div>{booking.notes}</div>}
+                    <div>
+                      {booking.startTime}–{booking.endTime}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,15 +1,18 @@
 import { ChangeEvent } from 'react';
-import { Booking, VenueConfig } from '../types';
+import { Booking } from '../types';
+import { ParsedVenueConfig } from '../lib/venueConfig';
 
 interface ToolbarProps {
-  venue: VenueConfig | null;
+  venue: ParsedVenueConfig | null;
   bookingCount: number;
   editingEnabled: boolean;
   markupMode: 'none' | 'text' | 'arrow';
+  error: string | null;
   onToggleEditing: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
-  onVenueLoaded: (venue: VenueConfig) => void;
+  onVenueLoaded: (venue: ParsedVenueConfig) => void;
   onBookingsLoaded: (bookings: Booking[]) => void;
+  onError: (message: string) => void;
   onMarkupChange: (markup: unknown[]) => void;
 }
 
@@ -18,26 +21,36 @@ export default function Toolbar({
   bookingCount,
   editingEnabled,
   markupMode,
+  error,
   onToggleEditing,
   onSetMarkupMode,
   onVenueLoaded,
   onBookingsLoaded,
-  onMarkupChange
+  onError
 }: ToolbarProps) {
   const handleVenueFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const yaml = await file.text();
-    const { parseVenueConfig } = await import('../lib/venueConfig');
-    onVenueLoaded(parseVenueConfig(yaml));
+
+    try {
+      const yaml = await file.text();
+      const { parseVenueConfig } = await import('../lib/venueConfig');
+      onVenueLoaded(parseVenueConfig(yaml));
+    } catch (exception) {
+      onError(exception instanceof Error ? exception.message : String(exception));
+    }
   };
 
   const handleBookingFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !venue) return;
-    const { parseBookingWorkbook } = await import('../lib/bookingImport');
-    const bookings = await parseBookingWorkbook(file, venue);
-    onBookingsLoaded(bookings);
+
+    try {
+      const { parseBookingWorkbook } = await import('../lib/bookingImport');
+      onBookingsLoaded(await parseBookingWorkbook(file, venue));
+    } catch (exception) {
+      onError(exception instanceof Error ? exception.message : String(exception));
+    }
   };
 
   return (
@@ -73,6 +86,8 @@ export default function Toolbar({
       >
         Arrow
       </button>
+
+      {error && <div className="error">{error}</div>}
     </header>
   );
 }

@@ -1,43 +1,92 @@
 import * as XLSX from 'xlsx';
-import { Booking, VenueConfig } from '../types';
+import { Booking } from '../types';
+import { ParsedVenueConfig, resolveRooms } from './venueConfig';
+
+function cellToString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  return String(value).trim();
+}
+
+function normalizeDate(value: string): string {
+  if (!value) return '';
+
+  const iso = /^\d{4}-\d{2}-\d{2}/.exec(value);
+  if (iso) return iso[0];
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return value;
+}
 
 export async function parseBookingWorkbook(
   file: File,
-  venue: VenueConfig
+  venue: ParsedVenueConfig
 ): Promise<Booking[]> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    defval: ''
-  });
 
-  return rows
-    .map((row, index): Booking | null => {
-      const date = String(row.Date ?? row.date ?? '').trim();
-      const roomName = String(row.Room ?? row.room ?? row['Room Name'] ?? '').trim();
-      const title = String(row.Event ?? row['Event Name'] ?? row.Title ?? '').trim();
-      const startTime = String(row.Start ?? row['Start Time'] ?? '').trim();
-      const endTime = String(row.Finish ?? row.End ?? row['End Time'] ?? '').trim();
+  const bookings: Booking[] = [];
 
-      if (!date || !roomName || !title) return null;
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: ''
+    });
 
-      const room = venue.rooms.find(
-        (candidate) =>
-          candidate.name.toLowerCase() === roomName.toLowerCase() ||
-          candidate.id.toLowerCase() === roomName.toLowerCase()
-      );
-
-      if (!room) return null;
-
-      return {
-        id: `imported-${index}-${crypto.randomUUID()}`,
-        date,
-        roomId: room.id,
-        startTime,
-        endTime,
-        title
+    rows.forEach((row, index) => {
+      const get = (fieldKey: string) => {
+        const columnName = venue.fields[fieldKey];
+        return columnName ? cellToString(row[columnName]) : '';
       };
-    })
-    .filter((booking): booking is Booking => booking !== null);
+
+      const date = normalizeDate(get('event_date'));
+      const roomName = get('room_name');
+      const primary = get(venue.display.primaryLabel);
+      const secondary = get(venue.display.secondaryLabel);
+      const status = get('booking_status');
+      const startTime = get('start_time');
+      const endTime = get('end_time');
+
+      if (!date || !roomName || !primary) return;
+
+      if (
+        venue.display.allowedStatuses.length > 0 &&
+        !venue.display.allowedStatuses.includes(status)
+      ) {
+        return;
+      }
+
+      const roomIds = resolveRooms(roomName, venue);
+
+      roomIds.forEach((roomId) => {
+        bookings.push({
+          id: `${sheetName}-${index}-${roomId}-${crypto.randomUUID()}`,
+          date,
+          roomId,
+          startTime,
+          endTime,
+          title: primary,
+          status,
+          notes:
+            venue.display.suppressSecondaryWhenEqual && secondary === primary
+              ? ''
+              : secondary
+        });
+      });
+    });
+  }
+
+  if (bookings.length === 0) {
+    throw new Error(
+      'No matching bookings found. Check that the XLS headers match the YAML field mappings and that bookings use an allowed status.'
+    );
+  }
+
+  return bookings;
 }
