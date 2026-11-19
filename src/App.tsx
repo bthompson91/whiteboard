@@ -7,6 +7,7 @@ import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
 import { BoardRole, Booking, ContributorSubmission, MarkupItem } from './types';
 import { ImportResult, savePreviousImport } from './lib/bookingImport';
+import { BookingChange, compareImports } from './lib/importComparison';
 import { createSharedFile, createSubmission, downloadSharedFile, parseSharedFile } from './lib/sharedFile';
 import { parseVenueConfig } from './lib/venueConfig';
 import { boardSettings, readConfiguration } from './lib/configuration';
@@ -110,6 +111,28 @@ export default function App() {
     savePreviousImport(approved);
     setPendingReview(null);
   };
+  const linkMatch = (change: BookingChange) => {
+    if (!pendingReview || !change.match || !venue) return;
+    const linked = pendingReview.bookings.map(booking => {
+      if (booking.id !== change.booking.id) return booking;
+      const previous = change.match.previous;
+      return {
+        ...booking,
+        id: previous.id,
+        colour: booking.colour || previous.colour,
+        hidden: booking.hidden ?? previous.hidden,
+        jobNumber: booking.jobNumber || previous.jobNumber
+      };
+    });
+    const comparison = compareImports(
+      pendingReview.comparison.changes
+        .filter(item => item.previous)
+        .map(item => item.previous!),
+      linked,
+      venue.name
+    );
+    setPendingReview({ bookings: linked, comparison });
+  };
   const handleBookingsChange = (next: Booking[]) => {
     if (role === 'viewer') return;
     if (role === 'master') {
@@ -194,7 +217,12 @@ export default function App() {
         />
       )}
       {pendingReview && (
-        <ImportReviewPanel result={pendingReview} onApply={applyImport} onCancel={() => setPendingReview(null)} />
+        <ImportReviewPanel
+          result={pendingReview}
+          onApply={applyImport}
+          onLinkMatch={linkMatch}
+          onCancel={() => setPendingReview(null)}
+        />
       )}
       {submissionsOpen && (
         <SubmissionReviewPanel

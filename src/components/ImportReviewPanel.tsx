@@ -6,10 +6,11 @@ import './importReview.css';
 interface Props {
   result: ImportResult;
   onApply: (bookings: Booking[]) => void;
+  onLinkMatch: (change: BookingChange) => void;
   onCancel: () => void;
 }
 const formatBooking = (booking: Booking) => `${booking.title} — ${booking.date} ${booking.startTime}–${booking.endTime}`;
-export default function ImportReviewPanel({ result, onApply, onCancel }: Props) {
+export default function ImportReviewPanel({ result, onApply, onLinkMatch, onCancel }: Props) {
   const actionable = useMemo(
     () => result.comparison.changes.filter(change => change.type !== 'unchanged'),
     [result]
@@ -60,14 +61,34 @@ export default function ImportReviewPanel({ result, onApply, onCancel }: Props) 
         <div className="review-list">
           {actionable.length === 0 && <p className="review-empty">No changes require review.</p>}
           {actionable.map((change: BookingChange, index: number) => (
-            <label key={`${change.type}-${change.booking.id}-${index}`} className={`review-item ${change.type}`}>
-              <input type="checkbox" checked={selected[index] !== false} onChange={() => toggle(index)} />
+            <div key={`${change.type}-${change.booking.id}-${index}`} className={`review-item ${change.type}`}>
+              {change.type !== 'disappeared' && (
+                <input type="checkbox" checked={selected[index] !== false} onChange={() => toggle(index)} />
+              )}
               <div>
-                <strong>{change.type === 'new' ? 'New' : change.type === 'changed' ? 'Changed' : 'Disappeared'}</strong>
+                <strong>
+                  {change.type === 'new'
+                    ? change.match
+                      ? `Possible match — ${change.match.classification} (${change.match.score}%)`
+                      : 'New'
+                    : change.type === 'changed'
+                      ? 'Changed'
+                      : 'Disappeared'}
+                </strong>
                 <span>{formatBooking(change.type === 'disappeared' ? change.previous! : change.booking)}</span>
                 {change.type === 'changed' && <small>{change.changedFields.join(', ')}</small>}
+                {change.match && (
+                  <small>
+                    Previous: {formatBooking(change.match.previous)}
+                  </small>
+                )}
               </div>
-            </label>
+              {change.match && (
+                <div className="submission-actions">
+                  <button onClick={() => onLinkMatch(change)}>Link match</button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
         <footer>
