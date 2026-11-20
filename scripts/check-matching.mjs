@@ -176,6 +176,22 @@ try {
   ], venue, [], false);
   check('same title in one room at different times merges into one tall block', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 24 * 60, JSON.stringify(blocks));
   blocks = blocksFor([
+    booking({ id: 'a', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
+    booking({ id: 'b', title: 'charity  gala ', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' })
+  ], venue, [], false);
+  check('titles differing only by case or spacing still merge into one tall block', blocks.length === 1 && blocks[0].title === 'Charity Gala', JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '15:00', end: '18:00' }] }),
+    booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
+  ], venue, [], false);
+  check('a setup in one room does not stop the wide merge', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].start === 14 * 60 && blocks[0].facts.some(f => f.startsWith('Setup')), JSON.stringify(blocks));
+  blocks = blocksFor(riverPair, venue, [], false, ['River Room 1']);
+  check('a merge never crosses a strong border', blocks.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor(riverPair, venue, [], false, ['River Room 2']);
+  check('a border elsewhere does not stop the merge', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Palladium Party', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '23:00' })], venue, [], false, ['River Room 1']);
+  check('one booking spanning a strong border renders as two blocks', blocks.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false);
   check('one booking spanning two rooms renders as one wide block', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));

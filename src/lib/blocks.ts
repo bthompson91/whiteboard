@@ -24,7 +24,15 @@ export function strongBorders(roomIds: string[], borders: string[]): boolean[] {
 // combined times (a height merge); the same event in adjacent rooms at
 // the same time merges into one wide block (a width merge), whether it
 // is one booking spanning both rooms or a separate booking per room.
-export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[],showHidden:boolean):Block[] {
+// Titles match loosely for merging (case and spacing are ignored), so
+// the same event written two ways in the export still joins; the block
+// keeps the first booking's title as written. A merge never crosses a
+// strong border: the rooms named in `borders` divide the board, and a
+// block stops at the border even when the event continues next door.
+function mergeTitle(title: string): string {
+  return title.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[],showHidden:boolean,borders:string[]=[]):Block[] {
   const groups=new Map<string,Block>();
   for(const b of bookings as BoardBooking[]) {
     // Hidden bookings are skipped entirely, unless the board is unlocked —
@@ -39,7 +47,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
     for(const roomId of new Set(b.roomIds||[b.roomId])) {
       const room=venue.rooms.findIndex(r=>r.id===roomId);
       if(room<0)continue;
-      const key=JSON.stringify([b.date,b.title,room]);
+      const key=JSON.stringify([b.date,mergeTitle(b.title),room]);
       const old=groups.get(key);
       if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&!!b.hidden;}
       else {
@@ -52,14 +60,20 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       }
     }
   }
+  // A width merge joins on the event times, not on the span including
+  // setup and teardown: a setup in one room must not stop the event
+  // joining across rooms, and the joined block covers both rooms' spans.
+  const borderAfter=strongBorders(venue.rooms.map(r=>r.id),borders);
   const spans:Block[]=[];
   for(const b of [...groups.values()].sort((a,c)=>a.rooms[0]-c.rooms[0])) {
     b.ids=[...new Set(b.ids)].sort();b.facts=[...new Set(b.facts)];
-    const previous=spans.find(p=>p.date===b.date&&p.title===b.title&&p.start===b.start&&p.end===b.end&&p.rooms[p.rooms.length-1]+1===b.rooms[0]);
+    const previous=spans.find(p=>p.date===b.date&&mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]);
     if(previous){
       previous.rooms.push(b.rooms[0]);
       previous.ids=[...new Set([...previous.ids,...b.ids])].sort();
       previous.facts=[...new Set([...previous.facts,...b.facts])];
+      previous.start=Math.min(previous.start,b.start);
+      previous.end=Math.max(previous.end,b.end);
       previous.mainStart=Math.min(previous.mainStart,b.mainStart);
       previous.mainEnd=Math.max(previous.mainEnd,b.mainEnd);
       previous.jobNumber=previous.jobNumber||b.jobNumber;

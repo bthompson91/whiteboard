@@ -44,7 +44,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const total=baseWidths.reduce((sum,width)=>sum+width,0);
   const scale=Math.max(1,size.availableWidth/Math.max(1,total));
   const widths=baseWidths.map(width=>width*scale);
-  const blocks=blocksFor(bookings,venue,salespeople,editingEnabled);
+  const blocks=blocksFor(bookings,venue,salespeople,editingEnabled,roomBorders);
   const strongAfter=strongBorders(venue.rooms.map(r=>r.id),roomBorders);
   const segments=blocks.flatMap(b=>{const result:{block:Block;date:string;start:number;end:number;continuation:boolean}[]=[];for(let offset=0;offset<=Math.floor(Math.max(b.start,b.end-1)/1440);offset++){const start=Math.max(0,b.start-offset*1440),end=Math.min(1440,b.end-offset*1440);if(end>=start)result.push({block:b,date:format(addDays(parseISO(b.date),offset),'yyyy-MM-dd'),start,end,continuation:offset>0});}return result;});
   const sourceDates=[...new Set(segments.map(s=>s.date))].sort();

@@ -78,55 +78,55 @@ export default function Toolbar({
       )}
       {role === 'master' && (
         <>
-          <button onClick={onOpenConfiguration}>Configuration</button>
-          <label>
-            Open events
+          <button onClick={onOpenConfiguration} title="Configuration">⚙️</button>
+          <label title="Open events">
+            📂
             <input type="file" accept=".xls,.xlsx" onChange={handleBookingFile} disabled={!venue || loading} />
           </label>
-          <label>
-            Open published board
+          <label title="Open published board">
+            📖
             <input type="file" accept=".json" onChange={handlePublishedBoard} />
           </label>
-          <label>
-            Import contributor file
+          <label title="Import contributor file">
+            📥
             <input type="file" accept=".json" onChange={handleContributorFile} />
           </label>
-          <button onClick={onExportPublishedBoard}>Export published board</button>
-          <button onClick={onExportVenueConfig} disabled={!venue}>Export venue config</button>
-          <button onClick={onOpenSubmissions}>
-            Review submissions{submissionCount ? ` (${submissionCount})` : ''}
+          <button onClick={onExportPublishedBoard} title="Export published board">📤</button>
+          <button onClick={onExportVenueConfig} disabled={!venue} title="Export venue config">💾</button>
+          <button onClick={onOpenSubmissions} title="Review submissions">
+            📬{submissionCount ? ` (${submissionCount})` : ''}
           </button>
-          <button onClick={onOpenHistory}>Import history</button>
-          <button onClick={onRevertLastImport} disabled={!canRevert}>Revert last import</button>
+          <button onClick={onOpenHistory} title="Import history">🕘</button>
+          <button onClick={onRevertLastImport} disabled={!canRevert} title="Revert last import">↩️</button>
         </>
       )}
       {role === 'contributor' && (
         <>
-          <label>
-            Open published board
+          <label title="Open published board">
+            📖
             <input type="file" accept=".json" onChange={handlePublishedBoard} />
           </label>
-          <button onClick={onExportContributorFile}>Export my contributions</button>
-          <label>
-            Import my contributions
+          <button onClick={onExportContributorFile} title="Export my contributions">📤</button>
+          <label title="Import my contributions">
+            📥
             <input type="file" accept=".json" onChange={handleContributorFile} />
           </label>
         </>
       )}
       {role === 'viewer' && (
-        <label>
-          Open published board
+        <label title="Open published board">
+          📖
           <input type="file" accept=".json" onChange={handlePublishedBoard} />
         </label>
       )}
       <span>{loading ? 'Importing…' : `${bookingCount} bookings · rev ${revision}`}</span>
       {role !== 'viewer' && (
-        <button onClick={onToggleEditing}>
-          {editingEnabled ? 'Lock bookings' : 'Unlock bookings'}
+        <button onClick={onToggleEditing} title={editingEnabled ? 'Lock bookings' : 'Unlock bookings'}>
+          {editingEnabled ? '🔓' : '🔒'}
         </button>
       )}
-      <button className={markupMode === 'text' ? 'active' : ''} onClick={() => onSetMarkupMode(markupMode === 'none' ? 'text' : 'none')}>Text note</button>
-      <button className={markupMode === 'arrow' ? 'active' : ''} onClick={() => onSetMarkupMode(markupMode === 'none' ? 'arrow' : 'none')}>Arrow</button>
+      <button className={markupMode === 'text' ? 'active' : ''} onClick={() => onSetMarkupMode(markupMode === 'none' ? 'text' : 'none')} title="Text note">📝</button>
+      <button className={markupMode === 'arrow' ? 'active' : ''} onClick={() => onSetMarkupMode(markupMode === 'none' ? 'arrow' : 'none')} title="Arrow">➡️</button>
       {error && <div className="error" role="alert">{error}</div>}
     </header>
   );
