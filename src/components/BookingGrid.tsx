@@ -26,6 +26,10 @@ interface Props {
   paintMode?: boolean;
   paintSalespersonId?: string;
   paintApplyAll?: boolean;
+  // Salesperson filter: when one is picked, every other block dims to
+  // 25% opacity so that salesperson's blocks stand out. Available in
+  // viewer and editor mode alike.
+  filterSalespersonId?: string;
   // The Today button lives in the Toolbar (in App), but the scroll
   // itself lives here, where the rows are. App holds this ref and
   // BookingGrid assigns the scroll function to it.
@@ -129,7 +133,7 @@ function FitTitle({ text }: { text: string }) {
   }, [fit, text]);
   return <div ref={ref} className="booking-title" style={{ fontSize }}>{text}</div>;
 }
-export default function BookingGrid({venue,bookings,salespeople,roomBorders,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false}:Props) {
+export default function BookingGrid({venue,bookings,salespeople,roomBorders,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false,filterSalespersonId=''}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
@@ -307,7 +311,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     {dates.map((date,dateIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizesValue[dateIndex]}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
-      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,...laneInsets(b,strongAfter),top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
+      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,...laneInsets(b,strongAfter),top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:filterSalespersonId&&b.salespersonId!==filterSalespersonId?0.25:(b.hidden?0.45:undefined),borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
           if(draft)return;
           // Paint mode: a click paints the block instead of opening it.
           // It works in editor role even while the board is locked, so

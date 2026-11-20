@@ -131,6 +131,9 @@ export default function App() {
   const [paintMode, setPaintMode] = useState(false);
   const [paintSalespersonId, setPaintSalespersonId] = useState('');
   const [paintApplyAll, setPaintApplyAll] = useState(false);
+  // Salesperson filter, for viewer and editor alike: when one is
+  // picked, every other block dims to 25% opacity.
+  const [filterSalespersonId, setFilterSalespersonId] = useState('');
   const togglePaintMode = () => {
     if (!paintMode && !paintSalespersonId && settings?.salespeople?.length) {
       setPaintSalespersonId(settings.salespeople[0].id);
@@ -612,6 +615,7 @@ export default function App() {
         paintSalespersonId={paintSalespersonId}
         paintApplyAll={paintApplyAll}
         salespeople={settings?.salespeople || []}
+        filterSalespersonId={filterSalespersonId}
         error={error}
         revision={revision}
         onToggleEditing={() => setEditingEnabled(value => !value)}
@@ -619,6 +623,7 @@ export default function App() {
         onTogglePaintMode={togglePaintMode}
         onPaintSalespersonChange={setPaintSalespersonId}
         onPaintApplyAllChange={setPaintApplyAll}
+        onFilterSalespersonChange={setFilterSalespersonId}
         onSetMarkupMode={setMarkupMode}
         onOpenConfiguration={() => {
           setMarkupMode('none');
@@ -645,6 +650,7 @@ export default function App() {
           paintMode={paintMode && role !== 'viewer'}
           paintSalespersonId={paintSalespersonId}
           paintApplyAll={paintApplyAll}
+          filterSalespersonId={filterSalespersonId}
           selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}
           onSelectedBookingChange={setSelectedBookingId}

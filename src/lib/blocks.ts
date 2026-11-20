@@ -4,7 +4,7 @@ import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
 import { bookingColour, isNoAv, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string; lane?:number; laneCount?:number }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonId?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string; lane?:number; laneCount?:number }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -116,7 +116,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         const noAv=isNoAv(b.jobNumber);
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonId:b.salespersonId,salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
       }
     }
   }

@@ -394,6 +394,15 @@ try {
   check('legacy unavailable salesperson still flags the block', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1', jobNumber: '1022948' })], venue, palette, false);
   check('block carries the salesperson initials', blocks.length === 1 && blocks[0].initials === 'AL' && blocks[0].jobNumber === '1022948', JSON.stringify(blocks));
+  // The salesperson filter dims every block that is not that person's:
+  // it reads the salesperson id off the block, so a block must carry
+  // the id of the booking that sets its colour.
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1' }),
+    booking({ id: 'b', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-2' }),
+    booking({ id: 'c', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'] })
+  ], venue, palette, false);
+  check('blocks carry their salesperson id for the filter', blocks.length === 3 && blocks[0].salespersonId === 'sp-1' && blocks[1].salespersonId === 'sp-2' && blocks[2].salespersonId === undefined, JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], unavailable: true, salespersonId: 'sp-1' })], venue, palette, false);
   check('unavailable block has no initials tag', blocks.length === 1 && blocks[0].initials === undefined, JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'] })], venue, palette, false);

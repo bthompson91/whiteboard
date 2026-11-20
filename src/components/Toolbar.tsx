@@ -16,6 +16,9 @@ interface Props {
   paintSalespersonId: string;
   paintApplyAll: boolean;
   salespeople: Salesperson[];
+  // Salesperson filter, for viewer and editor alike: when one is
+  // picked, every other block dims to 25% opacity.
+  filterSalespersonId: string;
   error: string | null;
   revision: number;
   saving: boolean;
@@ -27,6 +30,7 @@ interface Props {
   onTogglePaintMode: () => void;
   onPaintSalespersonChange: (salespersonId: string) => void;
   onPaintApplyAllChange: (applyAll: boolean) => void;
+  onFilterSalespersonChange: (salespersonId: string) => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
   onRoleChange: (role: BoardRole) => void;
@@ -36,9 +40,9 @@ interface Props {
   onOpenLinkFiles: () => void;
 }
 export default function Toolbar({
-  venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, error, revision,
+  venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, filterSalespersonId, error, revision,
   saving, linkedFiles, canLinkFiles, editorLockName,
-  onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onSetMarkupMode, onOpenConfiguration,
+  onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onFilterSalespersonChange, onSetMarkupMode, onOpenConfiguration,
   onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles
 }: Props) {
   return (
@@ -65,6 +69,10 @@ export default function Toolbar({
         {saving ? 'Refreshing…' : '🔄 Refresh'}
       </button>
       <button onClick={onToday} title="Snap to today">📅 Today</button>
+      <select value={filterSalespersonId} onChange={event => onFilterSalespersonChange(event.target.value)} aria-label="Filter by salesperson" title="Show one salesperson's blocks at full strength; everyone else's dims to 25%">
+        <option value="">All salespeople</option>
+        {salespeople.map(person => <option key={person.id} value={person.id} style={{ backgroundColor: person.colour, color: readableText(person.colour) }}>{person.name}</option>)}
+      </select>
       {canLinkFiles && (
         <button
           onClick={onOpenLinkFiles}
