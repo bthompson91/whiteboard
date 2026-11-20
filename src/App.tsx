@@ -614,7 +614,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [role, saving]);
   return (
-    <div className="app">
+    <div className={`app${!(linkedFiles.board && linkedFiles.yaml && linkedFiles.changes && linkedFiles.bookings) ? ' files-unlinked' : ''}`}>
       <Toolbar
         venue={venue}
         bookingCount={bookings.length}
