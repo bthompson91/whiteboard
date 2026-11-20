@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, clock, fitFontSize, likeBookings, blockCountForBookings, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, clock, fitFontSize, isBlockHidden, likeBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
@@ -144,8 +144,11 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
   const [draft,setDraft]=useState<Booking|null>(null);
   const [applyAllPrompt,setApplyAllPrompt]=useState<{salespersonId:string;colour?:string;name:string;like:Booking[];likeBlockCount:number}|null>(null);
   const [mergeMessage,setMergeMessage]=useState<string|null>(null);
-  const openInspector=(booking:Booking)=>{onSelectedBookingChange(booking.id);setDraft({...booking});setMergeMessage(null);};
-  const closeInspector=()=>{setDraft(null);setApplyAllPrompt(null);setMergeMessage(null);};
+  // The rooms of the block the inspector was opened from: hiding hides
+  // this block only, not every room the booking is in.
+  const [inspectorRooms,setInspectorRooms]=useState<string[]>([]);
+  const openInspector=(booking:Booking,blockRooms:string[])=>{onSelectedBookingChange(booking.id);setDraft({...booking});setInspectorRooms(blockRooms);setMergeMessage(null);};
+  const closeInspector=()=>{setDraft(null);setInspectorRooms([]);setApplyAllPrompt(null);setMergeMessage(null);};
   const commitSave=(applyAll:boolean)=>{
     if(!draft)return;
     const saved={...draft,jobNumber:draft.jobNumber?normalizeJobNumber(draft.jobNumber):undefined};
@@ -332,7 +335,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
           // It works in editor role even while the board is locked, so
           // colour-coding is one click, not unlock-then-click.
           if(paintMode){paintBlock(b,paintSalespersonId,paintApplyAll);return;}
-          if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}
+          if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking,b.rooms.map(i=>venue.rooms[i].id));}
         }}>
         <div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined)}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}<div>{clock(b.mainStart).slice(0,5)}</div><div>{clock(b.mainEnd).slice(0,5)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}</div>
         <FitTitle text={[b.title,[b.initials,b.jobNumber].filter(Boolean).join(' ')].filter(Boolean).join(' | ') + (b.hidden ? ' — hidden' : '')} />
@@ -366,7 +369,8 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
             </span>
           </label>
           <label className="checkbox"><input type="checkbox" checked={draft.unavailable===true||draft.salespersonId===UNAVAILABLE_SALESPERSON.id} onChange={event=>{const on=event.target.checked;setDraft({...draft,unavailable:on,salespersonId:draft.salespersonId===UNAVAILABLE_SALESPERSON.id?'':draft.salespersonId});}}/>Unavailable</label>
-          <label className="checkbox"><input type="checkbox" checked={!!draft.hidden} onChange={event=>setDraft({...draft,hidden:event.target.checked})}/>Hide from board</label>
+          <label className="checkbox"><input type="checkbox" checked={isBlockHidden(draft,inspectorRooms)} onChange={event=>setDraft(setBlockHidden(draft,inspectorRooms,event.target.checked))}/>Hide from board</label>
+          {(draft.roomIds?.length||0)>1&&<label className="checkbox"><input type="checkbox" checked={draft.hidden===true} onChange={event=>setDraft({...draft,hidden:event.target.checked,hiddenRooms:event.target.checked?[]:draft.hiddenRooms})}/>Hide in all {draft.roomIds?.length} rooms</label>}
           <label className="checkbox"><input type="checkbox" checked={draft.mergeTime!==false} onChange={event=>setDraft({...draft,mergeTime:event.target.checked})}/>Merge with the same booking at other times</label>
           <label className="checkbox"><input type="checkbox" checked={draft.mergeRoom!==false} onChange={event=>setDraft({...draft,mergeRoom:event.target.checked})}/>Merge with the same booking in other rooms</label>
           <div style={{margin:'0 20px 10px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>

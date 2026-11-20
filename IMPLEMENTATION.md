@@ -288,7 +288,14 @@ strong day separators remain (no hourly row lines).
 - **Hidden blocks.** Render faded (0.45) and dashed while unlocked, so they
   can be opened and made visible again. The 👁️ Show hidden toggle (editor
   only) renders them even while locked; restoring still needs unlock + the
-  inspector's "Hide from board" checkbox.
+  inspector's "Hide from board" checkbox. Hiding is per room: a booking
+  in several rooms (an MCG booking in 61 of them) carries `hiddenRooms`
+  (the rooms it is hidden in) alongside `hidden` (hidden everywhere), so
+  hiding one block hides that room only, not the whole booking — the
+  inspector hides the block it was opened from, and offers "Hide in all
+  N rooms" when the booking is in more than one. Unhiding one block of
+  a booking hidden everywhere keeps the other rooms hidden. Both flags
+  carry over on re-import.
 - **Inspector.** Clicking a block (editor, unlocked) opens the booking
   details popup. The popup sits above everything (dimming backdrop z 3000,
   the edited block raised to 3001 so it stays bright, panel z 3002);
@@ -614,7 +621,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-182 checks covering matching tiers and weights, booking identity, height and
+189 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

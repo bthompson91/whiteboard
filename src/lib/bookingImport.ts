@@ -196,6 +196,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig,
         if (existing.salespersonId) booking.salespersonId = existing.salespersonId;
         if (existing.unavailable !== undefined) booking.unavailable = existing.unavailable;
         if (existing.hidden !== undefined) booking.hidden = existing.hidden;
+        if (existing.hiddenRooms?.length) booking.hiddenRooms = existing.hiddenRooms;
         if (existing.jobNumber) booking.jobNumber = existing.jobNumber;
         if (existing.timeline?.length) booking.timeline = existing.timeline;
       }

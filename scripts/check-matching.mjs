@@ -38,11 +38,11 @@ try {
     logLevel: 'silent'
   });
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
-  const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
+  const { applyReview, changeKey, mergeMatchedBooking } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
@@ -351,6 +351,33 @@ try {
   check('a border elsewhere does not stop the merge', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Palladium Party', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '23:00' })], venue, [], false, ['River Room 1'], ['River Room 1']);
   check('one booking spanning a strong border renders as two blocks', blocks.length === 2, JSON.stringify(blocks));
+
+  // --- Per-room hiding: hiding one block of a booking in several
+  // rooms hides that room only, not the whole booking ---
+  const multiRoom = booking({ id: 'm', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B', 'River Room 1'], startTime: '19:00', endTime: '23:00', hiddenRooms: ['Palladium B'] });
+  blocks = blocksFor([multiRoom], venue, [], false);
+  check('hiding one room of a multi-room booking hides that block only', blocks.length === 2 && blocks.every(b => b.rooms[0] !== 1), JSON.stringify(blocks.map(b => b.rooms)));
+  blocks = blocksFor([multiRoom], venue, [], true);
+  check('a hidden room still renders faded when Show hidden is on', blocks.length === 3 && blocks.filter(b => b.hidden).length === 1, JSON.stringify(blocks.map(b => [b.rooms, b.hidden])));
+  blocks = blocksFor([booking({ id: 'h', title: 'Hidden', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', hidden: true })], venue, [], false);
+  check('a booking hidden everywhere renders no blocks', blocks.length === 0);
+  check('hiding one block adds only its rooms to hiddenRooms', (() => {
+    const b = booking({ id: 'm', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B', 'River Room 1'], startTime: '19:00', endTime: '23:00' });
+    const hidden = setBlockHidden(b, ['Palladium B'], true);
+    return JSON.stringify(hidden.hiddenRooms) === JSON.stringify(['Palladium B']) && hidden.hidden !== true;
+  })());
+  check('unhiding one block of a booking hidden everywhere keeps the other rooms hidden', (() => {
+    const b = booking({ id: 'm', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B', 'River Room 1'], startTime: '19:00', endTime: '23:00', hidden: true });
+    const shown = setBlockHidden(b, ['Palladium B'], false);
+    return shown.hidden === false && JSON.stringify(shown.hiddenRooms) === JSON.stringify(['Palladium A', 'River Room 1']);
+  })());
+  check('a block counts as hidden only when every one of its rooms is hidden', isBlockHidden(booking({ id: 'm', title: 'x', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', hiddenRooms: ['Palladium A'] }), ['Palladium A', 'Palladium B']) === false && isBlockHidden(booking({ id: 'm', title: 'x', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', hiddenRooms: ['Palladium A', 'Palladium B'] }), ['Palladium A', 'Palladium B']) === true);
+  check('a matched re-import carries the per-room hiding over', (() => {
+    const previous = booking({ id: 'p', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', hiddenRooms: ['Palladium B'] });
+    const next = booking({ id: 'n', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' });
+    const merged = mergeMatchedBooking(previous, next);
+    return JSON.stringify(merged.hiddenRooms) === JSON.stringify(['Palladium B']) && merged.id === 'p';
+  })());
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);

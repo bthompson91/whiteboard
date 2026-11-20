@@ -78,6 +78,29 @@ export function blockCountForBookings(blocks: Block[], bookings: Booking[]): num
   return seen.size;
 }
 
+// Hiding is per room: a booking in several rooms can be hidden in one
+// of them and stay on the board in the rest. `hidden` means hidden
+// everywhere; `hiddenRooms` names the rooms it is hidden in.
+export function isHiddenInRoom(b: Booking, roomId: string): boolean {
+  return b.hidden === true || (b.hiddenRooms ?? []).includes(roomId);
+}
+// Whether a whole block (its rooms) is hidden.
+export function isBlockHidden(b: Booking, blockRooms: string[]): boolean {
+  return blockRooms.length > 0 && blockRooms.every(r => isHiddenInRoom(b, r));
+}
+// Hide (or unhide) one block of a booking: the block's rooms join (or
+// leave) hiddenRooms. Unhiding one block of a booking hidden everywhere
+// keeps the other rooms hidden.
+export function setBlockHidden(b: Booking, blockRooms: string[], hide: boolean): Booking {
+  const allRooms = b.roomIds && b.roomIds.length ? b.roomIds : [b.roomId];
+  if (hide) {
+    if (b.hidden === true) return b;
+    return { ...b, hiddenRooms: [...new Set([...(b.hiddenRooms ?? []), ...blockRooms])] };
+  }
+  const remaining = (b.hidden === true ? allRooms : (b.hiddenRooms ?? [])).filter(r => !blockRooms.includes(r));
+  return { ...b, hidden: false, hiddenRooms: remaining };
+}
+
 // Groups bookings into the blocks the grid renders. Bookings with the
 // same title in the same room merge into one tall block spanning their
 // combined times (a height merge); the same event in adjacent rooms at
@@ -100,10 +123,6 @@ function mergeTitle(title: string): string {
 export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[],showHidden:boolean,borders:string[]=[],operableWalls:string[]=[]):Block[] {
   const groups=new Map<string,Block>();
   for(const b of bookings as BoardBooking[]) {
-    // Hidden bookings are skipped entirely, unless the board is unlocked —
-    // then they still render (faded, dashed) so they can be opened and
-    // made visible again from the inspector.
-    if(b.hidden&&!showHidden)continue;
     const [mainStart,mainEnd]=range(b.startTime,b.endTime);
     const timeline=(b.timeline||[]).map(t=>({label:t.label,times:range(t.start,t.end)}));
     const start=Math.min(mainStart,...timeline.map(t=>t.times[0]));
@@ -112,11 +131,19 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
     for(const roomId of new Set(b.roomIds||[b.roomId])) {
       const room=venue.rooms.findIndex(r=>r.id===roomId);
       if(room<0)continue;
+      // Hidden is per room: a booking in several rooms can be hidden
+      // in one of them and stay on the board in the rest — hiding one
+      // block must not hide the lot. Hidden bookings are skipped
+      // entirely, unless the board is unlocked or Show hidden is on —
+      // then they still render (faded, dashed) so they can be opened
+      // and made visible again from the inspector.
+      const roomHidden=isHiddenInRoom(b,roomId);
+      if(roomHidden&&!showHidden)continue;
       // A booking that opted out of merging by time gets its own group
       // (its id in the key), so it never height-merges with like bookings.
       const key=b.mergeTime===false?JSON.stringify([b.date,mergeTitle(b.title),room,b.id]):JSON.stringify([b.date,mergeTitle(b.title),room]);
       const old=groups.get(key);
-      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&!!b.hidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumber;}
+      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&roomHidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumber;}
       else {
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
@@ -129,7 +156,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         const noAv=isNoAv(b.jobNumber);
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonId:b.salespersonId,salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonId:b.salespersonId,salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
       }
     }
   }

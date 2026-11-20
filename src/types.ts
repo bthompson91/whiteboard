@@ -33,6 +33,11 @@ export interface Booking {
   salespersonId?: string;
   unavailable?: boolean;
   hidden?: boolean;
+  // Rooms this booking is hidden in, when it is in several rooms at
+  // once: hiding one block hides that room only, not the whole booking.
+  // `hidden` still means hidden everywhere (older saves, and "hide in
+  // all rooms" in the inspector).
+  hiddenRooms?: string[];
   // Manual merge control: a booking merges with like bookings by time
   // (same title, same room, other times — a tall block) and by room
   // (same title, adjacent rooms, same time — a wide block) unless the
