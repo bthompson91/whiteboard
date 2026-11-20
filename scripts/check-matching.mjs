@@ -31,7 +31,7 @@ try {
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
-  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
   const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
@@ -365,6 +365,13 @@ try {
   check('operable walls default to none', boardSettings({ whiteboard: {} }).operable_walls.length === 0);
   check('a non-list operable walls value is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  operable_walls: Room 1\n`, false); return false; } catch (e) { return String(e.message || e).includes('Operable walls must be a list'); } })());
   check('operable wall matching ignores case and whitespace', operableWallAfter(['Palladium A', 'Palladium B'], [' palladium a '])[0] === true && operableWallAfter(['Palladium A', 'Palladium B'], [' palladium a '])[1] === false);
+  // The original planner's output settings are dead: the board never
+  // reads them and the Configuration page no longer shows them, so a
+  // YAML that still carries them is stripped, not kept or rejected.
+  check('an output section is stripped when a config is read', !('output' in readConfiguration(`rooms:\n  order: [Room 1]\noutput:\n  filename_prefix: Room_Planner\n  title: Crown Melbourne Room Planner\n  worksheet_name: Room Planner\n  show_timeline_panel: true\n`, false)));
+  check('a malformed output section does not fail reading', (() => { try { return !('output' in readConfiguration(`rooms:\n  order: [Room 1]\noutput: not a mapping\n`, false)); } catch { return false; } })());
+  check('normalizeConfigDoc strips an output section', !('output' in normalizeConfigDoc({ rooms: { order: ['Room 1'] }, output: { title: 'x' } })));
+  check('a saved config no longer contains output', !writeConfiguration(normalizeConfigDoc(readConfiguration(`rooms:\n  order: [Room 1]\noutput:\n  title: x\n`, false))).includes('output'));
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);

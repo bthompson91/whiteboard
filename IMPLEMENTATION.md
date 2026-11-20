@@ -78,8 +78,10 @@ Sections, all editable on the Configuration page (see below):
 - **`timeline_items`** — activities that attach to a main booking instead of
   standing alone (Setup, Teardown).
 - **`file_input`** — `date_format` and friends, threaded into date parsing.
-- **`time_slots`, `output`** — declared in the YAML; the web app does not read
-  them.
+- **`time_slots`** — declared in the YAML; the web app does not read it.
+  (`output` — the original planner's filename/title/worksheet settings —
+  is not read either, and is stripped out of the YAML when a config is
+  read or saved; the Configuration page no longer shows it.)
 - **`whiteboard`** — board-only settings, stored back into the YAML:
   - `room_types`: room name → `large` | `small` | `other` (`other` is the
     medium/default size). Keys are trimmed on read so a stray space cannot
@@ -391,8 +393,10 @@ the top of the z-order (4000) so the lowlight never dims them.
 
 `src/components/ConfigurationPage.tsx` + `src/configuration.css`. Every
 parameter in the YAML is editable, not just the rooms: site, fields,
-display, rooms, timeline items, file input, time slots, output, and the
-whiteboard section, plus a raw YAML editor. The room table is
+display, rooms, timeline items, file input, time slots, and the
+whiteboard section, plus a raw YAML editor. (The original planner's
+`output` settings are not shown: they are stripped from the YAML when a
+config is read or saved.) The room table is
 **Order | Room | Alias | Type | Border after | Operable wall | Reorder |
 Remove**:
 
