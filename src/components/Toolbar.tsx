@@ -23,7 +23,6 @@ interface Props {
   revision: number;
   saving: boolean;
   linkedFiles: { board: string | null; yaml: string | null; bookings: string | null };
-  canLinkFiles: boolean;
   editorLockName: string | null;
   onToggleEditing: () => void;
   onToggleShowHidden: () => void;
@@ -42,7 +41,7 @@ interface Props {
 }
 export default function Toolbar({
   venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, filterSalespersonId, error, revision,
-  saving, linkedFiles, canLinkFiles, editorLockName,
+  saving, linkedFiles, editorLockName,
   onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onFilterSalespersonChange, onSetMarkupMode, onOpenConfiguration,
   onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint
 }: Props) {
@@ -75,17 +74,19 @@ export default function Toolbar({
         <option value="">All salespeople</option>
         {salespeople.map(person => <option key={person.id} value={person.id} style={{ backgroundColor: person.colour, color: readableText(person.colour) }}>{person.name}</option>)}
       </select>
-      {canLinkFiles && (
-        <button
-          onClick={onOpenLinkFiles}
-          title="Link the bookings export, venue YAML and board file"
-          // Red while any file is unlinked, so it is obvious at a glance
-          // that the board is not yet reading and writing its files.
-          style={!(linkedFiles.board && linkedFiles.yaml && linkedFiles.bookings) ? { backgroundColor: '#c62828', borderColor: '#c62828', color: '#fff' } : undefined}
-        >
-          🔗 Link files{linkedFiles.board ? ` (${linkedFiles.board})` : ''}
-        </button>
-      )}
+      {/* Always shown: file linking is how the board reads and writes
+          its files, so the button must never silently vanish — in a
+          browser without File System Access the panel says so and
+          offers what still works instead. */}
+      <button
+        onClick={onOpenLinkFiles}
+        title="Link the bookings export, venue YAML and board file"
+        // Red while any file is unlinked, so it is obvious at a glance
+        // that the board is not yet reading and writing its files.
+        style={!(linkedFiles.board && linkedFiles.yaml && linkedFiles.bookings) ? { backgroundColor: '#c62828', borderColor: '#c62828', color: '#fff' } : undefined}
+      >
+        🔗 Link files{linkedFiles.board ? ` (${linkedFiles.board})` : ''}
+      </button>
       <span>{`${bookingCount} bookings · rev ${revision}`}</span>
       {role !== 'viewer' && (
         <button onClick={onToggleEditing} title={editingEnabled ? 'Lock bookings' : 'Unlock bookings'}>

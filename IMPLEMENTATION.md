@@ -427,6 +427,16 @@ dialogs) until all three are linked — the board is not reading and writing
 its files then. All popup dialogs (review, configuration, link files) sit at
 the top of the z-order (4000) so the lowlight never dims them.
 
+The 🔗 button is always shown: it used to be hidden in browsers without
+File System Access (Firefox, Safari, every iOS browser), which made file
+linking silently vanish — the panel is only reachable through that button.
+In such a browser the button still opens the panel, which says plainly
+that linking needs Chrome or Edge on a desktop, greys out the Link/Open/
+Save-as buttons, and keeps what still works: Import (which falls back to
+a plain file picker — the file imports, it just is not linked, so Refresh
+cannot re-read it) and Download. The welcome overlay likewise only offers
+"Link an existing venue file" where linking is possible.
+
 ## Configuration page
 
 `src/components/ConfigurationPage.tsx` + `src/configuration.css`. Every

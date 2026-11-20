@@ -616,24 +616,38 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+  // A plain file picker, for browsers without File System Access: the
+  // file imports fine, it just is not linked, so Refresh cannot re-read
+  // it until it is linked from a desktop browser.
+  const pickFileViaInput = (accept: string): Promise<File | null> => new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
   // Import the bookings export (.xls): from the linked file when one is
   // linked, otherwise pick a file first. This is the import that used
   // to live on the top bar; it now lives in the Link files panel.
   const importEventsFile = async () => {
     if (!venue) return;
     try {
-      let handle = bookingsHandleRef.current;
-      if (!handle) {
-        if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
+      const handle = bookingsHandleRef.current;
+      if (handle) {
+        handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue));
+      } else if (hasFileSystemAccess()) {
         const picked = await pickLinkedFile({ types: [{ description: 'Events file', accept: { 'application/vnd.ms-excel': ['.xls', '.xlsx'] } }] });
         if (!picked) return;
-        handle = picked;
-        bookingsHandleRef.current = handle;
-        const name = handle.name;
-        setLinkedFiles(current => ({ ...current, bookings: name }));
-        await saveLinkedHandle('bookings', handle);
+        bookingsHandleRef.current = picked;
+        setLinkedFiles(current => ({ ...current, bookings: picked.name }));
+        await saveLinkedHandle('bookings', picked);
+        handleBookingsLoaded(await parseBookingWorkbook(await picked.getFile(), venue));
+      } else {
+        const file = await pickFileViaInput('.xls,.xlsx,.xml,.csv');
+        if (!file) return;
+        handleBookingsLoaded(await parseBookingWorkbook(file, venue));
       }
-      handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -721,7 +735,6 @@ export default function App() {
         onToday={() => scrollToTodayRef.current?.()}
         saving={saving}
         linkedFiles={linkedFiles}
-        canLinkFiles={hasFileSystemAccess()}
         editorLockName={editorLock && editorLock.id !== editorSessionId && Date.now() - editorLock.at < EDITOR_LOCK_TTL_MS ? editorLock.name : null}
         onOpenLinkFiles={() => setLinkFilesOpen(true)}
         onOpenPrint={openPrintDialog}
@@ -791,11 +804,12 @@ export default function App() {
             <header>
               <h2>Link files</h2>
               <p>The board works from two files in one folder — the bookings export and the venue YAML — plus the board file the editor publishes. Link them here and the app writes changes back to the same files instead of downloading new copies.</p>
+              {!hasFileSystemAccess() && <p>This browser cannot link files — linking needs Chrome or Edge on a desktop. You can still import a bookings file here and download the board; link the files from a desktop browser and Refresh will re-read the bookings export.</p>}
             </header>
             <table><thead><tr><th>File</th><th>Linked</th><th></th></tr></thead><tbody>
-              <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile}>Link</button> <button onClick={importEventsFile} disabled={!venue}>Import</button></td></tr>
-              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Save as</button></td></tr>
-              <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile}>Open</button> <button onClick={linkBoardFileAsNew}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
+              <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Link</button> <button onClick={importEventsFile} disabled={!venue}>Import</button></td></tr>
+              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Save as</button></td></tr>
+              <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Open</button> <button onClick={linkBoardFileAsNew} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
             </tbody></table>
             <p>Linking the bookings export lets Refresh re-read it. The board file is written automatically whenever the editor changes the board.</p>
             <p><button onClick={() => { setSetupWizardOpen(true); setLinkFilesOpen(false); }}>Set up a new venue</button></p>
@@ -812,10 +826,11 @@ export default function App() {
             <header>
               <h2>Welcome to the whiteboard</h2>
               <p>No venue is set up yet. Set one up from its booking file, or link a venue YAML you already have.</p>
+              {!hasFileSystemAccess() && <p>Linking files needs Chrome or Edge on a desktop, so on this browser set up a new venue from its booking file instead.</p>}
             </header>
             <footer>
               <button onClick={dismissWelcome}>Not now</button>
-              <button onClick={linkYamlFile}>Link an existing venue file</button>
+              {hasFileSystemAccess() && <button onClick={linkYamlFile}>Link an existing venue file</button>}
               <button className="primary" onClick={() => setSetupWizardOpen(true)}>Set up a new venue</button>
             </footer>
           </section>
