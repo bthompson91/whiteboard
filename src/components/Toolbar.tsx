@@ -12,6 +12,7 @@ interface Props {
   saving: boolean;
   linkedFiles: { board: string | null; yaml: string | null; changes: string | null; bookings: string | null };
   canLinkFiles: boolean;
+  editorLockName: string | null;
   onToggleEditing: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
@@ -22,7 +23,7 @@ interface Props {
 }
 export default function Toolbar({
   venue, bookingCount, role, contributorName, editingEnabled, markupMode, error, revision,
-  saving, linkedFiles, canLinkFiles,
+  saving, linkedFiles, canLinkFiles, editorLockName,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration,
   onRoleChange, onContributorNameChange, onSaveAndRefresh, onOpenLinkFiles
 }: Props) {
@@ -32,8 +33,9 @@ export default function Toolbar({
       <select value={role} onChange={event => onRoleChange(event.target.value as BoardRole)} aria-label="User role">
         <option value="viewer">Viewer</option>
         <option value="contributor">Contributor</option>
-        <option value="master">Master</option>
+        <option value="editor">Editor</option>
       </select>
+      {editorLockName && <span title="Only one editor at a time">✏️ {editorLockName} is editing</span>}
       {role === 'contributor' && (
         <input
           value={contributorName}
@@ -42,7 +44,7 @@ export default function Toolbar({
           aria-label="Contributor name"
         />
       )}
-      {role === 'master' && (
+      {role === 'editor' && (
         <button onClick={onOpenConfiguration} title="Configuration">⚙️</button>
       )}
       <button onClick={onSaveAndRefresh} disabled={saving} title="Re-read the linked files, so the board shows what everyone else has saved. Any edit made in the last moment is written out first, so the refresh cannot lose it.">

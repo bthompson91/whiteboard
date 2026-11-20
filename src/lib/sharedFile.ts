@@ -1,4 +1,4 @@
-import { Booking, ContributorSubmission, ImportHistoryEntry, MarkupItem, SharedBoardFile } from '../types';
+import { Booking, ContributorSubmission, EditorLock, ImportHistoryEntry, MarkupItem, SharedBoardFile } from '../types';
 
 const SHARED_FILE_FORMAT = 'whiteboard-shared-board';
 
@@ -71,7 +71,8 @@ export function createSharedFile(
   revision: number,
   processedSubmissionIds: string[],
   history: ImportHistoryEntry[],
-  markup: MarkupItem[]
+  markup: MarkupItem[],
+  editorLock?: EditorLock | null
 ): SharedBoardFile {
   return {
     format: SHARED_FILE_FORMAT,
@@ -82,7 +83,8 @@ export function createSharedFile(
     submissions,
     processedSubmissionIds,
     history,
-    markup
+    markup,
+    editorLock: editorLock ?? null
   };
 }
 
@@ -99,15 +101,16 @@ export function parseSharedFile(text: string): SharedBoardFile {
     revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
     processedSubmissionIds: Array.isArray(parsed.processedSubmissionIds) ? parsed.processedSubmissionIds : [],
     history: Array.isArray(parsed.history) ? parsed.history : [],
-    markup: Array.isArray(parsed.markup) ? parsed.markup : []
+    markup: Array.isArray(parsed.markup) ? parsed.markup : [],
+    editorLock: parsed.editorLock && typeof parsed.editorLock === 'object' && typeof parsed.editorLock.id === 'string' && typeof parsed.editorLock.at === 'number' ? parsed.editorLock : null
   };
 }
 
 // changes.json — the ONE shared list of changes. Every contributor writes
 // their changes to this single file (it sits in the same folder as the
 // venue YAML and the events file), instead of each contributor having
-// their own file. The master imports it and yes/no's each change. The
-// list holds the pending submissions; a change the master has accepted
+// their own file. The editor imports it and yes/no's each change. The
+// list holds the pending submissions; a change the editor has accepted
 // or rejected is dropped from the list (its id is recorded as processed
 // in the board file, so it never comes back).
 const CHANGES_FILE_FORMAT = 'whiteboard-changes';

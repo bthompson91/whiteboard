@@ -1,4 +1,11 @@
-export type BoardRole = 'viewer' | 'contributor' | 'master';
+export type BoardRole = 'viewer' | 'contributor' | 'editor';
+// The editor lock: only one editor at a time. It lives in the shared
+// board file so every device that reads the board can see who holds
+// it. `id` is the browser session that holds it, `name` is the
+// editor's name, `at` is when it was last refreshed (epoch ms); a
+// lock older than the TTL is stale and can be taken over, so a
+// browser that closed without releasing does not lock everyone out.
+export interface EditorLock { name: string; id: string; at: number }
 
 export interface VenueRoom {
   id: string;
@@ -77,6 +84,7 @@ export interface SharedBoardFile {
   processedSubmissionIds: string[];
   history: ImportHistoryEntry[];
   markup: MarkupItem[];
+  editorLock?: EditorLock | null;
 }
 
 export interface ContributorFile {

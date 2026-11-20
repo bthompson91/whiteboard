@@ -242,7 +242,7 @@ try {
   check('a maximum below the minimum is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  room_width_min: 500\n  room_width_max: 100\n`, false); return false; } catch (e) { return String(e.message || e).includes('must not be less than the minimum'); } })());
 
   // --- changes.json: the one shared list of changes ---
-  // Everyone writes to the same file; the master imports it and yes/no's
+  // Everyone writes to the same file; the editor imports it and yes/no's
   // each change. No per-contributor files.
   const sampleSubmission = { id: 'submission-1', bookingId: 'booking-1', author: 'Alex', revisionBase: 3, createdAt: '2026-11-20T00:00:00.000Z', updatedAt: '2026-11-20T00:00:00.000Z', base: { id: 'booking-1', title: 'Gala' }, proposed: { id: 'booking-1', title: 'Gala Dinner' } };
   const changesText = serializeChangesFile([sampleSubmission]);
@@ -253,13 +253,20 @@ try {
   // --- Markup rides in the shared board file, so it shows on every device ---
   // Markup used to live only in each browser's local storage, so a note
   // or arrow drawn on one device never appeared on another. It now
-  // travels in the board file, which the master auto-writes and every
+  // travels in the board file, which the editor auto-writes and every
   // device re-reads on refresh.
   const sampleMarkup = [{ id: 'm1', type: 'text', text: 'Turn here', x: 10, y: 20, w: 120, h: 40, highlight: true }];
   const boardText = JSON.stringify(createSharedFile([], [], 1, [], [], sampleMarkup));
   const parsedBoard = parseSharedFile(boardText);
   check('markup round-trips through the shared board file', parsedBoard.markup.length === 1 && parsedBoard.markup[0].text === 'Turn here' && parsedBoard.markup[0].highlight === true, boardText);
   check('a board file written before markup default to no markup', parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })).markup.length === 0);
+  // --- The editor lock rides in the board file too, so only one editor ---
+  // holds it at a time. A lock round-trips; a board file written before
+  // the lock defaults to no lock.
+  const lock = { name: 'Alex', id: 'session-1', at: Date.now() };
+  const lockedBoard = parseSharedFile(JSON.stringify(createSharedFile([], [], 1, [], [], [], lock)));
+  check('the editor lock round-trips through the shared board file', lockedBoard.editorLock?.name === 'Alex' && lockedBoard.editorLock?.id === 'session-1' && typeof lockedBoard.editorLock?.at === 'number', JSON.stringify(lockedBoard.editorLock));
+  check('a board file written before the lock defaults to no lock', parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })).editorLock === null);
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
   check('Unavailable resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
   check('unavailable tick box renders grey', bookingColour({ unavailable: true, salespersonId: 'sp-1' }, palette) === '#9aa0a6');
