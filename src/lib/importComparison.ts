@@ -64,30 +64,36 @@ function matchScore(current: Booking, previous: Booking): number {
   const currentDate = new Date(current.date).getTime();
   const previousDate = new Date(previous.date).getTime();
   const dayDifference = Math.abs(currentDate - previousDate) / 86400000;
-  const dateScore = dayDifference === 0 ? 20 : dayDifference <= 1 ? 10 : 0;
+  // The display name (the title on the block) and the date are weighted
+  // most heavily: a match must be the same event on the same day to be
+  // trusted. Name 40 + date 30 is 70 of 100, so a match that gets the
+  // name or the date wrong cannot reach 80% certainty. The date gets no
+  // partial credit for being a day off: an event that moved a day is a
+  // possible match to confirm, not an automatic one.
+  const dateScore = dayDifference === 0 ? 30 : 0;
 
   const currentStart = minutes(current.startTime);
   const currentEnd = currentStart + duration(current);
   const previousStart = minutes(previous.startTime);
   const previousEnd = previousStart + duration(previous);
   const overlap = Math.max(0, Math.min(currentEnd, previousEnd) - Math.max(currentStart, previousStart));
-  const timeScore = overlap ? (overlap / Math.min(duration(current), duration(previous))) * 20 : 0;
+  const timeScore = overlap ? (overlap / Math.min(duration(current), duration(previous))) * 15 : 0;
 
   const currentRooms = new Set(current.roomIds);
   const previousRooms = new Set(previous.roomIds);
   const roomIntersection = [...currentRooms].filter(room => previousRooms.has(room)).length;
   const roomUnion = new Set([...currentRooms, ...previousRooms]).size;
-  const roomScore = roomUnion ? (roomIntersection / roomUnion) * 20 : 0;
+  const roomScore = roomUnion ? (roomIntersection / roomUnion) * 10 : 0;
 
-  const nameScore = titleSimilarity(current.title, previous.title) * 30;
+  const nameScore = titleSimilarity(current.title, previous.title) * 40;
   const durationDifference = Math.abs(duration(current) - duration(previous));
-  const durationScore = (1 - durationDifference / Math.max(duration(current), duration(previous))) * 10;
+  const durationScore = (1 - durationDifference / Math.max(duration(current), duration(previous))) * 5;
 
   return Math.round(dateScore + timeScore + roomScore + nameScore + durationScore);
 }
 
 function classify(score: number): MatchClassification {
-  if (score >= 70) return 'strong';
+  if (score >= 80) return 'strong';
   if (score >= 45) return 'possible';
   return 'unmatched';
 }

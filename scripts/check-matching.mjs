@@ -31,7 +31,7 @@ try {
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
-  const { blocksFor, strongBorders, likeBookings, blockCountForBookings } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
 
@@ -87,6 +87,38 @@ try {
   );
   const fuzzy = result.changes.find(c => c.type === 'new')?.match;
   check('title+time change finds a fuzzy match', !!fuzzy && fuzzy.classification !== 'unmatched' && !fuzzy.reason, JSON.stringify(fuzzy));
+
+  // --- Matching weights: display name and date dominate ---
+  // Same name and date, two other fields changed, still reaches 80%:
+  // name 40 + date 30 carry it even with different rooms and a shifted
+  // time, so it is a strong match (checked by default).
+  result = compareImports(
+    [booking()],
+    [booking({ id: 'booking-10', startTime: '19:00', endTime: '23:00', roomId: 'Palladium B', roomIds: ['Palladium B'] })],
+    'Venue'
+  );
+  const sameNameDate = result.changes.find(c => c.type === 'new')?.match;
+  check('same name and date reaches 80% despite other changes', !!sameNameDate && sameNameDate.score >= 80 && sameNameDate.classification === 'strong', JSON.stringify(sameNameDate));
+  // Same name, time and rooms but a different date cannot reach 80%:
+  // the date is worth 30 and gets no credit when it differs, so the
+  // match is possible (left unchecked) rather than strong.
+  result = compareImports(
+    [booking()],
+    [booking({ id: 'booking-11', date: '2026-11-21' })],
+    'Venue'
+  );
+  const otherDate = result.changes.find(c => c.type === 'new')?.match;
+  check('different date cannot reach 80% even when everything else matches', !!otherDate && otherDate.score < 80 && otherDate.classification === 'possible', JSON.stringify(otherDate));
+
+  // --- Time scale: 00:00-06:00 is half height per hour ---
+  // The 6 night hours take 3 units, the 18 day hours 18 units, 21 in
+  // total, so a day hour is twice a night hour and daytime bookings
+  // read bigger.
+  check('midnight is the top of the day', timeFraction(0) === 0);
+  check('06:00 is 3/21 of the day height', Math.abs(timeFraction(360) - 3 / 21) < 1e-9, String(timeFraction(360)));
+  check('midnight next day is the bottom', timeFraction(1440) === 1);
+  check('a day hour is twice a night hour', Math.abs((timeFraction(780) - timeFraction(720)) - 2 * (timeFraction(60) - timeFraction(0))) < 1e-9);
+  check('a 3-hour daytime booking is twice a 3-hour night booking', Math.abs((timeFraction(720) - timeFraction(540)) - 2 * (timeFraction(180) - timeFraction(0))) < 1e-9);
 
   // --- Disappeared bookings carry their previous record (no render crash) ---
   result = compareImports([booking(), booking({ id: 'booking-2', title: 'Other Event' })], [booking()], 'Venue');

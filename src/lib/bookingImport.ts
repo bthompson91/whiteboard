@@ -28,6 +28,21 @@ export function readPreviousImport(): BookingSnapshot | null {
     return null;
   }
 }
+// The live board, saved on every change. A re-import must carry colour,
+// salesperson and other edits from the board as it is now, not from the
+// snapshot taken at the last publish — otherwise re-importing the exact
+// same file after colour-coding loses every colour, because that
+// snapshot is stale. Prefer the board cache; fall back to the previous
+// import when the board is empty.
+const BOARD_CACHE_KEY = 'whiteboard-board-cache';
+function readBoardCache(): Booking[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BOARD_CACHE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 export function savePreviousImport(bookings: Booking[]) {
   try {
     const snapshot: BookingSnapshot = { importedAt: new Date().toISOString(), bookings };
@@ -82,8 +97,10 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
     labels = config?.timeline_items || [];
   } catch { /* Config was already validated by the venue loader. */ }
   const previous = readPreviousImport();
+  const boardCache = readBoardCache();
+  const previousBookings = boardCache.length ? boardCache : (previous?.bookings || []);
   const previousByIdentity = new Map<string, Booking>();
-  for (const booking of previous?.bookings || []) {
+  for (const booking of previousBookings) {
     const identity = identityKey(booking as BoardBooking, venue.name);
     if (!previousByIdentity.has(identity)) previousByIdentity.set(identity, booking);
   }
@@ -139,7 +156,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
     } else result.push(b);
   }
   if (!result.length) throw new Error('No matching bookings found. Check headers, room mappings and allowed statuses.');
-  const comparison = compareImports(previous?.bookings || null, result, venue.name);
+  const comparison = compareImports(previousBookings.length ? previousBookings : null, result, venue.name);
   return {
     bookings: result,
     comparison,

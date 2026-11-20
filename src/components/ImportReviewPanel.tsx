@@ -18,7 +18,15 @@ const allSelected = (result: ImportResult) =>
   Object.fromEntries(
     result.comparison.changes
       .filter(change => change.type !== 'unchanged')
-      .map(change => [changeKey(change), true])
+      .map(change => [
+        changeKey(change),
+        // A match under 80% certainty is left unchecked: the user must
+        // tick it to apply it, so an uncertain match never merges the
+        // wrong bookings (and their colour) by default. Anything else
+        // — an exact match, a changed booking, a new booking with no
+        // match, a disappeared booking — is checked.
+        !(change.type === 'new' && change.match && change.match.score < 80)
+      ])
   );
 export default function ImportReviewPanel({ result, hasDuplicate, canUndoLink, onApply, onLinkMatch, onUndoLink, onCancel }: Props) {
   const actionable = useMemo(
