@@ -22,15 +22,18 @@ import {
   createSubmission,
   downloadSharedFile,
   hasFileSystemAccess,
+  loadLinkedHandle,
   parseSharedFile,
   pickLinkedFile,
   pickLinkedFileToSave,
   readChangesFileFromHandle,
   readSharedFileFromHandle,
+  saveLinkedHandle,
   writeChangesFileToHandle,
   writeLinkedFile,
   writeSharedFileToHandle,
-  LinkedFileHandle
+  LinkedFileHandle,
+  StoredFileHandle
 } from './lib/sharedFile';
 import { parseVenueConfig } from './lib/venueConfig';
 import { boardSettings, readConfiguration } from './lib/configuration';
@@ -135,6 +138,40 @@ export default function App() {
   // when the role or the saving state changes.
   const processedIdsRef = useRef<string[]>(processedSubmissionIds);
   processedIdsRef.current = processedSubmissionIds;
+  // Restore the linked files from the previous session. Handles are
+  // kept in IndexedDB — they cannot go in localStorage, which only
+  // holds strings — so the links survive a reload and a new version of
+  // the app. A stored handle is only reused when the browser still
+  // grants permission for it; otherwise it stays unlinked and the Link
+  // files button shows red until it is linked again.
+  useEffect(() => {
+    if (!hasFileSystemAccess()) return;
+    let cancelled = false;
+    (async () => {
+      const entries: { key: 'board' | 'yaml' | 'changes' | 'bookings'; ref: React.MutableRefObject<LinkedFileHandle | null>; mode: 'read' | 'readwrite' }[] = [
+        { key: 'board', ref: boardHandleRef, mode: 'readwrite' },
+        { key: 'yaml', ref: yamlHandleRef, mode: 'readwrite' },
+        { key: 'changes', ref: changesHandleRef, mode: 'readwrite' },
+        { key: 'bookings', ref: bookingsHandleRef, mode: 'read' }
+      ];
+      for (const { key, ref, mode } of entries) {
+        try {
+          const handle = await loadLinkedHandle(key);
+          if (!handle || cancelled) continue;
+          const stored = handle as StoredFileHandle;
+          const permission = typeof stored.queryPermission === 'function'
+            ? await stored.queryPermission({ mode })
+            : 'granted';
+          if (permission !== 'granted') continue;
+          ref.current = handle;
+          setLinkedFiles(current => ({ ...current, [key]: handle.name }));
+        } catch {
+          // A stored handle that cannot be read stays unlinked.
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     try {
       localStorage.setItem(MARKUP_KEY, JSON.stringify(markup));
@@ -399,6 +436,7 @@ export default function App() {
       const shared = await readSharedFileFromHandle(handle);
       boardHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, board: handle.name }));
+      await saveLinkedHandle('board', handle);
       setBookings(shared.bookings);
       setSubmissions(shared.submissions.filter(s => !processedSubmissionIds.includes(s.id)));
       setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
@@ -416,6 +454,7 @@ export default function App() {
       if (!handle) return;
       boardHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, board: handle.name }));
+      await saveLinkedHandle('board', handle);
       await writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup));
       setError(null);
     } catch (e) {
@@ -432,6 +471,7 @@ export default function App() {
       parseVenueConfig(text);
       yamlHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, yaml: handle.name }));
+      await saveLinkedHandle('yaml', handle);
       localStorage.setItem(VENUE_YAML_KEY, text);
       setYamlText(text);
       setError(null);
@@ -453,6 +493,7 @@ export default function App() {
       }
       changesHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, changes: handle.name }));
+      await saveLinkedHandle('changes', handle);
       await importChanges();
       setError(null);
     } catch (e) {
@@ -466,6 +507,7 @@ export default function App() {
       if (!handle) return;
       bookingsHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, bookings: handle.name }));
+      await saveLinkedHandle('bookings', handle);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -486,6 +528,7 @@ export default function App() {
         bookingsHandleRef.current = handle;
         const name = handle.name;
         setLinkedFiles(current => ({ ...current, bookings: name }));
+        await saveLinkedHandle('bookings', handle);
       }
       handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue));
       setError(null);

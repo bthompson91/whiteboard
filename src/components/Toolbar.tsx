@@ -49,7 +49,13 @@ export default function Toolbar({
         {saving ? 'Refreshing…' : '🔄 Refresh'}
       </button>
       {canLinkFiles && (
-        <button onClick={onOpenLinkFiles} title="Link the bookings export, venue YAML, changes.json and board file">
+        <button
+          onClick={onOpenLinkFiles}
+          title="Link the bookings export, venue YAML, changes.json and board file"
+          // Red while any file is unlinked, so it is obvious at a glance
+          // that the board is not yet reading and writing its files.
+          style={!(linkedFiles.board && linkedFiles.yaml && linkedFiles.changes && linkedFiles.bookings) ? { backgroundColor: '#c62828', borderColor: '#c62828', color: '#fff' } : undefined}
+        >
           🔗 Link files{linkedFiles.changes ? ` (${linkedFiles.changes})` : ''}
         </button>
       )}

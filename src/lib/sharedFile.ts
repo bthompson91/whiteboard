@@ -157,6 +157,44 @@ export type LinkedFileHandle = {
   getFile(): Promise<File>;
   createWritable(): Promise<{ write(data: Blob | string): Promise<void>; close(): Promise<void> }>;
 };
+// A stored file handle, with the permission methods the File System
+// Access API provides. The raw handle carries these; LinkedFileHandle
+// is the structural shape the app uses day to day.
+export type StoredFileHandle = LinkedFileHandle & {
+  queryPermission(options?: { mode?: 'read' | 'readwrite' }): Promise<'granted' | 'denied' | 'prompt'>;
+  requestPermission(options?: { mode?: 'read' | 'readwrite' }): Promise<'granted' | 'denied' | 'prompt'>;
+};
+// Linked handles, kept across sessions. A file handle cannot go in
+// localStorage (it is not a string), but IndexedDB can hold it, so the
+// links survive a reload and a new version of the app. The handles are
+// keyed by which file they are: board, yaml, changes, bookings.
+const LINKED_DB = 'whiteboard-linked-files';
+const LINKED_STORE = 'handles';
+function openLinkedDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(LINKED_DB, 1);
+    request.onupgradeneeded = () => { request.result.createObjectStore(LINKED_STORE); };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+export async function saveLinkedHandle(key: string, handle: LinkedFileHandle): Promise<void> {
+  const db = await openLinkedDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LINKED_STORE, 'readwrite');
+    tx.objectStore(LINKED_STORE).put(handle, key);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+export async function loadLinkedHandle(key: string): Promise<LinkedFileHandle | null> {
+  const db = await openLinkedDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(LINKED_STORE, 'readonly').objectStore(LINKED_STORE).get(key);
+    request.onsuccess = () => { db.close(); resolve((request.result as LinkedFileHandle) || null); };
+    request.onerror = () => { db.close(); reject(request.error); };
+  });
+}
 export function hasFileSystemAccess(): boolean {
   return typeof window !== 'undefined' && typeof (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker === 'function';
 }
