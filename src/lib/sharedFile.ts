@@ -1,75 +1,10 @@
-import { Booking, ContributorSubmission, EditorLock, ImportHistoryEntry, MarkupItem, SharedBoardFile } from '../types';
+import { Booking, EditorLock, ImportHistoryEntry, MarkupItem, SharedBoardFile } from '../types';
 
 const SHARED_FILE_FORMAT = 'whiteboard-shared-board';
 
-export function createSubmission(
-  booking: Booking,
-  current: Booking,
-  author: string,
-  revisionBase: number
-): ContributorSubmission {
-  const now = new Date().toISOString();
-  return {
-    id: `submission-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    bookingId: booking.id,
-    author,
-    revisionBase,
-    createdAt: now,
-    updatedAt: now,
-    base: { ...current },
-    proposed: { ...booking }
-  };
-}
-
-export function hasConflict(submission: ContributorSubmission, current: Booking | undefined): boolean {
-  if (!current) return true;
-  return JSON.stringify(submission.base) !== JSON.stringify(current);
-}
-
-export function conflictingFields(submission: ContributorSubmission, current: Booking | undefined): string[] {
-  if (!current) return ['booking'];
-  const fields: Array<[string, (booking: Booking) => unknown]> = [
-    ['title', booking => booking.title],
-    ['date', booking => booking.date],
-    ['job number', booking => booking.jobNumber || ''],
-    ['start time', booking => booking.startTime],
-    ['end time', booking => booking.endTime],
-    ['rooms', booking => [...booking.roomIds].sort()],
-    ['status', booking => booking.status || ''],
-    ['salesperson', booking => booking.salespersonId || ''],
-    ['colour', booking => booking.colour || ''],
-    ['hidden', booking => booking.hidden ? 'hidden' : 'visible'],
-    ['notes', booking => booking.notes || '']
-  ];
-  return fields
-    .filter(([field, read]) => field && JSON.stringify(read(submission.base)) !== JSON.stringify(read(current)))
-    .map(([field]) => field);
-}
-
-export function submissionChanges(submission: ContributorSubmission): string[] {
-  const fields: Array<[string, (booking: Booking) => unknown]> = [
-    ['title', booking => booking.title],
-    ['date', booking => booking.date],
-    ['job number', booking => booking.jobNumber || ''],
-    ['start time', booking => booking.startTime],
-    ['end time', booking => booking.endTime],
-    ['rooms', booking => [...booking.roomIds].sort()],
-    ['status', booking => booking.status || ''],
-    ['salesperson', booking => booking.salespersonId || ''],
-    ['colour', booking => booking.colour || ''],
-    ['hidden', booking => booking.hidden ? 'hidden' : 'visible'],
-    ['notes', booking => booking.notes || '']
-  ];
-  return fields
-    .filter(([field, read]) => field && JSON.stringify(read(submission.base)) !== JSON.stringify(read(submission.proposed)))
-    .map(([field]) => field);
-}
-
 export function createSharedFile(
   bookings: Booking[],
-  submissions: ContributorSubmission[],
   revision: number,
-  processedSubmissionIds: string[],
   history: ImportHistoryEntry[],
   markup: MarkupItem[],
   editorLock?: EditorLock | null
@@ -80,8 +15,6 @@ export function createSharedFile(
     revision,
     exportedAt: new Date().toISOString(),
     bookings,
-    submissions,
-    processedSubmissionIds,
     history,
     markup,
     editorLock: editorLock ?? null
@@ -93,46 +26,16 @@ export function parseSharedFile(text: string): SharedBoardFile {
   if (parsed?.format !== SHARED_FILE_FORMAT || parsed.version !== 1) {
     throw new Error('This file is not a compatible Whiteboard published-board file.');
   }
-  if (!Array.isArray(parsed.bookings) || !Array.isArray(parsed.submissions)) {
-    throw new Error('The published-board file is missing bookings or contributor submissions.');
+  if (!Array.isArray(parsed.bookings)) {
+    throw new Error('The published-board file is missing bookings.');
   }
   return {
     ...parsed,
     revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
-    processedSubmissionIds: Array.isArray(parsed.processedSubmissionIds) ? parsed.processedSubmissionIds : [],
     history: Array.isArray(parsed.history) ? parsed.history : [],
     markup: Array.isArray(parsed.markup) ? parsed.markup : [],
     editorLock: parsed.editorLock && typeof parsed.editorLock === 'object' && typeof parsed.editorLock.id === 'string' && typeof parsed.editorLock.at === 'number' ? parsed.editorLock : null
   };
-}
-
-// changes.json — the ONE shared list of changes. Every contributor writes
-// their changes to this single file (it sits in the same folder as the
-// venue YAML and the events file), instead of each contributor having
-// their own file. The editor imports it and yes/no's each change. The
-// list holds the pending submissions; a change the editor has accepted
-// or rejected is dropped from the list (its id is recorded as processed
-// in the board file, so it never comes back).
-const CHANGES_FILE_FORMAT = 'whiteboard-changes';
-export interface ChangesFile { format: string; version: number; submissions: ContributorSubmission[] }
-export function serializeChangesFile(submissions: ContributorSubmission[]): string {
-  return JSON.stringify({ format: CHANGES_FILE_FORMAT, version: 1, submissions } as ChangesFile, null, 2);
-}
-export function parseChangesFile(text: string): ChangesFile {
-  const parsed = JSON.parse(text) as ChangesFile;
-  if (parsed?.format !== CHANGES_FILE_FORMAT || parsed.version !== 1) {
-    throw new Error('This file is not a compatible Whiteboard changes file.');
-  }
-  if (!Array.isArray(parsed.submissions)) {
-    throw new Error('The changes file is missing submissions.');
-  }
-  return { ...parsed, submissions: parsed.submissions };
-}
-export async function writeChangesFileToHandle(handle: LinkedFileHandle, submissions: ContributorSubmission[]): Promise<void> {
-  await writeLinkedFile(handle, serializeChangesFile(submissions));
-}
-export async function readChangesFileFromHandle(handle: LinkedFileHandle): Promise<ChangesFile> {
-  return parseChangesFile(await readLinkedFile(handle));
 }
 
 function downloadJson(data: unknown, filename: string) {
@@ -170,7 +73,7 @@ export type StoredFileHandle = LinkedFileHandle & {
 // Linked handles, kept across sessions. A file handle cannot go in
 // localStorage (it is not a string), but IndexedDB can hold it, so the
 // links survive a reload and a new version of the app. The handles are
-// keyed by which file they are: board, yaml, changes, bookings.
+// keyed by which file they are: board, yaml, bookings.
 const LINKED_DB = 'whiteboard-linked-files';
 const LINKED_STORE = 'handles';
 function openLinkedDb(): Promise<IDBDatabase> {

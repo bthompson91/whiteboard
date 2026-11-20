@@ -4,46 +4,46 @@ interface Props {
   venue: ParsedVenueConfig | null;
   bookingCount: number;
   role: BoardRole;
-  contributorName: string;
+  displayName: string;
   editingEnabled: boolean;
   markupMode: 'none' | 'text' | 'arrow';
   error: string | null;
   revision: number;
   saving: boolean;
-  linkedFiles: { board: string | null; yaml: string | null; changes: string | null; bookings: string | null };
+  linkedFiles: { board: string | null; yaml: string | null; bookings: string | null };
   canLinkFiles: boolean;
   editorLockName: string | null;
   onToggleEditing: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
   onRoleChange: (role: BoardRole) => void;
-  onContributorNameChange: (name: string) => void;
+  onDisplayNameChange: (name: string) => void;
   onSaveAndRefresh: () => void;
   onOpenLinkFiles: () => void;
 }
 export default function Toolbar({
-  venue, bookingCount, role, contributorName, editingEnabled, markupMode, error, revision,
+  venue, bookingCount, role, displayName, editingEnabled, markupMode, error, revision,
   saving, linkedFiles, canLinkFiles, editorLockName,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration,
-  onRoleChange, onContributorNameChange, onSaveAndRefresh, onOpenLinkFiles
+  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onOpenLinkFiles
 }: Props) {
   return (
     <header className="toolbar">
       <strong>{venue?.name || 'Venue Booking Whiteboard'}</strong>
       <select value={role} onChange={event => onRoleChange(event.target.value as BoardRole)} aria-label="User role">
         <option value="viewer">Viewer</option>
-        <option value="contributor">Contributor</option>
         <option value="editor">Editor</option>
       </select>
-      {editorLockName && <span title="Only one editor at a time">✏️ {editorLockName} is editing</span>}
-      {role === 'contributor' && (
+      {role === 'editor' && (
         <input
-          value={contributorName}
-          onChange={event => onContributorNameChange(event.target.value)}
+          value={displayName}
+          onChange={event => onDisplayNameChange(event.target.value)}
           placeholder="Your name"
-          aria-label="Contributor name"
+          aria-label="Your name"
+          title="Shown to everyone else while you hold the editor lock"
         />
       )}
+      {editorLockName && <span title="Only one editor at a time">✏️ {editorLockName} is editing</span>}
       {role === 'editor' && (
         <button onClick={onOpenConfiguration} title="Configuration">⚙️</button>
       )}
@@ -53,12 +53,12 @@ export default function Toolbar({
       {canLinkFiles && (
         <button
           onClick={onOpenLinkFiles}
-          title="Link the bookings export, venue YAML, changes.json and board file"
+          title="Link the bookings export, venue YAML and board file"
           // Red while any file is unlinked, so it is obvious at a glance
           // that the board is not yet reading and writing its files.
-          style={!(linkedFiles.board && linkedFiles.yaml && linkedFiles.changes && linkedFiles.bookings) ? { backgroundColor: '#c62828', borderColor: '#c62828', color: '#fff' } : undefined}
+          style={!(linkedFiles.board && linkedFiles.yaml && linkedFiles.bookings) ? { backgroundColor: '#c62828', borderColor: '#c62828', color: '#fff' } : undefined}
         >
-          🔗 Link files{linkedFiles.changes ? ` (${linkedFiles.changes})` : ''}
+          🔗 Link files{linkedFiles.board ? ` (${linkedFiles.board})` : ''}
         </button>
       )}
       <span>{`${bookingCount} bookings · rev ${revision}`}</span>

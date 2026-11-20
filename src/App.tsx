@@ -2,11 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import BookingGrid from './components/BookingGrid';
 import ImportHistoryPanel from './components/ImportHistoryPanel';
 import ImportReviewPanel from './components/ImportReviewPanel';
-import SubmissionReviewPanel from './components/SubmissionReviewPanel';
 import MarkupLayer from './components/MarkupLayer';
 import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
-import { BoardRole, Booking, ContributorSubmission, EditorLock, ImportHistoryEntry, MarkupItem } from './types';
+import { BoardRole, Booking, EditorLock, ImportHistoryEntry, MarkupItem } from './types';
 import {
   ImportResult,
   parseBookingWorkbook,
@@ -19,17 +18,14 @@ import { BookingChange, compareImports } from './lib/importComparison';
 import { mergeMatchedBooking } from './lib/reviewApply';
 import {
   createSharedFile,
-  createSubmission,
   downloadSharedFile,
   hasFileSystemAccess,
   loadLinkedHandle,
   parseSharedFile,
   pickLinkedFile,
   pickLinkedFileToSave,
-  readChangesFileFromHandle,
   readSharedFileFromHandle,
   saveLinkedHandle,
-  writeChangesFileToHandle,
   writeLinkedFile,
   writeSharedFileToHandle,
   LinkedFileHandle,
@@ -40,7 +36,7 @@ import { boardSettings, readConfiguration } from './lib/configuration';
 const MARKUP_KEY = 'whiteboard-markup';
 const VENUE_YAML_KEY = 'whiteboard-venue-yaml';
 const ROLE_KEY = 'whiteboard-role';
-const CONTRIBUTOR_KEY = 'whiteboard-contributor-name';
+const DISPLAY_NAME_KEY = 'whiteboard-display-name';
 const EDITOR_SESSION_KEY = 'whiteboard-editor-session';
 // The editor lock: only one editor at a time. The lock lives in the
 // shared board file and is refreshed every 30s while someone is the
@@ -48,10 +44,8 @@ const EDITOR_SESSION_KEY = 'whiteboard-editor-session';
 // browser that closed without releasing does not lock everyone out.
 const EDITOR_LOCK_TTL_MS = 120000;
 const EDITOR_LOCK_HEARTBEAT_MS = 30000;
-const SUBMISSIONS_KEY = 'whiteboard-contributor-submissions';
 const BOARD_CACHE_KEY = 'whiteboard-board-cache';
 const REVISION_KEY = 'whiteboard-board-revision';
-const PROCESSED_KEY = 'whiteboard-processed-submissions';
 const HISTORY_KEY = 'whiteboard-import-history';
 function startup() {
   try {
@@ -70,25 +64,9 @@ function storedMarkup(): MarkupItem[] {
     return [];
   }
 }
-function storedSubmissions(): ContributorSubmission[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 function storedBoard(): Booking[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(BOARD_CACHE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-function storedProcessed(): string[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(PROCESSED_KEY) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -105,9 +83,10 @@ export default function App() {
   );
   const [role, setRole] = useState<BoardRole>(() => {
     const stored = localStorage.getItem(ROLE_KEY);
-    // The old 'master' role is now 'editor'; a stored master migrates.
+    // The old 'master' and 'contributor' roles are gone; a stored one
+    // falls back to viewer.
     if (stored === 'master') return 'editor';
-    return stored === 'viewer' || stored === 'contributor' || stored === 'editor' ? stored : 'viewer';
+    return stored === 'viewer' || stored === 'editor' ? stored : 'viewer';
   });
   // The editor lock, as this browser last saw it. A session id that
   // survives reloads, so this browser recognises its own lock after a
@@ -123,43 +102,35 @@ export default function App() {
   const editorLockRef = useRef<EditorLock | null>(null);
   editorLockRef.current = editorLock;
   const [pendingRole, setPendingRole] = useState<BoardRole | null>(null);
-  const [contributorName, setContributorName] = useState(() => localStorage.getItem(CONTRIBUTOR_KEY) || 'Contributor');
+  // The name shown on the editor lock, so other devices can see who is
+  // editing. It falls back to the old contributor name when present.
+  const [displayName, setDisplayName] = useState(() => localStorage.getItem(DISPLAY_NAME_KEY) || localStorage.getItem('whiteboard-contributor-name') || 'Editor');
   const [bookings, setBookings] = useState<Booking[]>(storedBoard);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
   const [linkHistory, setLinkHistory] = useState<ImportResult[]>([]);
-  const [submissions, setSubmissions] = useState<ContributorSubmission[]>(storedSubmissions);
-  const [processedSubmissionIds, setProcessedSubmissionIds] = useState<string[]>(storedProcessed);
   const [revision, setRevision] = useState<number>(() => Number(localStorage.getItem(REVISION_KEY)) || 1);
   const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(readImportHistory);
-  const [submissionsOpen, setSubmissionsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [markup, setMarkup] = useState<MarkupItem[]>(storedMarkup);
   const [editingEnabled, setEditingEnabled] = useState(false);
   const [markupMode, setMarkupMode] = useState<'none' | 'text' | 'arrow'>('none');
   const [error, setError] = useState<string | null>(initial.error);
   const [configurationOpen, setConfigurationOpen] = useState(false);
-  // The linked files. The board works from three files that sit in one
-  // folder: the bookings export, the venue YAML and changes.json (the
-  // one shared list of changes). The board JSON itself is a fourth file
-  // the editor publishes. Each is a File System Access handle, kept in a
-  // ref (handles are not serialisable), with the linked filename in
-  // state so the toolbar can show it. The handles last for this page
-  // load; linking again after a reload picks the same files.
+  // The linked files. The board works from two files that sit in one
+  // folder: the bookings export and the venue YAML. The board JSON
+  // itself is a third file the editor publishes. Each is a File System
+  // Access handle, kept in a ref (handles are not serialisable), with
+  // the linked filename in state so the toolbar can show it. The
+  // handles last for this page load; linking again after a reload
+  // picks the same files.
   const boardHandleRef = useRef<LinkedFileHandle | null>(null);
   const yamlHandleRef = useRef<LinkedFileHandle | null>(null);
-  const changesHandleRef = useRef<LinkedFileHandle | null>(null);
   const bookingsHandleRef = useRef<LinkedFileHandle | null>(null);
-  const [linkedFiles, setLinkedFiles] = useState<{ board: string | null; yaml: string | null; changes: string | null; bookings: string | null }>({ board: null, yaml: null, changes: null, bookings: null });
+  const [linkedFiles, setLinkedFiles] = useState<{ board: string | null; yaml: string | null; bookings: string | null }>({ board: null, yaml: null, bookings: null });
   const [linkFilesOpen, setLinkFilesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const writingChangesRef = useRef(false);
-  // The auto-refresh interval reads this, so it always sees the latest
-  // processed ids even though the interval itself is only re-created
-  // when the role or the saving state changes.
-  const processedIdsRef = useRef<string[]>(processedSubmissionIds);
-  processedIdsRef.current = processedSubmissionIds;
   // Restore the linked files from the previous session. Handles are
   // kept in IndexedDB — they cannot go in localStorage, which only
   // holds strings — so the links survive a reload and a new version of
@@ -170,10 +141,9 @@ export default function App() {
     if (!hasFileSystemAccess()) return;
     let cancelled = false;
     (async () => {
-      const entries: { key: 'board' | 'yaml' | 'changes' | 'bookings'; ref: React.MutableRefObject<LinkedFileHandle | null>; mode: 'read' | 'readwrite' }[] = [
+      const entries: { key: 'board' | 'yaml' | 'bookings'; ref: React.MutableRefObject<LinkedFileHandle | null>; mode: 'read' | 'readwrite' }[] = [
         { key: 'board', ref: boardHandleRef, mode: 'readwrite' },
         { key: 'yaml', ref: yamlHandleRef, mode: 'readwrite' },
-        { key: 'changes', ref: changesHandleRef, mode: 'readwrite' },
         { key: 'bookings', ref: bookingsHandleRef, mode: 'read' }
       ];
       for (const { key, ref, mode } of entries) {
@@ -205,15 +175,8 @@ export default function App() {
     localStorage.setItem(ROLE_KEY, role);
   }, [role]);
   useEffect(() => {
-    localStorage.setItem(CONTRIBUTOR_KEY, contributorName);
-  }, [contributorName]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
-    } catch {
-      setError('Contributor submissions could not be saved in this browser.');
-    }
-  }, [submissions]);
+    localStorage.setItem(DISPLAY_NAME_KEY, displayName);
+  }, [displayName]);
   useEffect(() => {
     try {
       localStorage.setItem(BOARD_CACHE_KEY, JSON.stringify(bookings));
@@ -234,13 +197,6 @@ export default function App() {
   }, [revision]);
   useEffect(() => {
     try {
-      localStorage.setItem(PROCESSED_KEY, JSON.stringify(processedSubmissionIds));
-    } catch {
-      setError('Processed submission history could not be saved in this browser.');
-    }
-  }, [processedSubmissionIds]);
-  useEffect(() => {
-    try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(importHistory));
     } catch {
       // Each history entry holds a full board snapshot, so a long
@@ -256,51 +212,22 @@ export default function App() {
     }
   }, [importHistory]);
   // Constantly write the board back to its linked file. The editor owns
-  // the board file, so only the editor auto-writes it (a contributor's
-  // changes live in changes.json instead). Debounced, so dragging a
-  // colour across several bookings does not write on every keystroke.
-  // Markup rides along in the same file, so a note or arrow drawn on
-  // one device shows on every device that reads the board. The editor
-  // lock rides along too, so every device can see who is editing.
+  // the board file, so only the editor auto-writes it. Debounced, so
+  // dragging a colour across several bookings does not write on every
+  // keystroke. Markup rides along in the same file, so a note or arrow
+  // drawn on one device shows on every device that reads the board.
+  // The editor lock rides along too, so every device can see who is
+  // editing.
   useEffect(() => {
     const handle = boardHandleRef.current;
     if (!handle || role !== 'editor') return;
     const timer = window.setTimeout(() => {
-      writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup, editorLock)).catch(e => {
+      writeSharedFileToHandle(handle, createSharedFile(bookings, revision, importHistory, markup, editorLock)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [bookings, submissions, revision, processedSubmissionIds, importHistory, markup, editorLock, role]);
-  // Constantly write the shared changes list back to changes.json.
-  // Everyone writes to the same file, so this is a read-modify-write:
-  // it reads the file, keeps changes from other contributors that are
-  // not in this browser and have not been processed, lets this
-  // browser's list win for ids it holds, and drops anything already
-  // processed (accepted or rejected by the editor). A guard serialises
-  // writes so two rapid changes cannot interleave.
-  useEffect(() => {
-    const handle = changesHandleRef.current;
-    if (!handle) return;
-    const timer = window.setTimeout(async () => {
-      if (writingChangesRef.current) return;
-      writingChangesRef.current = true;
-      try {
-        let disk: ContributorSubmission[] = [];
-        try { disk = (await readChangesFileFromHandle(handle)).submissions; } catch { disk = []; }
-        const processed = new Set(processedSubmissionIds);
-        const byId = new Map<string, ContributorSubmission>();
-        for (const s of disk) if (!processed.has(s.id)) byId.set(s.id, s);
-        for (const s of submissions) byId.set(s.id, s);
-        await writeChangesFileToHandle(handle, [...byId.values()]);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        writingChangesRef.current = false;
-      }
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [submissions, processedSubmissionIds]);
+  }, [bookings, revision, importHistory, markup, editorLock, role]);
   const saveConfiguration = (text: string) => {
     readConfiguration(text);
     parseVenueConfig(text);
@@ -381,7 +308,7 @@ export default function App() {
     // Roles run on trust — this is an internal tool — but switching to a
     // role that can change the board for everyone should take a deliberate
     // click, not an idle dropdown change.
-    const rank: Record<BoardRole, number> = { viewer: 0, contributor: 1, editor: 2 };
+    const rank: Record<BoardRole, number> = { viewer: 0, editor: 1 };
     if (rank[next] > rank[role]) setPendingRole(next);
     else changeRole(next);
   };
@@ -392,7 +319,7 @@ export default function App() {
     if (role === 'editor' && next !== 'editor') {
       setEditorLock(null);
       if (boardHandleRef.current) {
-        writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup, null)).catch(() => {});
+        writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, null)).catch(() => {});
       }
     }
     setRole(next);
@@ -416,11 +343,11 @@ export default function App() {
       setError(`${lock.name || 'Someone'} is editing right now (since ${new Date(lock.at).toLocaleTimeString()}). Only one editor at a time — try again when they finish.`);
       return;
     }
-    const claimed: EditorLock = { name: contributorName || 'Editor', id: editorSessionId, at: Date.now() };
+    const claimed: EditorLock = { name: displayName || 'Editor', id: editorSessionId, at: Date.now() };
     setEditorLock(claimed);
     setRole('editor');
     if (boardHandleRef.current) {
-      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup, claimed)).catch(e => {
+      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, claimed)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }
@@ -435,49 +362,20 @@ export default function App() {
     }, EDITOR_LOCK_HEARTBEAT_MS);
     return () => window.clearInterval(timer);
   }, [role, editorSessionId]);
+  // Only the editor changes bookings, and only the editor's changes are
+  // kept: viewers cannot edit, and there is no contributor queue any
+  // more — anyone who edits takes the single editor lock instead.
   const handleBookingsChange = (next: Booking[]) => {
     if (role === 'viewer') return;
-    if (role === 'editor') {
-      setBookings(next);
-      return;
-    }
-    const updated = [...submissions];
-    for (const booking of next) {
-      const current = bookings.find(existing => existing.id === booking.id);
-      if (!current) continue;
-      if (JSON.stringify(current) === JSON.stringify(booking)) continue;
-      const existing = updated.find(submission => submission.bookingId === booking.id);
-      if (existing) {
-        updated[updated.indexOf(existing)] = {
-          ...existing,
-          proposed: { ...booking },
-          updatedAt: new Date().toISOString()
-        };
-      } else {
-        updated.push(createSubmission(booking, current, contributorName || 'Contributor', revision));
-      }
-    }
-    setSubmissions(updated);
-  };
-  const acceptSubmission = (submission: ContributorSubmission) => {
-    setBookings(bookings.map(booking => booking.id === submission.bookingId ? submission.proposed : booking));
-    setSubmissions(submissions.filter(item => item.id !== submission.id));
-    setProcessedSubmissionIds(current => [...current, submission.id]);
-    setRevision(current => current + 1);
-  };
-  const rejectSubmission = (submission: ContributorSubmission) => {
-    setSubmissions(submissions.filter(item => item.id !== submission.id));
-    setProcessedSubmissionIds(current => [...current, submission.id]);
+    setBookings(next);
   };
   const exportPublishedBoard = () => downloadSharedFile(
-    createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup, editorLock)
+    createSharedFile(bookings, revision, importHistory, markup, editorLock)
   );
   const importPublishedBoard = async (file: File) => {
     try {
       const shared = parseSharedFile(await file.text());
       setBookings(shared.bookings);
-      setSubmissions(shared.submissions.filter(submission => !processedSubmissionIds.includes(submission.id)));
-      setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
       setRevision(shared.revision);
       setImportHistory(shared.history);
       setMarkup(shared.markup || []);
@@ -516,12 +414,11 @@ export default function App() {
     link.click();
     URL.revokeObjectURL(url);
   };
-  // Link one of the files the board works from. The bookings export, the
-  // venue YAML and changes.json sit in one folder; linking them lets the
-  // app write changes back to the same files instead of downloading new
-  // copies. The board JSON is the file the editor publishes. Linking a
-  // changes file that already holds changes imports them; linking a
-  // board file loads that board.
+  // Link one of the files the board works from. The bookings export and
+  // the venue YAML sit in one folder; linking them lets the app write
+  // changes back to the same files instead of downloading new copies.
+  // The board JSON is the file the editor publishes. Linking a board
+  // file loads that board.
   const linkBoardFile = async () => {
     if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
     try {
@@ -532,8 +429,6 @@ export default function App() {
       setLinkedFiles(current => ({ ...current, board: handle.name }));
       await saveLinkedHandle('board', handle);
       setBookings(shared.bookings);
-      setSubmissions(shared.submissions.filter(s => !processedSubmissionIds.includes(s.id)));
-      setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
       setRevision(shared.revision);
       setImportHistory(shared.history);
       setMarkup(shared.markup || []);
@@ -551,7 +446,7 @@ export default function App() {
       boardHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, board: handle.name }));
       await saveLinkedHandle('board', handle);
-      await writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup, editorLock));
+      await writeSharedFileToHandle(handle, createSharedFile(bookings, revision, importHistory, markup, editorLock));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -570,27 +465,6 @@ export default function App() {
       await saveLinkedHandle('yaml', handle);
       localStorage.setItem(VENUE_YAML_KEY, text);
       setYamlText(text);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  const linkChangesFile = async () => {
-    if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
-    try {
-      const handle = await pickLinkedFile({ types: [{ description: 'Whiteboard changes', accept: { 'application/json': ['.json'] } }] });
-      if (!handle) return;
-      const text = await (await handle.getFile()).text();
-      // An empty file is a fresh changes list; a non-empty one must
-      // already be a changes file, or linking it would overwrite it.
-      if (text.trim()) {
-        const parsed = JSON.parse(text);
-        if (parsed?.format !== 'whiteboard-changes' || parsed.version !== 1) throw new Error('This file is not a Whiteboard changes file. Pick changes.json, or an empty file to start one.');
-      }
-      changesHandleRef.current = handle;
-      setLinkedFiles(current => ({ ...current, changes: handle.name }));
-      await saveLinkedHandle('changes', handle);
-      await importChanges();
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -632,66 +506,36 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
-  // The editor triggers an import of changes.json: read the shared list
-  // and merge its pending changes into the review, skipping anything
-  // already accepted or rejected.
-  const importChanges = async () => {
-    const handle = changesHandleRef.current;
-    if (!handle) return;
-    try {
-      const incoming = (await readChangesFileFromHandle(handle)).submissions
-        .filter(submission => !processedSubmissionIds.includes(submission.id));
-      setSubmissions(current => {
-        const merged = [...current];
-        for (const submission of incoming) {
-          const existingIndex = merged.findIndex(item => item.id === submission.id);
-          if (existingIndex >= 0) merged[existingIndex] = submission;
-          else merged.push(submission);
-        }
-        return merged;
-      });
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  // Refresh only: re-read the linked board file and import any new
-  // changes from changes.json. This is what a viewer does, and what the
-  // board does automatically every 30 seconds in viewer mode.
+  // Refresh only: re-read the linked board file. This is what a viewer
+  // does, and what the board does automatically every 30 seconds in
+  // viewer mode.
   const refreshBoard = async () => {
     if (boardHandleRef.current) {
       const shared = await readSharedFileFromHandle(boardHandleRef.current);
       setBookings(shared.bookings);
-      setSubmissions(shared.submissions.filter(s => !processedIdsRef.current.includes(s.id)));
-      setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
       setRevision(shared.revision);
       setImportHistory(shared.history);
       setMarkup(shared.markup || []);
       setEditorLock(shared.editorLock ?? null);
     }
-    await importChanges();
     setError(null);
   };
   // Refresh. Saving is automatic — the board writes itself back to
-  // its linked file half a second after the editor changes it, and
-  // changes.json writes itself back half a second after anyone's
-  // changes change — so this button does not need to save. It re-reads
-  // the linked files, so the board shows what everyone else has saved
-  // since. It still writes out any edit made in the last moment first,
-  // so the re-read cannot overwrite a just-made change.
+  // its linked file half a second after the editor changes it — so
+  // this button does not need to save. It re-reads the linked files,
+  // so the board shows what everyone else has saved since. It still
+  // writes out any edit made in the last moment first, so the re-read
+  // cannot overwrite a just-made change.
   const saveAndRefresh = async () => {
     if (saving) return;
     setSaving(true);
     try {
       if (role !== 'viewer') {
         if (boardHandleRef.current && role === 'editor') {
-          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup, editorLock));
+          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, editorLock));
         }
         if (yamlHandleRef.current) {
           await writeLinkedFile(yamlHandleRef.current, yamlText, 'text/yaml');
-        }
-        if (changesHandleRef.current) {
-          await writeChangesFileToHandle(changesHandleRef.current, submissions);
         }
       }
       await refreshBoard();
@@ -711,12 +555,12 @@ export default function App() {
     return () => clearInterval(timer);
   }, [role, saving]);
   return (
-    <div className={`app${!(linkedFiles.board && linkedFiles.yaml && linkedFiles.changes && linkedFiles.bookings) ? ' files-unlinked' : ''}${editingEnabled && role !== 'viewer' ? ' editing' : ''}`}>
+    <div className={`app${!(linkedFiles.board && linkedFiles.yaml && linkedFiles.bookings) ? ' files-unlinked' : ''}${editingEnabled && role !== 'viewer' ? ' editing' : ''}`}>
       <Toolbar
         venue={venue}
         bookingCount={bookings.length}
         role={role}
-        contributorName={contributorName}
+        displayName={displayName}
         editingEnabled={editingEnabled}
         markupMode={markupMode}
         error={error}
@@ -728,7 +572,7 @@ export default function App() {
           setConfigurationOpen(true);
         }}
         onRoleChange={requestRoleChange}
-        onContributorNameChange={setContributorName}
+        onDisplayNameChange={setDisplayName}
         onSaveAndRefresh={saveAndRefresh}
         saving={saving}
         linkedFiles={linkedFiles}
@@ -780,17 +624,6 @@ export default function App() {
           }}
         />
       )}
-      {submissionsOpen && (
-        <SubmissionReviewPanel
-          submissions={submissions}
-          bookings={bookings}
-          currentRevision={revision}
-          onAccept={acceptSubmission}
-          onReject={rejectSubmission}
-          onForceAccept={acceptSubmission}
-          onClose={() => setSubmissionsOpen(false)}
-        />
-      )}
       {historyOpen && (
         <ImportHistoryPanel
           history={importHistory}
@@ -803,15 +636,14 @@ export default function App() {
           <section className="review-panel" aria-label="Link files">
             <header>
               <h2>Link files</h2>
-              <p>The board works from three files in one folder — the bookings export, the venue YAML and changes.json — plus the board file the editor publishes. Link them here and the app writes changes back to the same files instead of downloading new copies. Everyone writes their changes to the one changes.json; the editor imports it and yes/no&apos;s each change.</p>
+              <p>The board works from two files in one folder — the bookings export and the venue YAML — plus the board file the editor publishes. Link them here and the app writes changes back to the same files instead of downloading new copies.</p>
             </header>
             <table><thead><tr><th>File</th><th>Linked</th><th></th></tr></thead><tbody>
               <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile}>Link</button> <button onClick={importEventsFile} disabled={!venue}>Import</button></td></tr>
               <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Save as</button></td></tr>
-              <tr><td>Changes (changes.json)</td><td>{linkedFiles.changes || 'Not linked'}</td><td><button onClick={linkChangesFile}>Link</button> {role !== 'viewer' && <button onClick={() => { importChanges(); setSubmissionsOpen(true); setLinkFilesOpen(false); }}>Review submissions{submissions.length ? ` (${submissions.length})` : ''}</button>}</td></tr>
               <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile}>Open</button> <button onClick={linkBoardFileAsNew}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
             </tbody></table>
-            <p>Linking the bookings export lets Refresh re-read it. Linking changes.json lets the editor import everyone&apos;s changes from the Submissions panel. The board file is written automatically whenever the editor changes the board.</p>
+            <p>Linking the bookings export lets Refresh re-read it. The board file is written automatically whenever the editor changes the board.</p>
             {role === 'editor' && <p><button onClick={() => { setHistoryOpen(true); setLinkFilesOpen(false); }}>Import history</button> <button onClick={revertLastImport} disabled={importHistory.length <= 1}>Revert last import</button></p>}
             <footer>
               <button onClick={() => setLinkFilesOpen(false)}>Done</button>
@@ -825,9 +657,7 @@ export default function App() {
             <header>
               <h2>Switch to {pendingRole}?</h2>
               <p>
-                {pendingRole === 'editor'
-                  ? 'The editor can publish changes, review contributor submissions, change the venue configuration and revert imports. Only one editor at a time: switching claims the editor lock, and if someone else is editing you will be told who.'
-                  : 'A contributor can edit bookings and send changes for the editor to review. Only switch if you are one of the board editors.'}
+                The editor can publish changes, change the venue configuration and revert imports. Only one editor at a time: switching claims the editor lock, and if someone else is editing you will be told who.
               </p>
             </header>
             <footer>

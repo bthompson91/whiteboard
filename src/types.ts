@@ -1,4 +1,4 @@
-export type BoardRole = 'viewer' | 'contributor' | 'editor';
+export type BoardRole = 'viewer' | 'editor';
 // The editor lock: only one editor at a time. It lives in the shared
 // board file so every device that reads the board can see who holds
 // it. `id` is the browser session that holds it, `name` is the
@@ -63,37 +63,15 @@ export interface ImportHistoryEntry extends ImportSource {
   bookings: Booking[];
 }
 
-export interface ContributorSubmission {
-  id: string;
-  bookingId: string;
-  author: string;
-  revisionBase?: number;
-  createdAt: string;
-  updatedAt: string;
-  base: Booking;
-  proposed: Booking;
-}
-
 export interface SharedBoardFile {
   format: 'whiteboard-shared-board';
   version: 1;
   revision: number;
   exportedAt: string;
   bookings: Booking[];
-  submissions: ContributorSubmission[];
-  processedSubmissionIds: string[];
   history: ImportHistoryEntry[];
   markup: MarkupItem[];
   editorLock?: EditorLock | null;
-}
-
-export interface ContributorFile {
-  format: 'whiteboard-contributor-file';
-  version: 1;
-  contributor: string;
-  revisionBase: number;
-  exportedAt: string;
-  submissions: ContributorSubmission[];
 }
 
 export type MarkupItem =
