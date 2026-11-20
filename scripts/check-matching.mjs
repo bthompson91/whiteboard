@@ -174,6 +174,14 @@ try {
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);
   check('hidden bookings still render in unlock mode', blocks.length === 1 && blocks[0].hidden === true);
 
+  // --- Block colour rule: whole block unless unavailable ---
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1' })], venue, palette, false);
+  check('available booking block is not unavailable', blocks.length === 1 && blocks[0].unavailable === false && blocks[0].colour === '#3366cc', JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], unavailable: true, salespersonId: 'sp-1' })], venue, palette, false);
+  check('unavailable booking block is flagged unavailable and grey', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'unavailable' })], venue, palette, false);
+  check('legacy unavailable salesperson still flags the block', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
+
   // --- Strong borders: placed after named rooms, not around groups ---
   const borders = strongBorders(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1', 'River Room 2'], ['Palladium C1', 'River Room 2']);
   check('strong border after each named room only', borders[2] === true && borders[4] === true && borders[0] === false && borders[1] === false && borders[3] === false, JSON.stringify(borders));

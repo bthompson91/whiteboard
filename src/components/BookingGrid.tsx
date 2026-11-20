@@ -18,14 +18,16 @@ interface Props {
   roomBaseWidths?: number[];
 }
 function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed)return '';return /^\d+$/.test(trimmed)?trimmed.replace(/^0+(?=\d)/,''):trimmed;}
+// Dark palette colours need light text so the name stays readable on its
+// colour sample in the salesperson dropdown.
+function readableText(hex:string){const n=parseInt(hex.slice(1),16);const lum=0.2126*((n>>16)&255)+0.7152*((n>>8)&255)+0.0722*(n&255);return lum<140?'#ffffff':'#18202a';}
 export default function BookingGrid({venue,bookings,salespeople,roomBorders,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
   const [draft,setDraft]=useState<Booking|null>(null);
-  const [salesOpen,setSalesOpen]=useState(false);
-  const openInspector=(booking:Booking)=>{onSelectedBookingChange(booking.id);setDraft({...booking});setSalesOpen(false);};
-  const closeInspector=()=>{setDraft(null);setSalesOpen(false);};
+  const openInspector=(booking:Booking)=>{onSelectedBookingChange(booking.id);setDraft({...booking});};
+  const closeInspector=()=>setDraft(null);
   const saveInspector=()=>{
     if(!draft)return;
     onBookingsChange(bookings.map(booking=>booking.id===draft.id?{...draft,jobNumber:draft.jobNumber?normalizeJobNumber(draft.jobNumber):undefined}:booking));
@@ -56,8 +58,8 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     {dates.map(date=><div className={`grid-row${date===today?' today':''}`} key={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell${date===today?' today':''} group-edge day-edge`}><div className="date-label">{format(parseISO(date),'EEE dd MMM')}</div>{Array.from({length:24/hourStep},(_,i)=>i*hourStep).map(h=><span className="hour-label" key={h} style={{top:h/24*size.day,fontSize:9,lineHeight:'10px'}}>{String(h).padStart(2,'0')}:00</span>)}</div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
-      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}}}>
-        <div className="booking-facts" style={{backgroundColor:b.colour||undefined}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}<div>{clock(b.mainStart)}</div><div>{clock(b.mainEnd)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}</div>
+      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day),backgroundColor:b.unavailable?undefined:(b.colour||undefined),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}}}>
+        <div className="booking-facts" style={{backgroundColor:b.unavailable?(b.colour||undefined):undefined}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}<div>{clock(b.mainStart)}</div><div>{clock(b.mainEnd)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}</div>
         <div className="booking-title">{b.title}{b.hidden?' — hidden':''}</div>
         <div className="booking-job-number">{b.jobNumber||''}</div>
         {continuation&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
@@ -71,28 +73,20 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
           <label>Job number<input value={draft.jobNumber||''} onChange={event=>setDraft({...draft,jobNumber:event.target.value})}/></label>
           {jobNumberInvalid&&<p className="field-warning">Job number must be numeric. It will be retained unchanged until corrected.</p>}
           <label>Notes<textarea value={draft.notes||''} onChange={event=>setDraft({...draft,notes:event.target.value})}/></label>
-          <div style={{display:'flex',flexDirection:'column',gap:6,padding:'10px 20px',fontSize:13,fontWeight:600,color:'#4a5561'}}>Salesperson
-            <span style={{display:'flex',gap:8,alignItems:'center',position:'relative'}}>
-              <button type="button" aria-label="Salesperson" aria-haspopup="listbox" aria-expanded={salesOpen} onClick={()=>setSalesOpen(open=>!open)} style={{display:'flex',gap:8,alignItems:'center',padding:'6px 8px',border:'1px solid #18202a',background:'white',cursor:'pointer',minWidth:200,justifyContent:'space-between'}}>
-                <span style={{display:'flex',gap:8,alignItems:'center'}}>
-                  <span style={{display:'inline-block',width:16,height:16,border:'1px solid #18202a',background:bookingColour(draft,salespeople)||'#e7e1d8'}} />
-                  {resolveSalesperson(salespeople,draft.salespersonId)?.name||'No salesperson'}
-                </span>
-                <span aria-hidden>▾</span>
-              </button>
-              {salesOpen&&(<>
-                <span style={{position:'fixed',inset:0,zIndex:1}} onClick={()=>setSalesOpen(false)} />
-                <span role="listbox" style={{position:'absolute',top:'100%',left:0,zIndex:2,background:'white',border:'1px solid #18202a',minWidth:200,boxShadow:'0 4px 12px rgba(0,0,0,.25)'}}>
-                  <span role="option" aria-selected={!draft.salespersonId} onClick={()=>{setDraft({...draft,salespersonId:undefined,colour:undefined});setSalesOpen(false);}} style={{display:'flex',gap:8,alignItems:'center',padding:'6px 8px',cursor:'pointer'}}>
-                    <span style={{display:'inline-block',width:16,height:16,border:'1px solid #18202a',background:'#e7e1d8'}} /> No salesperson
-                  </span>
-                  {salespeople.map(person=><span key={person.id} role="option" aria-selected={draft.salespersonId===person.id} onClick={()=>{setDraft({...draft,salespersonId:person.id,colour:person.colour});setSalesOpen(false);}} style={{display:'flex',gap:8,alignItems:'center',padding:'6px 8px',cursor:'pointer'}}>
-                    <span style={{display:'inline-block',width:16,height:16,border:'1px solid #18202a',background:person.colour}} /> {person.name}
-                  </span>)}
-                </span>
-              </>)}
+          <label>Salesperson
+            <span style={{display:'flex',gap:8,alignItems:'center'}}>
+              <select aria-label="Salesperson" value={draft.salespersonId||''} onChange={event=>{
+                const salespersonId=event.target.value;
+                if(!salespersonId){setDraft({...draft,salespersonId:undefined,colour:undefined});return;}
+                const person=resolveSalesperson(salespeople,salespersonId);
+                setDraft({...draft,salespersonId,colour:person?.colour});
+              }}>
+                <option value="">No salesperson</option>
+                {salespeople.map(person=><option key={person.id} value={person.id} style={{backgroundColor:person.colour,color:readableText(person.colour)}}>{person.name}</option>)}
+              </select>
+              <span style={{display:'inline-block',width:60,height:24,border:'1px solid #18202a',background:bookingColour(draft,salespeople)||'#e7e1d8'}} aria-label={bookingColour(draft,salespeople)||'no colour'} />
             </span>
-          </div>
+          </label>
           <label className="checkbox"><input type="checkbox" checked={draft.unavailable===true||draft.salespersonId===UNAVAILABLE_SALESPERSON.id} onChange={event=>{const on=event.target.checked;setDraft({...draft,unavailable:on,salespersonId:draft.salespersonId===UNAVAILABLE_SALESPERSON.id?'':draft.salespersonId});}}/>Unavailable</label>
           <label className="checkbox"><input type="checkbox" checked={!!draft.hidden} onChange={event=>setDraft({...draft,hidden:event.target.checked})}/>Hide from board</label>
           <footer><button onClick={closeInspector}>Cancel</button><button className="primary" onClick={saveInspector} disabled={jobNumberInvalid}>Save booking</button></footer>
