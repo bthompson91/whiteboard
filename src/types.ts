@@ -76,6 +76,7 @@ export interface SharedBoardFile {
   submissions: ContributorSubmission[];
   processedSubmissionIds: string[];
   history: ImportHistoryEntry[];
+  markup: MarkupItem[];
 }
 
 export interface ContributorFile {

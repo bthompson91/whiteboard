@@ -200,16 +200,18 @@ export default function App() {
   // the board file, so only the master auto-writes it (a contributor's
   // changes live in changes.json instead). Debounced, so dragging a
   // colour across several bookings does not write on every keystroke.
+  // Markup rides along in the same file, so a note or arrow drawn on
+  // one device shows on every device that reads the board.
   useEffect(() => {
     const handle = boardHandleRef.current;
     if (!handle || role !== 'master') return;
     const timer = window.setTimeout(() => {
-      writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory)).catch(e => {
+      writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [bookings, submissions, revision, processedSubmissionIds, importHistory, role]);
+  }, [bookings, submissions, revision, processedSubmissionIds, importHistory, markup, role]);
   // Constantly write the shared changes list back to changes.json.
   // Everyone writes to the same file, so this is a read-modify-write:
   // it reads the file, keeps changes from other contributors that are
@@ -358,7 +360,7 @@ export default function App() {
     setProcessedSubmissionIds(current => [...current, submission.id]);
   };
   const exportPublishedBoard = () => downloadSharedFile(
-    createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory)
+    createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup)
   );
   const importPublishedBoard = async (file: File) => {
     try {
@@ -368,6 +370,7 @@ export default function App() {
       setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
       setRevision(shared.revision);
       setImportHistory(shared.history);
+      setMarkup(shared.markup || []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -413,7 +416,7 @@ export default function App() {
       if (!handle) return;
       boardHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, board: handle.name }));
-      await writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory));
+      await writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -524,6 +527,7 @@ export default function App() {
       setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
       setRevision(shared.revision);
       setImportHistory(shared.history);
+      setMarkup(shared.markup || []);
     }
     await importChanges();
     setError(null);
@@ -541,7 +545,7 @@ export default function App() {
     try {
       if (role !== 'viewer') {
         if (boardHandleRef.current && role === 'master') {
-          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory));
+          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory, markup));
         }
         if (yamlHandleRef.current) {
           await writeLinkedFile(yamlHandleRef.current, yamlText, 'text/yaml');

@@ -1,4 +1,4 @@
-import { Booking, ContributorSubmission, ImportHistoryEntry, SharedBoardFile } from '../types';
+import { Booking, ContributorSubmission, ImportHistoryEntry, MarkupItem, SharedBoardFile } from '../types';
 
 const SHARED_FILE_FORMAT = 'whiteboard-shared-board';
 
@@ -70,7 +70,8 @@ export function createSharedFile(
   submissions: ContributorSubmission[],
   revision: number,
   processedSubmissionIds: string[],
-  history: ImportHistoryEntry[]
+  history: ImportHistoryEntry[],
+  markup: MarkupItem[]
 ): SharedBoardFile {
   return {
     format: SHARED_FILE_FORMAT,
@@ -80,7 +81,8 @@ export function createSharedFile(
     bookings,
     submissions,
     processedSubmissionIds,
-    history
+    history,
+    markup
   };
 }
 
@@ -96,7 +98,8 @@ export function parseSharedFile(text: string): SharedBoardFile {
     ...parsed,
     revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
     processedSubmissionIds: Array.isArray(parsed.processedSubmissionIds) ? parsed.processedSubmissionIds : [],
-    history: Array.isArray(parsed.history) ? parsed.history : []
+    history: Array.isArray(parsed.history) ? parsed.history : [],
+    markup: Array.isArray(parsed.markup) ? parsed.markup : []
   };
 }
 

@@ -32,7 +32,7 @@ try {
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
-  const { parseChangesFile, serializeChangesFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
+  const { parseChangesFile, serializeChangesFile, createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
   const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
@@ -250,6 +250,16 @@ try {
   check('changes.json round-trips the submissions list', parsedChanges.format === 'whiteboard-changes' && parsedChanges.version === 1 && parsedChanges.submissions.length === 1 && parsedChanges.submissions[0].author === 'Alex' && parsedChanges.submissions[0].proposed.title === 'Gala Dinner', changesText);
   check('changes.json rejects a board file', (() => { try { parseChangesFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })); return false; } catch { return true; } })());
   check('changes.json rejects a missing submissions list', (() => { try { parseChangesFile(JSON.stringify({ format: 'whiteboard-changes', version: 1 })); return false; } catch { return true; } })());
+  // --- Markup rides in the shared board file, so it shows on every device ---
+  // Markup used to live only in each browser's local storage, so a note
+  // or arrow drawn on one device never appeared on another. It now
+  // travels in the board file, which the master auto-writes and every
+  // device re-reads on refresh.
+  const sampleMarkup = [{ id: 'm1', type: 'text', text: 'Turn here', x: 10, y: 20, w: 120, h: 40, highlight: true }];
+  const boardText = JSON.stringify(createSharedFile([], [], 1, [], [], sampleMarkup));
+  const parsedBoard = parseSharedFile(boardText);
+  check('markup round-trips through the shared board file', parsedBoard.markup.length === 1 && parsedBoard.markup[0].text === 'Turn here' && parsedBoard.markup[0].highlight === true, boardText);
+  check('a board file written before markup default to no markup', parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })).markup.length === 0);
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
   check('Unavailable resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
   check('unavailable tick box renders grey', bookingColour({ unavailable: true, salespersonId: 'sp-1' }, palette) === '#9aa0a6');
