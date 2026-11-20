@@ -1,5 +1,12 @@
-.inspector-overlay{position:fixed;inset:0;background:rgba(15,18,25,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:60;}
-.inspector-panel{background:#fff;color:#18202a;border-radius:12px;width:min(480px,100%);max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+/* The booking details popup sits on top of everything: the dimming
+   backdrop is 3000 (above the grid header at 2000 and the markup layer
+   at 1000), the booking being edited is 3001 so it stays bright above
+   the dimming, and the panel itself is 3002 so it is never covered by
+   that booking. The backdrop and the panel are siblings, not nested,
+   so the panel can sit above the booking while the booking sits above
+   the backdrop. */
+.inspector-overlay{position:fixed;inset:0;background:rgba(15,18,25,.6);z-index:3000;}
+.inspector-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3002;background:#fff;color:#18202a;border-radius:12px;width:min(480px,calc(100vw - 40px));max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);}
 .inspector-panel header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #dde3ea;}
 .inspector-panel h3{margin:0;font-size:18px;}
 .inspector-panel label{display:flex;flex-direction:column;gap:6px;padding:10px 20px;font-size:13px;font-weight:600;color:#4a5561;}
