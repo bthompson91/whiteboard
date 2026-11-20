@@ -6,6 +6,15 @@ export interface Salesperson { id:string; name:string; colour:string }
 // Built-in grey option for the booking inspector: a booking that is not
 // available to sell, shown in grey rather than a salesperson's colour.
 export const UNAVAILABLE_SALESPERSON: Salesperson = { id: 'unavailable', name: 'Unavailable', colour: '#9aa0a6' };
+// The two-letter tag shown on a block next to the job number: the first
+// letters of the first and last names ("Alex Lee" -> "AL"), or the first
+// two letters when there is only one name ("Alex" -> "AL").
+export function salespersonInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
 export function resolveSalesperson(salespeople: Salesperson[], salespersonId?: string): Salesperson | undefined {
   if (!salespersonId) return undefined;
   if (salespersonId === UNAVAILABLE_SALESPERSON.id) return UNAVAILABLE_SALESPERSON;

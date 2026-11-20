@@ -2,9 +2,9 @@ import type { Booking } from '../types';
 import type { BoardBooking } from './bookingImport';
 import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
-import { bookingColour, UNAVAILABLE_SALESPERSON } from './configuration';
+import { bookingColour, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; unavailable?:boolean; hidden?:boolean }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; initials?:string; unavailable?:boolean; hidden?:boolean }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -42,7 +42,14 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       const key=JSON.stringify([b.date,b.title,room]);
       const old=groups.get(key);
       if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&!!b.hidden;}
-      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),unavailable:!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id,hidden:!!b.hidden});
+      else {
+        // The initials follow the same booking as the colour: the first
+        // booking in the group. An unavailable booking has no salesperson
+        // tag, even though it keeps its salesperson assignment.
+        const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id;
+        const person=resolveSalesperson(salespeople,b.salespersonId);
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),initials:unavailable||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden});
+      }
     }
   }
   const spans:Block[]=[];

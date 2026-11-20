@@ -28,7 +28,7 @@ try {
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
-  const { resolveSalesperson, bookingColour, UNAVAILABLE_SALESPERSON } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { blocksFor, strongBorders } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
 
   let failures = 0;
@@ -141,6 +141,10 @@ try {
   check('unknown salesperson falls back to the stored colour', bookingColour({ salespersonId: 'sp-gone', colour: '#ff0000' }, palette) === '#ff0000');
   check('no salesperson keeps the stored colour', bookingColour({ colour: '#ff0000' }, palette) === '#ff0000');
   check('resolveSalesperson finds Unavailable by id', resolveSalesperson(palette, 'unavailable')?.name === 'Unavailable');
+  check('initials take first and last names', salespersonInitials('Alex Lee') === 'AL');
+  check('initials take the first two letters of one name', salespersonInitials('Alex') === 'AL');
+  check('initials use the last word for three names', salespersonInitials('Mary Jane Smith') === 'MS');
+  check('initials are empty for a blank name', salespersonInitials('  ') === '');
 
   // --- Block merging: height merges and width merges ---
   const venue = { rooms: [
@@ -181,6 +185,12 @@ try {
   check('unavailable booking block is flagged unavailable and grey', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'unavailable' })], venue, palette, false);
   check('legacy unavailable salesperson still flags the block', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1', jobNumber: '1022948' })], venue, palette, false);
+  check('block carries the salesperson initials', blocks.length === 1 && blocks[0].initials === 'AL' && blocks[0].jobNumber === '1022948', JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], unavailable: true, salespersonId: 'sp-1' })], venue, palette, false);
+  check('unavailable block has no initials tag', blocks.length === 1 && blocks[0].initials === undefined, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'] })], venue, palette, false);
+  check('block without a salesperson has no initials tag', blocks.length === 1 && blocks[0].initials === undefined, JSON.stringify(blocks));
 
   // --- 3-hour snap: blocks line up in general time frames ---
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:37', endTime: '22:12' })], venue, [], false);

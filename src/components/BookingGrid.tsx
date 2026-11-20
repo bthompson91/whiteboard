@@ -60,8 +60,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
       {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day),backgroundColor:b.unavailable?undefined:(b.colour||undefined),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}}}>
         <div className="booking-facts" style={{backgroundColor:b.unavailable?(b.colour||undefined):undefined}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}<div>{clock(b.mainStart)}</div><div>{clock(b.mainEnd)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}</div>
-        <div className="booking-title">{b.title}{b.hidden?' — hidden':''}</div>
-        <div className="booking-job-number">{b.jobNumber||''}</div>
+        <div className="booking-title">{[b.title,[b.initials,b.jobNumber].filter(Boolean).join(' ')].filter(Boolean).join(' | ')}{b.hidden?' — hidden':''}</div>
         {continuation&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
       </div>)}
     </div>)}
