@@ -28,7 +28,7 @@ try {
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
-  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { blocksFor, strongBorders } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
 
   let failures = 0;
@@ -143,6 +143,8 @@ try {
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
   check('Unavailable resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
   check('unavailable tick box renders grey', bookingColour({ unavailable: true, salespersonId: 'sp-1' }, palette) === '#9aa0a6');
+  check('NO AV is the job number marker', isNoAv('NO AV') && isNoAv('no av') && isNoAv('  NO AV  ') && !isNoAv('12345') && !isNoAv(undefined) && !isNoAv(''));
+  check('NO AV renders grey like an unavailable booking', bookingColour({ salespersonId: 'sp-1', jobNumber: 'NO AV' }, palette) === '#9aa0a6');
   check('salesperson colour wins when not unavailable', bookingColour({ unavailable: false, salespersonId: 'sp-1' }, palette) === '#3366cc');
   check('unknown salesperson falls back to the stored colour', bookingColour({ salespersonId: 'sp-gone', colour: '#ff0000' }, palette) === '#ff0000');
   check('no salesperson keeps the stored colour', bookingColour({ colour: '#ff0000' }, palette) === '#ff0000');
@@ -219,6 +221,10 @@ try {
   check('unavailable block without a salesperson has no strip colour', blocks.length === 1 && blocks[0].salespersonColour === undefined, JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], unavailable: true, salespersonId: 'unavailable' })], venue, palette, false);
   check('legacy unavailable is not a real salesperson for the strip', blocks.length === 1 && blocks[0].salespersonColour === undefined, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1', jobNumber: 'NO AV' })], venue, palette, false);
+  check('NO AV keeps the salesperson colour for the strip and the initials', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6' && blocks[0].salespersonColour === '#3366cc' && blocks[0].initials === 'AL' && blocks[0].jobNumber === 'NO AV', JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], jobNumber: 'NO AV' })], venue, palette, false);
+  check('NO AV without a salesperson is unavailable with no strip colour', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].salespersonColour === undefined && blocks[0].initials === undefined, JSON.stringify(blocks));
 
   // --- 2-hour snap: blocks line up in general time frames ---
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:30', endTime: '22:12' })], venue, [], false);

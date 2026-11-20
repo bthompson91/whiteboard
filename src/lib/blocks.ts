@@ -2,7 +2,7 @@ import type { Booking } from '../types';
 import type { BoardBooking } from './bookingImport';
 import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
-import { bookingColour, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
+import { bookingColour, isNoAv, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
 export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
@@ -53,13 +53,16 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       else {
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
-        // tag, even though it keeps its salesperson assignment.
+        // tag, even though it keeps its salesperson assignment. A NO AV
+        // booking does keep its tag: it has a salesperson working it,
+        // so its initials show alongside NO AV as the job number.
         // salespersonColour is the assigned salesperson's colour even for
         // an unavailable booking (whose block colour is grey): the render
         // uses it for the left strip while the body stays grey.
-        const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id;
+        const noAv=isNoAv(b.jobNumber);
+        const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:unavailable||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden});
       }
     }
   }

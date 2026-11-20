@@ -23,12 +23,19 @@ export function resolveSalesperson(salespeople: Salesperson[], salespersonId?: s
 // The colour a booking block shows: its salesperson's current palette
 // colour when one is assigned (so recolouring the palette recolours the
 // block), otherwise the colour stored on the booking itself.
-export function bookingColour(booking: { colour?: string; salespersonId?: string; unavailable?: boolean }, salespeople: Salesperson[]): string | undefined {
+// A booking whose job number is the marker "NO AV" (no audio-visual):
+// it is displayed with NO AV as its job number and renders like an
+// unavailable booking with a salesperson (salesperson colour on the
+// left strip, grey body).
+export function isNoAv(jobNumber?: string): boolean {
+  return jobNumber?.trim().toUpperCase() === 'NO AV';
+}
+export function bookingColour(booking: { colour?: string; salespersonId?: string; unavailable?: boolean; jobNumber?: string }, salespeople: Salesperson[]): string | undefined {
   // Unavailable is its own tick box now, not a salesperson: it always
   // renders grey, whichever salesperson the booking belongs to. A booking
   // whose salespersonId is still the legacy 'unavailable' resolves grey
-  // through resolveSalesperson below.
-  if (booking.unavailable) return UNAVAILABLE_SALESPERSON.colour;
+  // through resolveSalesperson below. A NO AV booking renders grey too.
+  if (booking.unavailable || isNoAv(booking.jobNumber)) return UNAVAILABLE_SALESPERSON.colour;
   return resolveSalesperson(salespeople, booking.salespersonId)?.colour ?? booking.colour;
 }
 export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; salespeople:Salesperson[]; room_borders:string[] }
