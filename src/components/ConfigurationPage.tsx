@@ -2,7 +2,6 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, renameRoomInConfig, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
 import '../configuration.css';
 interface Props { yamlText:string; hasBookings:boolean; onSave:(text:string, renames?:Record<string,string>)=>void; onClose:()=>void }
-type TimeSlot = { label:string; start:string; end:string };
 const FIELD_KEYS: Array<{ key:string; label:string; optional?:boolean }> = [
   { key:'booking_name', label:'Booking name' },
   { key:'activity_name', label:'Activity / event name' },
@@ -113,7 +112,6 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
   const renameRoom=(oldName:string,nextName:string):boolean=>{if(!doc)return false;const next=structuredClone(doc);if(!renameRoomInConfig(next,oldName,nextName)){setMessage(`A room called "${nextName.trim()}" already exists.`);return false;}for(const k of Object.keys(renamesRef.current))if(renamesRef.current[k]===oldName)renamesRef.current[k]=nextName.trim();renamesRef.current[oldName]=nextName.trim();setText(writeConfiguration(next));setMessage('');return true;};
   function updateSettingsInPlace(d:ConfigDocument,room:string){const s=boardSettings(d);delete s.room_types[room.trim()];d.whiteboard={...(d.whiteboard||{}),...s};}
   const fields:Record<string,string>=(doc?.fields as Record<string,string>)||{};
-  const timeSlots:TimeSlot[]=Array.isArray(doc?.time_slots)?(doc.time_slots as TimeSlot[]):[];
   return <section className="configuration-page" aria-label="Venue configuration">
     <header className="configuration-header"><h1>Configuration</h1><button onClick={close}>Back to board</button><button onClick={save} disabled={!!validation}>Apply and save</button><button onClick={exportFile} disabled={!!validation}>Export YAML</button></header>
     <div className="configuration-content">
@@ -152,15 +150,6 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
         </section>
         <section><h2>Combined rooms</h2><p>Each name on the left is a name the venue&apos;s export file uses for a combination of rooms; it expands to the rooms on its right. Add one entry per spelling the venue uses — “Palladium A &amp; B”, “Palladium AB” and “Palladium A and B” are three different names, so each needs its own entry. A combined booking only renders as one wide block when the walls between those rooms are ticked operable. Excluded rooms are not edited here: they stay in the YAML (<code>rooms.exclude</code>) and still skip rooms at import.</p>
           <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" onChange={next=>change(d=>{d.rooms.room_mappings=next;})} />
-        </section>
-        <section><h2>Time slots</h2><p>Named blocks of the day, used by the original planner output.</p>
-          {timeSlots.map((slot,i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-            <input aria-label={`Time slot ${i+1} label`} value={slot.label} onChange={e=>change(d=>{const list=[...(d.time_slots as TimeSlot[])];list[i]={...list[i],label:e.target.value};d.time_slots=list;})} />
-            <input aria-label={`Time slot ${i+1} start`} value={slot.start} onChange={e=>change(d=>{const list=[...(d.time_slots as TimeSlot[])];list[i]={...list[i],start:e.target.value};d.time_slots=list;})} />
-            <input aria-label={`Time slot ${i+1} end`} value={slot.end} onChange={e=>change(d=>{const list=[...(d.time_slots as TimeSlot[])];list[i]={...list[i],end:e.target.value};d.time_slots=list;})} />
-            <button onClick={()=>change(d=>{d.time_slots=(d.time_slots as TimeSlot[]).filter((_,j)=>j!==i);})}>Remove</button>
-          </div>)}
-          <button onClick={()=>change(d=>{d.time_slots=[...(Array.isArray(d.time_slots)?d.time_slots:[]),{label:'',start:'',end:''}];})}>Add time slot</button>
         </section>
         <section><h2>Timeline items</h2><p>Rows such as Setup and Teardown are folded into their booking instead of shown as bookings of their own.</p>
           <StringList label="Timeline item" values={Array.isArray(doc.timeline_items)?(doc.timeline_items as string[]):[]} onChange={next=>change(d=>{d.timeline_items=next;})} />

@@ -65,7 +65,12 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if(strict&&d.fields!==undefined&&Object.values(d.fields).some(v=>!(v as string).trim()))throw new Error('Field mappings must name a column header; leave a mapping out instead of blank.');
   if(d.file_input!==undefined&&(!object(d.file_input)||(d.file_input.format!==undefined&&typeof d.file_input.format!=='string')||(d.file_input.has_header!==undefined&&typeof d.file_input.has_header!=='boolean')))throw new Error('file_input must map format to text and has_header to true/false.');
   if(d.file_input?.date_format!==undefined&&!['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD'].includes(String(d.file_input.date_format)))throw new Error('file_input.date_format must be DD/MM/YYYY, MM/DD/YYYY or YYYY-MM-DD.');
-  if(d.time_slots!==undefined&&(!Array.isArray(d.time_slots)||d.time_slots.some(s=>!object(s)||typeof s.label!=='string'||typeof s.start!=='string'||typeof s.end!=='string')))throw new Error('time_slots must be a list of label/start/end entries.');
+  // Named blocks of the day for the original planner output. Dead like
+  // `output`: the board never reads them, and the Configuration page no
+  // longer shows them. Drop the key when a config is read, so a YAML
+  // that still carries it stops carrying it on the next save instead of
+  // erroring on it.
+  if ('time_slots' in d) delete d.time_slots;
   // The original planner's output settings (filename prefix, title,
   // worksheet name, timeline panel) are dead: the board never reads
   // them, and the Configuration page no longer shows them. Drop the
@@ -131,6 +136,8 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
   // The original planner's output settings are dead (see
   // readConfiguration); drop the key when the configuration is next saved.
   if ('output' in d) delete d.output;
+  // Time slots are dead too (see readConfiguration).
+  if ('time_slots' in d) delete d.time_slots;
   const trimList = (v: unknown) => Array.isArray(v) ? v.map(x => typeof x === 'string' ? x.trim() : x).filter(x => typeof x === 'string' && x) : v;
   if (d.site && typeof d.site.name === 'string') d.site.name = d.site.name.trim();
   if (object(d.fields)) for (const k of Object.keys(d.fields)) { const v = d.fields[k]; if (typeof v === 'string') d.fields[k] = v.trim(); }
@@ -166,7 +173,6 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
     if (Array.isArray(d.whiteboard.operable_walls)) d.whiteboard.operable_walls = trimList(d.whiteboard.operable_walls);
   }
   if (object(d.display) && Array.isArray(d.display.allowed_statuses)) d.display.allowed_statuses = trimList(d.display.allowed_statuses);
-  if (Array.isArray(d.time_slots)) d.time_slots = d.time_slots.map(s => object(s) ? { ...s, label: typeof s.label === 'string' ? s.label.trim() : s.label, start: typeof s.start === 'string' ? s.start.trim() : s.start, end: typeof s.end === 'string' ? s.end.trim() : s.end } : s);
   return d;
 }
 // Rename a room everywhere the configuration references it by name:

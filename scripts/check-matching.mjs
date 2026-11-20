@@ -396,6 +396,11 @@ try {
     const back = readConfiguration(writeConfiguration(normalizeConfigDoc(readConfiguration(`rooms:\n  order: [Room 1, Room 2]\n  room_mappings:\n    Combined:\n      - Room 1\n      - Room 2\n`, false))));
     return JSON.stringify(back.rooms.room_mappings) === JSON.stringify({ Combined: ['Room 1', 'Room 2'] });
   })());
+  // Time slots are dead like output: stripped, not kept or rejected.
+  check('time_slots are stripped when a config is read', !('time_slots' in readConfiguration(`rooms:\n  order: [Room 1]\ntime_slots:\n  - label: "0000-0559"\n    start: "00:00"\n    end: "05:59"\n`, false)));
+  check('a malformed time_slots value does not fail reading', (() => { try { return !('time_slots' in readConfiguration(`rooms:\n  order: [Room 1]\ntime_slots: not a list\n`, false)); } catch { return false; } })());
+  check('normalizeConfigDoc strips time_slots', !('time_slots' in normalizeConfigDoc({ rooms: { order: ['Room 1'] }, time_slots: [{ label: 'x', start: '00:00', end: '01:00' }] })));
+  check('a saved config no longer contains time_slots', !writeConfiguration(normalizeConfigDoc(readConfiguration(`rooms:\n  order: [Room 1]\ntime_slots:\n  - label: x\n    start: "00:00"\n    end: "01:00"\n`, false))).includes('time_slots'));
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);

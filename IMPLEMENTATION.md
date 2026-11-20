@@ -88,10 +88,10 @@ Sections, all editable on the Configuration page (see below):
 - **`timeline_items`** — activities that attach to a main booking instead of
   standing alone (Setup, Teardown).
 - **`file_input`** — `date_format` and friends, threaded into date parsing.
-- **`time_slots`** — declared in the YAML; the web app does not read it.
-  (`output` — the original planner's filename/title/worksheet settings —
-  is not read either, and is stripped out of the YAML when a config is
-  read or saved; the Configuration page no longer shows it.)
+- **`time_slots` and `output`** — the original planner's named day blocks
+  and output settings (filename/title/worksheet). Neither is read, and
+  both are stripped out of the YAML when a config is read or saved; the
+  Configuration page no longer shows either.
 - **`whiteboard`** — board-only settings, stored back into the YAML:
   - `room_types`: room name → `large` | `small` | `other` (`other` is the
     medium/default size). Keys are trimmed on read so a stray space cannot
@@ -403,11 +403,12 @@ the top of the z-order (4000) so the lowlight never dims them.
 
 `src/components/ConfigurationPage.tsx` + `src/configuration.css`. Every
 parameter in the YAML is editable, not just the rooms: site, fields,
-display, rooms, timeline items, file input, time slots, and the
+display, rooms, timeline items, file input, and the
 whiteboard section, plus a raw YAML editor. Exceptions: the original
-planner's `output` settings are not shown (stripped from the YAML when a
-config is read or saved); `rooms.exclude` is kept in the YAML and still
-read at import, but is not edited on the page. The room table is
+planner's `output` settings and `time_slots` are not shown (both stripped
+from the YAML when a config is read or saved); `rooms.exclude` is kept in
+the YAML and still read at import, but is not edited on the page. The
+room table is
 **Order | Room | Alias | Timetarget Area Name | Type | Border after |
 Operable wall | Reorder | Remove**:
 
@@ -517,7 +518,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-155 checks covering matching tiers and weights, booking identity, height and
+159 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`
