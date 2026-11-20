@@ -4,7 +4,7 @@ import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
 import { bookingColour, isNoAv, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string; lane?:number; laneCount?:number }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -155,5 +155,67 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
   // to 16:00 and the Gala's start down to 14:00 and they overlapped
   // 14:00-16:00. The exact times are kept in mainStart/mainEnd and
   // shown in the facts column and the tooltip.
+  assignLanes(spans);
   return spans;
+}
+
+// Overlapping blocks in the same room render side-by-side instead of
+// on top of each other. Each block gets a lane (its column within the
+// overlap) and a laneCount (how many blocks share the room at the
+// busiest moment during it). The lanes are assigned per date and room
+// by a greedy interval colouring, and the lane count is the maximum
+// number of blocks active at once during the block, so a block that
+// only ever overlaps one other block takes half the width even when a
+// different pair elsewhere in the same room needs three lanes. A
+// block in several rooms takes the lane and count from its most
+// crowded room. A block that never overlaps keeps no lane and fills
+// the full width.
+export function assignLanes(blocks: Block[]): void {
+  const byDate = new Map<string, Block[]>();
+  for (const b of blocks) {
+    const list = byDate.get(b.date) || [];
+    list.push(b);
+    byDate.set(b.date, list);
+  }
+  for (const dayBlocks of byDate.values()) {
+    const byRoom = new Map<number, Block[]>();
+    for (const b of dayBlocks) {
+      for (const room of b.rooms) {
+        const list = byRoom.get(room) || [];
+        list.push(b);
+        byRoom.set(room, list);
+      }
+    }
+    const best = new Map<Block, { lane: number; laneCount: number }>();
+    for (const roomBlocks of byRoom.values()) {
+      const sorted = [...roomBlocks].sort((a, c) => a.start - c.start || a.end - c.end);
+      // Greedy lane assignment: the lowest lane free at the block's start.
+      const laneEnds: number[] = [];
+      const laneOf = new Map<Block, number>();
+      for (const b of sorted) {
+        let lane = laneEnds.findIndex(end => end <= b.start);
+        if (lane < 0) { lane = laneEnds.length; laneEnds.push(b.end); }
+        else laneEnds[lane] = b.end;
+        laneOf.set(b, lane);
+      }
+      // Lane count: the most blocks active at once during this block.
+      // Concurrency only changes at a block's start, so checking the
+      // block's own start and the start of every block that begins
+      // inside it is enough. A block's lane is always below its count:
+      // it only takes lane k when k other blocks are active at its start.
+      for (const b of sorted) {
+        const times = [b.start, ...sorted.filter(o => o !== b && o.start > b.start && o.start < b.end).map(o => o.start)];
+        let count = 1;
+        for (const t of times) {
+          const active = sorted.filter(o => o.start <= t && t < o.end).length;
+          if (active > count) count = active;
+        }
+        const prev = best.get(b);
+        if (!prev || count > prev.laneCount) best.set(b, { lane: laneOf.get(b) ?? 0, laneCount: count });
+      }
+    }
+    for (const [b, v] of best) {
+      if (v.laneCount > 1) { b.lane = v.lane; b.laneCount = v.laneCount; }
+    }
+  }
 }

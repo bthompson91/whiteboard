@@ -70,6 +70,21 @@ function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed
 // The times strip shows only the first time of each entry: a setup that
 // runs 06:00-08:00 reads as 06:00. The full range stays in the tooltip.
 function firstTime(fact:string){return fact.match(/\d{2}:\d{2}/)?.[0]??fact;}
+// The horizontal inset for a block that shares its room with
+// overlapping blocks: each block takes 1/laneCount of the width, in
+// its lane. A block on its own fills the full width (left 0, right 0,
+// or 3px where it meets a strong border, so the border stays visible).
+function laneInsets(block: Block, strongAfter: boolean[]): { left: number | string; right: number | string } {
+  const laneCount = block.laneCount ?? 1;
+  const lane = block.lane ?? 0;
+  const lastRoom = block.rooms[block.rooms.length - 1];
+  if (laneCount <= 1) return { left: 0, right: strongAfter[lastRoom] ? 3 : 0 };
+  const left = `${(lane / laneCount) * 100}%`;
+  const right = lane === laneCount - 1
+    ? (strongAfter[lastRoom] ? 3 : 0)
+    : `${((laneCount - 1 - lane) / laneCount) * 100}%`;
+  return { left, right };
+}
 // The block title grows to fill its block: the largest font (8-64px)
 // that still fits without cutting any text off, re-measured when the
 // text or the block size changes. The font size is capped at 80% of
@@ -292,7 +307,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     {dates.map((date,dateIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizesValue[dateIndex]}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
-      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,right:strongAfter[b.rooms[b.rooms.length-1]]?3:0,top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
+      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,...laneInsets(b,strongAfter),top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
           if(draft)return;
           // Paint mode: a click paints the block instead of opening it.
           // It works in editor role even while the board is locked, so

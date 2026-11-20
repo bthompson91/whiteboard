@@ -33,7 +33,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction, fitFontSize } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
 
@@ -347,6 +347,43 @@ try {
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);
   check('hidden bookings still render in unlock mode', blocks.length === 1 && blocks[0].hidden === true);
+
+  // --- Overlapping blocks share the room side-by-side ---
+  // The Dec 1 AICC/Gala case is back-to-back (end == start), so it
+  // does not overlap and fills the full width. Two blocks that really
+  // do overlap in the same room get different lanes and split the width.
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'AICC', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '10:30', endTime: '15:00' }),
+    booking({ id: 'b', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '15:00', endTime: '21:00' })
+  ], venue, [], false);
+  check('back-to-back blocks do not split', blocks.length === 2 && blocks.every(b => b.laneCount === undefined), JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Nufarm SLT', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '08:00', endTime: '13:30' }),
+    booking({ id: 'b', title: 'Finsure PD Day', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '12:30' })
+  ], venue, [], false);
+  check('two overlapping blocks in one room split the width', blocks.length === 2 && blocks[0].lane === 0 && blocks[0].laneCount === 2 && blocks[1].lane === 1 && blocks[1].laneCount === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'First', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '10:00' }),
+    booking({ id: 'b', title: 'Second', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:30', endTime: '10:30' }),
+    booking({ id: 'c', title: 'Third', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:45', endTime: '11:00' })
+  ], venue, [], false);
+  check('three overlapping blocks take three lanes', blocks.length === 3 && blocks.map(b => b.lane).join(',') === '0,1,2' && blocks.every(b => b.laneCount === 3), JSON.stringify(blocks));
+  // A pair that only ever overlaps one other block takes half the
+  // width, even when a different pair in the same room needs three lanes.
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Morning A', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '10:00' }),
+    booking({ id: 'b', title: 'Morning B', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:30', endTime: '10:30' }),
+    booking({ id: 'c', title: 'Afternoon A', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '14:00', endTime: '15:00' }),
+    booking({ id: 'd', title: 'Afternoon B', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '14:15', endTime: '15:15' }),
+    booking({ id: 'e', title: 'Afternoon C', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '14:30', endTime: '15:30' })
+  ], venue, [], false);
+  check('a pair keeps half the width when another group needs three lanes', blocks.length === 5 && blocks[0].laneCount === 2 && blocks[1].laneCount === 2 && blocks[2].laneCount === 3 && blocks[3].laneCount === 3 && blocks[4].laneCount === 3, JSON.stringify(blocks));
+  // Overlapping blocks in different rooms do not split each other.
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Room A Event', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '12:00' }),
+    booking({ id: 'b', title: 'Room B Event', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '09:00', endTime: '12:00' })
+  ], venue, [], false);
+  check('overlapping blocks in different rooms do not split', blocks.length === 2 && blocks.every(b => b.laneCount === undefined), JSON.stringify(blocks));
 
   // --- Block colour rule: whole block unless unavailable ---
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1' })], venue, palette, false);
