@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, blockJobNumber, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
@@ -150,11 +150,32 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
   // The rooms of the block the inspector was opened from: hiding hides
   // this block only, not every room the booking is in.
   const [inspectorRooms,setInspectorRooms]=useState<string[]>([]);
-  const openInspector=(booking:Booking,blockRooms:string[])=>{onSelectedBookingChange(booking.id);setDraft({...booking});setInspectorRooms(blockRooms);setMergeMessage(null);};
-  const closeInspector=()=>{setDraft(null);setInspectorRooms([]);setApplyAllPrompt(null);setMergeMessage(null);};
+  // Job numbers are per room: the inspector edits the number for the
+  // block clicked, unless "Same job number in all rooms" is on — then
+  // it edits the booking's one number for every room. The box starts
+  // on while the booking has no per-room numbers yet.
+  const [jobNumberAllRooms,setJobNumberAllRooms]=useState(true);
+  const openInspector=(booking:Booking,blockRooms:string[])=>{onSelectedBookingChange(booking.id);setDraft({...booking});setInspectorRooms(blockRooms);setJobNumberAllRooms(!(booking.jobNumbers&&Object.keys(booking.jobNumbers).length));setMergeMessage(null);};
+  const closeInspector=()=>{setDraft(null);setInspectorRooms([]);setJobNumberAllRooms(true);setApplyAllPrompt(null);setMergeMessage(null);};
   const commitSave=(applyAll:boolean)=>{
     if(!draft)return;
-    const saved={...draft,jobNumber:draft.jobNumber?normalizeJobNumber(draft.jobNumber):undefined};
+    // A job number is per room: the number set for the block clicked,
+    // or one number for every room when "Same in all rooms" is on.
+    // Overrides only store numbers that differ from the booking's own
+    // number — clearing a room's number drops its override, so the room
+    // falls back to the booking's number.
+    const saved={...draft};
+    const level=normalizeJobNumber(draft.jobNumber||'');
+    saved.jobNumber=level||undefined;
+    if(jobNumberAllRooms){saved.jobNumbers=undefined;}
+    else{
+      const jobNumbers:Record<string,string>={};
+      for(const [room,value] of Object.entries(draft.jobNumbers||{})){
+        const n=normalizeJobNumber(value);
+        if(n&&n!==level)jobNumbers[room]=n;
+      }
+      saved.jobNumbers=Object.keys(jobNumbers).length?jobNumbers:undefined;
+    }
     // The block this booking belongs to: a merged block is one booking
     // to the user, so "Just this one" colours the whole block, not just
     // the one row the inspector happened to open (the inspector opens
@@ -170,7 +191,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
     const blockIds=new Set(block?block.ids:[draft.id]);
     onBookingsChange(bookings.map(booking=>{
       if(booking.id===draft.id)return saved;
-      if(blockIds.has(booking.id))return {...booking,salespersonId:saved.salespersonId,colour:saved.colour,jobNumber:saved.jobNumber};
+      if(blockIds.has(booking.id))return {...booking,salespersonId:saved.salespersonId,colour:saved.colour,jobNumber:saved.jobNumber,jobNumbers:saved.jobNumbers};
       if(applyAll&&applyAllPrompt&&applyAllPrompt.like.some(like=>like.id===booking.id))return {...booking,salespersonId:applyAllPrompt.salespersonId,colour:applyAllPrompt.colour};
       return booking;
     }));
@@ -282,10 +303,29 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
   // only the filtered salesperson's blocks from yesterday onward stay
   // full; older blocks dim too, even when they are that person's.
   const yesterday=format(addDays(parseISO(today),-1),'yyyy-MM-dd');
-  const jobNumberInvalid=!!draft?.jobNumber&&!/^\d+$/.test(draft.jobNumber.trim())&&!isNoAv(draft.jobNumber);
+  // The job number field shows the number for the block the inspector
+  // was opened from (or the booking's one number while "Same in all
+  // rooms" is on). Writing it sets that block's rooms, or every room.
+  // Clearing a room's number drops its override, so the room falls
+  // back to the booking's number.
+  const setRoomJobNumber=(room:string,value:string)=>{
+    if(!draft)return;
+    const jobNumbers={...(draft.jobNumbers||{})};
+    if(value)jobNumbers[room]=value;else delete jobNumbers[room];
+    setDraft({...draft,jobNumbers});
+  };
+  const setJobField=(value:string)=>{
+    if(!draft)return;
+    if(jobNumberAllRooms){setDraft({...draft,jobNumber:value});return;}
+    const jobNumbers={...(draft.jobNumbers||{})};
+    for(const room of inspectorRooms){if(value)jobNumbers[room]=value;else delete jobNumbers[room];}
+    setDraft({...draft,jobNumbers});
+  };
+  const jobField=draft?(jobNumberAllRooms?(draft.jobNumber||''):((inspectorRooms.length?blockJobNumber(draft,inspectorRooms):draft.jobNumber)||'')):'';
+  const jobNumberInvalid=!!draft&&[jobField,...(jobNumberAllRooms?[]:Object.values(draft.jobNumbers||{}))].some(v=>!!v&&!/^\d+$/.test(v.trim())&&!isNoAv(v));
   // The colour swatch beside the salesperson dropdown shows what the
   // block will look like: the event colour while random colours are on.
-  const draftColour=draft?(draft.unavailable||isNoAv(draft.jobNumber)?bookingColour(draft,salespeople):randomEventColours?eventColour(draft.title):bookingColour(draft,salespeople)):undefined;
+  const draftColour=draft?(draft.unavailable||isNoAv(jobField)?bookingColour({...draft,jobNumber:jobField||undefined},salespeople):randomEventColours?eventColour(draft.title):bookingColour({...draft,jobNumber:jobField||undefined},salespeople)):undefined;
   // Merge left / Merge right are greyed out when the room beside this
   // booking is across a strong border or a fixed wall (or there is no
   // room that way): a strong border is a hard separator, and merging
@@ -355,9 +395,23 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
           <header><h3>Booking details</h3><button onClick={closeInspector}>Close</button></header>
           <label>Title<input value={draft.title} onChange={event=>setDraft({...draft,title:event.target.value})}/></label>
           <div style={{display:'flex',alignItems:'flex-end'}}>
-            <label style={{flex:1,paddingRight:0}}>Job number<input value={draft.jobNumber||''} onChange={event=>setDraft({...draft,jobNumber:event.target.value})}/></label>
-            <label className="checkbox" style={{paddingLeft:12}}><input type="checkbox" checked={isNoAv(draft.jobNumber)} onChange={event=>setDraft({...draft,jobNumber:event.target.checked?'NO AV':''})}/>NO AV</label>
+            <label style={{flex:1,paddingRight:0}}>Job number<input value={jobField} onChange={event=>setJobField(event.target.value)}/></label>
+            <label className="checkbox" style={{paddingLeft:12}}><input type="checkbox" checked={isNoAv(jobField)} onChange={event=>setJobField(event.target.checked?'NO AV':'')}/>NO AV</label>
           </div>
+          {(draft.roomIds?.length||0)>1&&<label className="checkbox"><input type="checkbox" checked={jobNumberAllRooms} onChange={event=>setJobNumberAllRooms(event.target.checked)}/>Same job number in all {draft.roomIds?.length} rooms</label>}
+          {(draft.roomIds?.length||0)>1&&!jobNumberAllRooms&&(
+            <div style={{margin:'0 20px 10px',maxHeight:180,overflow:'auto',border:'1px solid #d9d9d9',borderRadius:7,padding:'8px 10px'}}>
+              {(draft.roomIds||[]).map(roomId=>{
+                const name=venue?.rooms.find(r=>r.id===roomId)?.name||roomId;
+                const value=draft.jobNumbers?.[roomId]??draft.jobNumber??'';
+                return <div key={roomId} style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                  <span style={{flex:1,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</span>
+                  <input aria-label={`Job number for ${name}`} value={value} onChange={event=>setRoomJobNumber(roomId,event.target.value)} style={{width:110}} />
+                  <label className="checkbox" style={{padding:0}}><input type="checkbox" aria-label={`NO AV for ${name}`} checked={isNoAv(value)} onChange={event=>setRoomJobNumber(roomId,event.target.checked?'NO AV':'')}/>NO AV</label>
+                </div>;
+              })}
+            </div>
+          )}
           {jobNumberInvalid&&<p className="field-warning">Job number must be numeric. It will be retained unchanged until corrected.</p>}
           <label>Notes<textarea value={draft.notes||''} onChange={event=>setDraft({...draft,notes:event.target.value})}/></label>
           <label>Salesperson

@@ -25,6 +25,7 @@ export function mergeMatchedBooking(previous: Booking, booking: Booking): Bookin
     hidden: booking.hidden ?? previous.hidden,
     hiddenRooms: booking.hiddenRooms ?? previous.hiddenRooms,
     jobNumber: booking.jobNumber || previous.jobNumber,
+    jobNumbers: booking.jobNumbers ?? previous.jobNumbers,
     timeline: booking.timeline ?? previous.timeline
   };
 }

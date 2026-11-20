@@ -27,6 +27,10 @@ export interface Booking {
   endTime: string;
   title: string;
   jobNumber?: string;
+  // A job number per room: a booking in several rooms can carry a
+  // different number in each room (or NO AV in some). The booking's
+  // own jobNumber is the number for every room without an entry.
+  jobNumbers?: Record<string, string>;
   status?: string;
   notes?: string;
   colour?: string;

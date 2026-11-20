@@ -198,6 +198,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig,
         if (existing.hidden !== undefined) booking.hidden = existing.hidden;
         if (existing.hiddenRooms?.length) booking.hiddenRooms = existing.hiddenRooms;
         if (existing.jobNumber) booking.jobNumber = existing.jobNumber;
+        if (existing.jobNumbers && Object.keys(existing.jobNumbers).length) booking.jobNumbers = existing.jobNumbers;
         if (existing.timeline?.length) booking.timeline = existing.timeline;
       }
       rows.push(booking);

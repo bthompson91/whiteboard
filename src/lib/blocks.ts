@@ -136,6 +136,16 @@ export function eventColour(title: string): string {
 // Merging is per booking and manual: a booking with mergeTime false
 // never height-merges, and one with mergeRoom false never width-merges,
 // so a block keeps its original size unless the user merges it.
+// The job number a block shows: the per-room number when one is set
+// for a room in the block, else the booking's own number. A wide block
+// spanning several rooms is one big room with one event and one job
+// number, so when its rooms disagree it shows the booking's number.
+export function blockJobNumber(b: Booking, rooms: string[]): string | undefined {
+  const values = rooms.map(r => b.jobNumbers?.[r] ?? b.jobNumber);
+  if (values.every(v => v === values[0])) return values[0];
+  return b.jobNumber ?? values[0];
+}
+
 function mergeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -162,7 +172,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       // (its id in the key), so it never height-merges with like bookings.
       const key=b.mergeTime===false?JSON.stringify([b.date,mergeTitle(b.title),room,b.id]):JSON.stringify([b.date,mergeTitle(b.title),room]);
       const old=groups.get(key);
-      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&roomHidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumber;}
+      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&roomHidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumbers?.[roomId]??b.jobNumber;}
       else {
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
@@ -172,16 +182,20 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         // salespersonColour is the assigned salesperson's colour even for
         // an unavailable booking (whose block colour is grey): the render
         // uses it for the left strip while the body stays grey.
-        const noAv=isNoAv(b.jobNumber);
+        // The job number is per room: this group is one room of the
+        // booking, so it shows that room's number (or the booking's
+        // own when the room has none). NO AV is per room too.
+        const roomJobNumber=b.jobNumbers?.[roomId]??b.jobNumber;
+        const noAv=isNoAv(roomJobNumber);
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
         // Random colours per event: every block with the same name gets
         // the same colour, and the salesperson's colour does not apply —
         // the person is still assigned (initials and filter still work),
         // only their colour is set aside. Unavailable stays grey.
-        const colour=unavailable?bookingColour(b,salespeople):randomEventColours?eventColour(b.title):bookingColour(b,salespeople);
+        const colour=unavailable?bookingColour({...b,jobNumber:roomJobNumber},salespeople):randomEventColours?eventColour(b.title):bookingColour({...b,jobNumber:roomJobNumber},salespeople);
         const salespersonColour=randomEventColours?undefined:(person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour,salespersonId:b.salespersonId,salespersonColour,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:roomJobNumber,colour,salespersonId:b.salespersonId,salespersonColour,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
       }
     }
   }
@@ -222,6 +236,22 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
   // to 16:00 and the Gala's start down to 14:00 and they overlapped
   // 14:00-16:00. The exact times are kept in mainStart/mainEnd and
   // shown in the facts column and the tooltip.
+  // A block's job number is per room: when one booking spans several
+  // rooms and they merge wide, the wide block is one big room with one
+  // event and one job number, so it shows the booking's number (see
+  // blockJobNumber) — and its grey/NO AV rendering follows that
+  // number, not the first room's.
+  for (const block of spans) {
+    if (block.ids.length !== 1) continue;
+    const sole = bookings.find(b => b.id === block.ids[0]);
+    if (!sole) continue;
+    block.jobNumber = blockJobNumber(sole, block.rooms.map(i => venue.rooms[i].id));
+    const noAv = isNoAv(block.jobNumber);
+    block.unavailable = !!sole.unavailable || sole.salespersonId === UNAVAILABLE_SALESPERSON.id || noAv;
+    const person = resolveSalesperson(salespeople, sole.salespersonId);
+    block.colour = block.unavailable ? bookingColour({ ...sole, jobNumber: block.jobNumber }, salespeople) : randomEventColours ? eventColour(block.title) : bookingColour({ ...sole, jobNumber: block.jobNumber }, salespeople);
+    block.initials = (block.unavailable && !noAv) || !person ? undefined : salespersonInitials(person);
+  }
   assignLanes(spans);
   return spans;
 }

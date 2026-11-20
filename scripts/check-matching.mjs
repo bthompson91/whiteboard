@@ -42,9 +42,9 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
-  const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
+  const { bookingId, identityKey } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
@@ -397,6 +397,27 @@ try {
   check('an unavailable booking stays grey with random colours on', blocks.length === 1 && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks.map(b => b.colour)));
   check('random event colours are read from the venue settings', boardSettings(readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  random_event_colours: true\n`, false)).random_event_colours === true);
   check('a non-boolean random event colours is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  random_event_colours: 5\n`, false); return false; } catch { return true; } })());
+
+  // --- Per-room job numbers ---
+  check('the event identity ignores the job number, so a number set in the inspector does not hide the booking on re-import', identityKey(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') === identityKey(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948' }), 'MCG'));
+  check('the booking id still folds the job number in', bookingId(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') !== bookingId(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948' }), 'MCG'));
+  const numbered = booking({ id: 'n', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948', jobNumbers: { 'Palladium B': 'NO AV' } });
+  check('a block shows its own room number, or the booking number', blockJobNumber(numbered, ['Palladium A']) === '1022948' && blockJobNumber(numbered, ['Palladium B']) === 'NO AV');
+  check('a wide block shows the booking number when its rooms disagree', blockJobNumber(numbered, ['Palladium A', 'Palladium B']) === '1022948');
+  check('a wide block shows the shared number when its rooms agree', blockJobNumber(booking({ id: 'w', title: 'X', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium A': 'NO AV', 'Palladium B': 'NO AV' } }), ['Palladium A', 'Palladium B']) === 'NO AV');
+  blocks = blocksFor([numbered], venue, [], false);
+  check('each room of one booking shows its own job number', blocks.length === 2 && blocks.find(b => b.rooms[0] === 0).jobNumber === '1022948' && blocks.find(b => b.rooms[0] === 1).jobNumber === 'NO AV', JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber, b.unavailable])));
+  check('NO AV is per room too: only that room renders grey', blocks.find(b => b.rooms[0] === 1).unavailable === true && blocks.find(b => b.rooms[0] === 0).unavailable === false, JSON.stringify(blocks.map(b => [b.rooms, b.unavailable])));
+  blocks = blocksFor([numbered], venue, [], false, [], ['Palladium A']);
+  check('a wide block across operable walls shows the one booking number', blocks.length === 1 && blocks[0].jobNumber === '1022948' && blocks[0].unavailable === false, JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber, b.unavailable])));
+  blocks = blocksFor([booking({ id: 'd', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium A': '111', 'Palladium B': '222' } })], venue, [], false);
+  check('two rooms can carry two different job numbers', blocks.length === 2 && blocks.find(b => b.rooms[0] === 0).jobNumber === '111' && blocks.find(b => b.rooms[0] === 1).jobNumber === '222', JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber])));
+  check('a matched re-import carries the per-room job numbers over', (() => {
+    const previous = booking({ id: 'p', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948', jobNumbers: { 'Palladium B': 'NO AV' } });
+    const next = booking({ id: 'n', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' });
+    const merged = mergeMatchedBooking(previous, next);
+    return merged.jobNumber === '1022948' && JSON.stringify(merged.jobNumbers) === JSON.stringify({ 'Palladium B': 'NO AV' });
+  })());
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);
