@@ -51,7 +51,7 @@ export function bookingColour(booking: { colour?: string; salespersonId?: string
   if (booking.unavailable || isNoAv(booking.jobNumber)) return UNAVAILABLE_SALESPERSON.colour;
   return resolveSalesperson(salespeople, booking.salespersonId)?.colour ?? booking.colour;
 }
-export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; room_width_min:number; room_width_max:number; salespeople:Salesperson[]; room_borders:string[] }
+export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; room_width_min:number; room_width_max:number; salespeople:Salesperson[]; room_borders:string[]; operable_walls:string[] }
 export type ConfigDocument = Record<string, any>;
 const object = (v:any):boolean => !!v && typeof v === 'object' && !Array.isArray(v);
 const strings = (v:any):boolean => Array.isArray(v) && v.every(x=>typeof x==='string');
@@ -93,6 +93,13 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if(w.room_borders!==undefined){
     if(!Array.isArray(w.room_borders)||!w.room_borders.every((r:unknown)=>typeof r==='string'))throw new Error('Room borders must be a list of room names.');
   }
+  // Operable walls: the rooms after which the wall to the next room can
+  // be opened, so bookings may merge across them. A wall that is not
+  // listed here is fixed, and no merge crosses it. Stored as room
+  // names, mirroring room_borders.
+  if(w.operable_walls!==undefined){
+    if(!Array.isArray(w.operable_walls)||!w.operable_walls.every((r:unknown)=>typeof r==='string'))throw new Error('Operable walls must be a list of room names.');
+  }
   parseVenueConfig(text);
   return d;
 }
@@ -106,7 +113,7 @@ export function boardSettings(d:ConfigDocument):BoardSettings {
     const key=k.trim();
     if(key)room_types[key]=v;
   }
-  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},room_width_min:typeof w.room_width_min==='number'?w.room_width_min:125,room_width_max:typeof w.room_width_max==='number'?w.room_width_max:600,salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])]};
+  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},room_width_min:typeof w.room_width_min==='number'?w.room_width_min:125,room_width_max:typeof w.room_width_max==='number'?w.room_width_max:600,salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])],operable_walls:[...(w.operable_walls||[])]};
 }
 export function writeConfiguration(d:ConfigDocument):string { return yaml.dump(d,{noRefs:true,lineWidth:120,sortKeys:false}); }
 // Tidy a configuration document before saving: trim stray whitespace
@@ -135,9 +142,10 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
     // border after; drop the dead key when the configuration is next saved.
     if ('room_groups' in d.whiteboard) delete d.whiteboard.room_groups;
     if (Array.isArray(d.whiteboard.room_borders)) d.whiteboard.room_borders = trimList(d.whiteboard.room_borders);
+    if (Array.isArray(d.whiteboard.operable_walls)) d.whiteboard.operable_walls = trimList(d.whiteboard.operable_walls);
   }
   if (object(d.display) && Array.isArray(d.display.allowed_statuses)) d.display.allowed_statuses = trimList(d.display.allowed_statuses);
   if (Array.isArray(d.time_slots)) d.time_slots = d.time_slots.map(s => object(s) ? { ...s, label: typeof s.label === 'string' ? s.label.trim() : s.label, start: typeof s.start === 'string' ? s.start.trim() : s.start, end: typeof s.end === 'string' ? s.end.trim() : s.end } : s);
   return d;
 }
-export const starterConfiguration=writeConfiguration({site:{name:'New venue'},fields:{booking_name:'Booking: Booking Post As',activity_name:'Booking Event: Name',event_date:'Start Date',start_time:'Start Time 24 Hour',end_time:'End Time 24 Hour',room_name:'Function Room',booking_status:'Booking: Status'},display:{primary_label:'booking_name',secondary_label:'activity_name',allowed_statuses:['Definite']},rooms:{order:['Room 1'],exclude:[],room_aliases:{},room_mappings:{}},timeline_items:['Setup','Teardown'],whiteboard:{room_types:{'Room 1':'other'},room_widths:{large:200,small:125,other:150},salespeople:[],room_borders:[]}});
+export const starterConfiguration=writeConfiguration({site:{name:'New venue'},fields:{booking_name:'Booking: Booking Post As',activity_name:'Booking Event: Name',event_date:'Start Date',start_time:'Start Time 24 Hour',end_time:'End Time 24 Hour',room_name:'Function Room',booking_status:'Booking: Status'},display:{primary_label:'booking_name',secondary_label:'activity_name',allowed_statuses:['Definite']},rooms:{order:['Room 1'],exclude:[],room_aliases:{},room_mappings:{}},timeline_items:['Setup','Teardown'],whiteboard:{room_types:{'Room 1':'other'},room_widths:{large:200,small:125,other:150},salespeople:[],room_borders:[],operable_walls:[]}});

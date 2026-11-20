@@ -44,6 +44,16 @@ export function strongBorders(roomIds: string[], borders: string[]): boolean[] {
   return roomIds.map(id => wanted.has(id.trim().toLowerCase()));
 }
 
+// Which walls between rooms can be opened, so bookings may merge
+// across them: exactly the rooms named in the list, where the named
+// room is the one above the operable wall. A wall that is not listed
+// is fixed, and no merge crosses it — merging is only allowed across
+// mergeable rooms, never by guessing from similar titles.
+export function operableWallAfter(roomIds: string[], walls: string[]): boolean[] {
+  const wanted = new Set(walls.map(b => b.trim().toLowerCase()).filter(Boolean));
+  return roomIds.map(id => wanted.has(id.trim().toLowerCase()));
+}
+
 // Bookings with the exact same title as the given one (any room, any
 // day), excluding the booking itself: the "like bookings" a colour can
 // be applied to as a group. Only those whose salesperson differs from
@@ -73,18 +83,21 @@ export function blockCountForBookings(blocks: Block[], bookings: Booking[]): num
 // combined times (a height merge); the same event in adjacent rooms at
 // the same time merges into one wide block (a width merge), whether it
 // is one booking spanning both rooms or a separate booking per room.
-// Titles match loosely for merging (case and spacing are ignored), so
-// the same event written two ways in the export still joins; the block
-// keeps the first booking's title as written. A merge never crosses a
-// strong border: the rooms named in `borders` divide the board, and a
-// block stops at the border even when the event continues next door.
+// A width merge only crosses a wall that is operable: the rooms named
+// in `operableWalls` are the ones above an openable wall, and a merge
+// never crosses a fixed wall. Titles must match exactly for a width
+// merge — there is no fuzzy matching across rooms, so the same event
+// written two ways does not join; the block keeps the first booking's
+// title as written. A merge never crosses a strong border either: the
+// rooms named in `borders` divide the board, and a block stops at the
+// border even when the event continues next door.
 // Merging is per booking and manual: a booking with mergeTime false
 // never height-merges, and one with mergeRoom false never width-merges,
 // so a block keeps its original size unless the user merges it.
 function mergeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
 }
-export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[],showHidden:boolean,borders:string[]=[]):Block[] {
+export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[],showHidden:boolean,borders:string[]=[],operableWalls:string[]=[]):Block[] {
   const groups=new Map<string,Block>();
   for(const b of bookings as BoardBooking[]) {
     // Hidden bookings are skipped entirely, unless the board is unlocked —
@@ -124,15 +137,17 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
   // setup and teardown: a setup in one room must not stop the event
   // joining across rooms, and the joined block covers both rooms' spans.
   // A manual merge (the same merge group on both bookings) joins
-  // regardless of title or times, but never across a strong border:
-  // the border is a hard separator, and Merge left / Merge right are
-  // greyed out next to one.
+  // regardless of title or times, but never across a strong border or
+  // a fixed wall: the border is a hard separator, and only an operable
+  // wall lets two rooms combine. Merge left / Merge right are greyed
+  // out next to either one.
   const borderAfter=strongBorders(venue.rooms.map(r=>r.id),borders);
+  const wallOperable=operableWallAfter(venue.rooms.map(r=>r.id),operableWalls);
   const spans:Block[]=[];
   for(const b of [...groups.values()].sort((a,c)=>a.rooms[0]-c.rooms[0])) {
     b.ids=[...new Set(b.ids)].sort();b.facts=[...new Set(b.facts)];
     const manualMerge=!!(b.mergeGroup&&b.mergeGroup.length);
-    const previous=spans.find(p=>p.date===b.date&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]&&((manualMerge&&!!p.mergeGroup&&p.mergeGroup===b.mergeGroup)||(mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.mergeRoom&&b.mergeRoom)));
+    const previous=spans.find(p=>p.date===b.date&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]&&wallOperable[p.rooms[p.rooms.length-1]]&&((manualMerge&&!!p.mergeGroup&&p.mergeGroup===b.mergeGroup)||(p.title===b.title&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.mergeRoom&&b.mergeRoom)));
     if(previous){
       previous.rooms.push(b.rooms[0]);
       previous.ids=[...new Set([...previous.ids,...b.ids])].sort();

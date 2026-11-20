@@ -1,0 +1,52 @@
+/* Print view: a paper-friendly board for Save as PDF. On screen it is a
+full-screen overlay like Configuration; in print only the board itself
+prints, landscape, with the app chrome hidden. */
+.print-view{position:fixed;inset:0;z-index:4000;display:flex;flex-direction:column;background:#fff;color:#141414;font-size:14px;overflow:auto}
+.print-view-header{flex:none;padding:14px 20px;border-bottom:2px solid #141414;background:#f6f0e3}
+.print-view-header h1{font-size:19px;margin:0 0 6px}
+.print-view-header p{margin:0 0 10px;color:#444}
+.print-view-actions{display:flex;gap:10px}
+.print-view-actions button{padding:8px 12px;border:1px solid #7a1f1f;background:#fff;color:#7a1f1f;cursor:pointer;font-size:15px}
+.print-view-actions button.primary{background:#7a1f1f;color:#fff}
+.print-chunk{flex:none;margin:0 auto 0;padding:0 0 8px;page-break-after:always;break-after:page}
+.print-chunk:last-child{page-break-after:auto;break-after:auto}
+.print-grid-header{display:grid;border-bottom:2px solid #141414}
+.print-corner,.print-room-header{padding:6px;border-right:1px solid #141414;font-weight:700;text-align:center;overflow:hidden;white-space:nowrap}
+.print-corner{text-align:left}
+.print-grid-body{position:relative}
+.print-row{position:relative;display:grid;break-inside:avoid;page-break-inside:avoid}
+.print-row.today{background:#fff9c4}
+.print-date-cell{position:sticky;left:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border-right:2px solid #141414;border-bottom:1px solid #141414;padding:2px 4px;text-align:center}
+.print-date-cell.past{background:#d9d9d9}
+.print-date-cell.today{background:#ffff00;color:#ff0000}
+.print-date-cell.future{background:#b6d7a8}
+.print-room-cell{border-right:1px solid #141414;border-bottom:1px solid #141414;background:#fff}
+.print-row.today .print-room-cell{background:#fff9c4}
+.print-block{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);overflow:hidden;background:#fff;border:1px solid #141414;font-size:11px;line-height:1.2;z-index:1}
+.print-block-facts{border-right:1px solid #999;overflow:hidden;font-size:12px;font-weight:700;padding:1px 3px}
+.print-block-title{padding:0 3px;min-width:0;overflow:hidden;font-weight:600;display:flex;align-items:center;justify-content:center;text-align:center}
+.print-block-compact{grid-column:1/-1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 3px}
+.print-note{position:absolute;color:#7a1f1f;font-weight:600;font-size:16px;line-height:1.25;white-space:pre-wrap;max-width:280px;padding:2px;z-index:2}
+.print-note.highlight{background:#ffff00}
+.print-arrows{position:absolute;left:0;top:0;pointer-events:none;z-index:2;overflow:visible}
+
+/* Print: only the board prints, landscape, app chrome hidden. The
+print view stops being a fixed overlay and flows as a document, so the
+browser paginates it across sheets. These rules use !important because
+the app's base styles (100dvh height, hidden overflow) would otherwise
+win in the cascade and clip the printout to a single page. */
+@page{size:landscape;margin:10mm}
+@media print{
+  body{background:#fff}
+  .app{height:auto!important;overflow:visible!important;display:block!important}
+  .app.files-unlinked::after{display:none!important}
+  .app>*:not(.print-view){display:none!important}
+  .print-view{position:static!important;overflow:visible!important;display:block!important}
+  .print-view-header{display:none!important}
+  .print-chunk{margin:0}
+  .print-row{break-inside:avoid;page-break-inside:avoid}
+  .print-block{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .print-date-cell{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .print-room-cell{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .print-note{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}

@@ -4,6 +4,7 @@ import BookingGrid from './components/BookingGrid';
 import ImportHistoryPanel from './components/ImportHistoryPanel';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import MarkupLayer from './components/MarkupLayer';
+import PrintView from './components/PrintView';
 import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
 import { BoardRole, Booking, EditorLock, ImportHistoryEntry, MarkupItem } from './types';
@@ -173,6 +174,20 @@ export default function App() {
   const scrollToTodayRef = useRef<(() => void) | null>(null);
   const [linkedFiles, setLinkedFiles] = useState<{ board: string | null; yaml: string | null; bookings: string | null }>({ board: null, yaml: null, bookings: null });
   const [linkFilesOpen, setLinkFilesOpen] = useState(false);
+  // Print view: a paper-friendly board for a chosen date range, built
+  // for Print -> Save as PDF. The dialog picks the range (defaulting
+  // to the bookings on the board); confirming opens the print view.
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [printStart, setPrintStart] = useState('');
+  const [printEnd, setPrintEnd] = useState('');
+  const [printRange, setPrintRange] = useState<{ start: string; end: string } | null>(null);
+  const openPrintDialog = () => {
+    const dates = bookings.map(b => b.date).sort();
+    const today = format(new Date(), 'yyyy-MM-dd');
+    setPrintStart(dates[0] || today);
+    setPrintEnd(dates[dates.length - 1] || format(addDays(new Date(), 6), 'yyyy-MM-dd'));
+    setPrintDialogOpen(true);
+  };
   const [saving, setSaving] = useState(false);
   // Restore the linked files from the previous session. Handles are
   // kept in IndexedDB — they cannot go in localStorage, which only
@@ -653,6 +668,7 @@ export default function App() {
         canLinkFiles={hasFileSystemAccess()}
         editorLockName={editorLock && editorLock.id !== editorSessionId && Date.now() - editorLock.at < EDITOR_LOCK_TTL_MS ? editorLock.name : null}
         onOpenLinkFiles={() => setLinkFilesOpen(true)}
+        onOpenPrint={openPrintDialog}
       />
       <main className="board-container">
         <BookingGrid
@@ -660,6 +676,7 @@ export default function App() {
           bookings={bookings}
           salespeople={settings?.salespeople || []}
           roomBorders={settings?.room_borders || []}
+          operableWalls={settings?.operable_walls || []}
           editingEnabled={editingEnabled && role !== 'viewer'}
           showHidden={showHidden}
           paintMode={paintMode && role !== 'viewer'}
@@ -763,6 +780,39 @@ export default function App() {
             </footer>
           </section>
         </div>
+      )}
+      {printDialogOpen && (
+        <div className="review-overlay">
+          <section className="review-panel" aria-label="Print board">
+            <header>
+              <h2>Print board</h2>
+              <p>
+                Export the board for a date range as a printout. Rooms run across as many landscape sheets as needed, dates run down the pages, and your notes and arrows print too. Block colours print at 50% so the printout does not eat printer ink. Use Print / Save as PDF in the print view to make the PDF.
+              </p>
+            </header>
+            <label>From <input type="date" value={printStart} onChange={e => setPrintStart(e.target.value)} /></label>{' '}
+            <label>To <input type="date" value={printEnd} onChange={e => setPrintEnd(e.target.value)} /></label>
+            <footer>
+              <button onClick={() => setPrintDialogOpen(false)}>Cancel</button>
+              <button className="primary" disabled={!printStart || !printEnd || printEnd < printStart} onClick={() => { setPrintRange({ start: printStart, end: printEnd }); setPrintDialogOpen(false); }}>Show print view</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {printRange && (
+        <PrintView
+          venue={venue}
+          bookings={bookings}
+          salespeople={settings?.salespeople || []}
+          roomBorders={settings?.room_borders || []}
+          operableWalls={settings?.operable_walls || []}
+          markup={markup}
+          startDate={printRange.start}
+          endDate={printRange.end}
+          roomBaseWidths={roomBaseWidths}
+          roomWidthMin={settings?.room_width_min || 125}
+          onClose={() => setPrintRange(null)}
+        />
       )}
     </div>
   );

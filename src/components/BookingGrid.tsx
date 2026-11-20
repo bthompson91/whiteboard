@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, clock, fitFontSize, likeBookings, blockCountForBookings, strongBorders, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, clock, fitFontSize, likeBookings, blockCountForBookings, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
@@ -12,6 +12,10 @@ interface Props {
   bookings: Booking[];
   salespeople: Salesperson[];
   roomBorders: string[];
+  // Operable walls: the rooms after which the wall to the next room can
+  // be opened. Merging across rooms is only allowed over an operable
+  // wall, so this list is what decides which rooms can combine.
+  operableWalls: string[];
   editingEnabled: boolean;
   selectedBookingId: string | null;
   onBookingsChange: (bookings: Booking[]) => void;
@@ -133,7 +137,7 @@ function FitTitle({ text }: { text: string }) {
   }, [fit, text]);
   return <div ref={ref} className="booking-title" style={{ fontSize }}>{text}</div>;
 }
-export default function BookingGrid({venue,bookings,salespeople,roomBorders,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false,filterSalespersonId=''}:Props) {
+export default function BookingGrid({venue,bookings,salespeople,roomBorders,operableWalls,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false,filterSalespersonId=''}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
@@ -210,10 +214,13 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     if(!indices.length)return null;
     const targetIndex=direction==='right'?Math.max(...indices)+1:Math.min(...indices)-1;
     if(targetIndex<0||targetIndex>=venue.rooms.length)return null;
-    // A strong border is a hard separator: a manual merge never crosses
-    // one, and the Merge buttons are greyed out next to one.
+    // A strong border is a hard separator, and a fixed wall is too:
+    // a manual merge never crosses either one, and the Merge buttons
+    // are greyed out next to both.
     if(direction==='right'&&strongAfter[Math.max(...indices)])return null;
     if(direction==='left'&&strongAfter[targetIndex])return null;
+    if(direction==='right'&&!wallOperable[Math.max(...indices)])return null;
+    if(direction==='left'&&!wallOperable[targetIndex])return null;
     const targetRoom=venue.rooms[targetIndex].id;
     const start=toMinutes(draft.startTime),end=toMinutes(draft.endTime);
     const overlap=(b:Booking)=>{const s=toMinutes(b.startTime),e=toMinutes(b.endTime);return Math.max(0,Math.min(end,e)-Math.max(start,s));};
@@ -255,8 +262,9 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const total=baseWidths.reduce((sum,width)=>sum+width,0);
   const scale=Math.max(1,size.availableWidth/Math.max(1,total));
   const widths=baseWidths.map(width=>width*scale);
-  const blocks=blocksFor(bookings,venue,salespeople,editingEnabled||showHidden,roomBorders);
+  const blocks=blocksFor(bookings,venue,salespeople,editingEnabled||showHidden,roomBorders,operableWalls);
   const strongAfter=strongBorders(venue.rooms.map(r=>r.id),roomBorders);
+  const wallOperable=operableWallAfter(venue.rooms.map(r=>r.id),operableWalls);
   const segments=blocks.flatMap(b=>{const result:{block:Block;date:string;start:number;end:number;continuation:boolean}[]=[];for(let offset=0;offset<=Math.floor(Math.max(b.start,b.end-1)/1440);offset++){const start=Math.max(0,b.start-offset*1440),end=Math.min(1440,b.end-offset*1440);if(end>=start)result.push({block:b,date:format(addDays(parseISO(b.date),offset),'yyyy-MM-dd'),start,end,continuation:offset>0});}return result;});
   const sourceDates=[...new Set(segments.map(s=>s.date))].sort();
   const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
@@ -270,12 +278,15 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const yesterday=format(addDays(parseISO(today),-1),'yyyy-MM-dd');
   const jobNumberInvalid=!!draft?.jobNumber&&!/^\d+$/.test(draft.jobNumber.trim())&&!isNoAv(draft.jobNumber);
   // Merge left / Merge right are greyed out when the room beside this
-  // booking is across a strong border (or there is no room that way):
-  // a strong border is a hard separator, so a manual merge cannot
-  // cross it.
+  // booking is across a strong border or a fixed wall (or there is no
+  // room that way): a strong border is a hard separator, and merging
+  // is only allowed over an operable wall, so a manual merge cannot
+  // cross either one.
   const draftRoomIndices=draft?((draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId]).map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0)):[];
-  const mergeLeftBlocked=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0||!!strongAfter[Math.min(...draftRoomIndices)-1];
-  const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)];
+  const mergeLeftBlocked=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0||!!strongAfter[Math.min(...draftRoomIndices)-1]||!wallOperable[Math.min(...draftRoomIndices)-1];
+  const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)]||!wallOperable[Math.max(...draftRoomIndices)];
+  const mergeLeftTitle=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0?undefined:strongAfter[Math.min(...draftRoomIndices)-1]?'A strong border separates this room from the one to the left.':'The wall between these rooms is not operable, so they cannot merge.';
+  const mergeRightTitle=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1?undefined:strongAfter[Math.max(...draftRoomIndices)]?'A strong border separates this room from the one to the right.':'The wall between these rooms is not operable, so they cannot merge.';
   // The date labels share one fitted size that fills the 160px date
   // column, the same way the room names fill theirs.
   const dateFontSizesValue=dateFontSizes(dates.map(d=>format(parseISO(d),'EEE dd MMM')),160);
@@ -360,8 +371,8 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
           <label className="checkbox"><input type="checkbox" checked={draft.mergeRoom!==false} onChange={event=>setDraft({...draft,mergeRoom:event.target.checked})}/>Merge with the same booking in other rooms</label>
           <div style={{margin:'0 20px 10px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
             <span style={{fontSize:13}}>Merge with the next room:</span>
-            <button onClick={()=>mergeNeighbour('left')} disabled={mergeLeftBlocked} title={mergeLeftBlocked?'A strong border separates this room from the one to the left.':undefined}>Merge left</button>
-            <button onClick={()=>mergeNeighbour('right')} disabled={mergeRightBlocked} title={mergeRightBlocked?'A strong border separates this room from the one to the right.':undefined}>Merge right</button>
+            <button onClick={()=>mergeNeighbour('left')} disabled={mergeLeftBlocked} title={mergeLeftBlocked?mergeLeftTitle:undefined}>Merge left</button>
+            <button onClick={()=>mergeNeighbour('right')} disabled={mergeRightBlocked} title={mergeRightBlocked?mergeRightTitle:undefined}>Merge right</button>
             {draft.mergeGroup&&<button onClick={unmergeGroup}>Unmerge</button>}
           </div>
           {mergeMessage&&<p style={{margin:'0 20px 10px',fontSize:13}}>{mergeMessage}</p>}

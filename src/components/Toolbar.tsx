@@ -38,12 +38,13 @@ interface Props {
   onSaveAndRefresh: () => void;
   onToday: () => void;
   onOpenLinkFiles: () => void;
+  onOpenPrint: () => void;
 }
 export default function Toolbar({
   venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, filterSalespersonId, error, revision,
   saving, linkedFiles, canLinkFiles, editorLockName,
   onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onFilterSalespersonChange, onSetMarkupMode, onOpenConfiguration,
-  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles
+  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint
 }: Props) {
   return (
     <header className="toolbar">
@@ -69,6 +70,7 @@ export default function Toolbar({
         {saving ? 'Refreshing…' : '🔄 Refresh'}
       </button>
       <button onClick={onToday} title="Snap to today">📅 Today</button>
+      <button onClick={onOpenPrint} title="Export the board for a date range as a printout (Save as PDF)">🖨️ Print</button>
       <select value={filterSalespersonId} onChange={event => onFilterSalespersonChange(event.target.value)} aria-label="Filter by salesperson" title="Show one salesperson's blocks at full strength; everyone else's dims to 25%">
         <option value="">All salespeople</option>
         {salespeople.map(person => <option key={person.id} value={person.id} style={{ backgroundColor: person.colour, color: readableText(person.colour) }}>{person.name}</option>)}

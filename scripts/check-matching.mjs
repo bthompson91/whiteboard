@@ -33,7 +33,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
 
@@ -296,7 +296,7 @@ try {
     booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00' }),
     booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
   ];
-  let blocks = blocksFor(riverPair, venue, [], false);
+  let blocks = blocksFor(riverPair, venue, [], false, [], ['River Room 1']);
   check('same title in adjacent rooms at the same time merges into one wide block', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].ids.length === 2, JSON.stringify(blocks));
   // A merged block shows the job number even when it is only on a row
   // other than the one that created the block: editing the job number
@@ -331,18 +331,40 @@ try {
   blocks = blocksFor([
     booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '15:00', end: '18:00' }] }),
     booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
-  ], venue, [], false);
+  ], venue, [], false, [], ['River Room 1']);
   check('a setup in one room does not stop the wide merge', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].start === 15 * 60 && blocks[0].facts.some(f => f.startsWith('Setup')), JSON.stringify(blocks));
-  blocks = blocksFor(riverPair, venue, [], false, ['River Room 1']);
+  blocks = blocksFor(riverPair, venue, [], false, ['River Room 1'], ['River Room 1']);
   check('a merge never crosses a strong border', blocks.length === 2, JSON.stringify(blocks));
-  blocks = blocksFor(riverPair, venue, [], false, ['River Room 2']);
+  blocks = blocksFor(riverPair, venue, [], false, ['River Room 2'], ['River Room 1']);
   check('a border elsewhere does not stop the merge', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
-  blocks = blocksFor([booking({ id: 'a', title: 'Palladium Party', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '23:00' })], venue, [], false, ['River Room 1']);
+  blocks = blocksFor([booking({ id: 'a', title: 'Palladium Party', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '23:00' })], venue, [], false, ['River Room 1'], ['River Room 1']);
   check('one booking spanning a strong border renders as two blocks', blocks.length === 2, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
-  ], venue, [], false);
+  ], venue, [], false, [], ['Palladium A']);
   check('one booking spanning two rooms renders as one wide block', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
+  // --- Operable walls gate every merge across rooms ---
+  // Merging is only allowed across a wall that is operable: the wall
+  // after the room above it must be ticked in Configuration. A fixed
+  // wall stops both the automatic merge and a manual merge group, and
+  // a width merge needs the titles to match exactly — there is no
+  // fuzzy matching across rooms.
+  blocks = blocksFor(riverPair, venue, [], false);
+  check('a wide merge does not happen without an operable wall', blocks.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00' }),
+    booking({ id: 'b', title: 'river  dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
+  ], venue, [], false, [], ['River Room 1']);
+  check('titles differing only by case or spacing do not merge across rooms', blocks.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
+  ], venue, [], false);
+  check('a manual merge does not cross a fixed wall', blocks.length === 2, JSON.stringify(blocks));
+  check('operable walls are read from the YAML whiteboard section', JSON.stringify(boardSettings({ whiteboard: { operable_walls: ['Palladium A', 'River Room 1'] } }).operable_walls) === JSON.stringify(['Palladium A', 'River Room 1']));
+  check('operable walls default to none', boardSettings({ whiteboard: {} }).operable_walls.length === 0);
+  check('a non-list operable walls value is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  operable_walls: Room 1\n`, false); return false; } catch (e) { return String(e.message || e).includes('Operable walls must be a list'); } })());
+  check('operable wall matching ignores case and whitespace', operableWallAfter(['Palladium A', 'Palladium B'], [' palladium a '])[0] === true && operableWallAfter(['Palladium A', 'Palladium B'], [' palladium a '])[1] === false);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);
@@ -437,7 +459,7 @@ try {
   ] };
   const aicc = booking({ id: 'aicc-lunch', title: 'AICC Boardroom Lunch with Anthony Miller, CEO of Westpac', roomId: 'Garden Room 2', roomIds: ['Garden Room 2', 'Garden Room 3'], startTime: '12:15', endTime: '14:00', timeline: [{ label: 'Setup', start: '10:30', end: '12:15' }, { label: 'Teardown', start: '14:00', end: '15:00' }] });
   const gala = booking({ id: 'gala-vip', title: '2026 Crown Australian Open Welcome Gala', roomId: 'Garden Room 1', roomIds: ['Garden Room 1', 'Garden Room 2'], startTime: '18:00', endTime: '19:00', timeline: [{ label: 'Setup', start: '15:00', end: '18:00' }, { label: 'Teardown', start: '19:00', end: '21:00' }] });
-  blocks = blocksFor([aicc, gala], gardenVenue, [], false);
+  blocks = blocksFor([aicc, gala], gardenVenue, [], false, [], ['Garden Room 1', 'Garden Room 2']);
   const aiccBlock = blocks.find(b => b.title.includes('AICC'));
   const galaBlock = blocks.find(b => b.title.includes('Gala'));
   check('back-to-back blocks in a shared room do not overlap', !!aiccBlock && !!galaBlock && aiccBlock.end <= galaBlock.start && aiccBlock.end === 15 * 60 && galaBlock.start === 15 * 60, JSON.stringify(blocks.map(b => [b.title.slice(0, 10), b.start, b.end])));
@@ -571,7 +593,7 @@ try {
   blocks = blocksFor([
     booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
     booking({ id: 'b', title: 'Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
-  ], venue, [], false);
+  ], venue, [], false, [], ['Palladium A']);
   check('bookings sharing a merge group render as one wide block', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00' }),
@@ -581,7 +603,7 @@ try {
   blocks = blocksFor([
     booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
     booking({ id: 'b', title: 'Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
-  ], venue, [], false, ['Palladium A']);
+  ], venue, [], false, ['Palladium A'], ['Palladium A']);
   check('a manual merge does not cross a strong border', blocks.length === 2, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
