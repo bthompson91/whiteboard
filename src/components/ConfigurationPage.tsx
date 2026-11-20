@@ -1,5 +1,5 @@
 import { ChangeEvent, useState } from 'react';
-import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
+import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, RoomGroup, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
 import '../configuration.css';
 interface Props { yamlText:string; hasBookings:boolean; onSave:(text:string)=>void; onClose:()=>void }
 type TimeSlot = { label:string; start:string; end:string };
@@ -14,6 +14,35 @@ const FIELD_KEYS: Array<{ key:string; label:string; optional?:boolean }> = [
   { key:'job_number', label:'Job number', optional:true }
 ];
 const DATE_FORMATS = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
+// A width field that commits as you type, so clicking "Apply and save"
+// while the field still has focus can never lose the value (the old
+// defaultValue + onBlur field only committed when it lost focus).
+function WidthInput({type,value,onCommit,onInvalid}:{type:RoomType;value:number;onCommit:(n:number)=>void;onInvalid:()=>void}){
+  const [text,setText]=useState(String(value));
+  const label=type==='other'?'Medium':type==='small'?'Small':'Large';
+  return <label>{label} width (px) <input type="number" min={125} max={600} value={text} onChange={e=>{
+    const next=e.target.value;setText(next);
+    const n=Number(next);
+    if(next.trim()!==''&&Number.isFinite(n)&&n>=125&&n<=600)onCommit(n);
+  }} onBlur={()=>{
+    const n=Number(text);
+    if(text.trim()===''||!Number.isFinite(n)||n<125||n>600){setText(String(value));onInvalid();}
+  }} /></label>;
+}
+function GroupRow({group,onChange,onRemove}:{group:RoomGroup;onChange:(next:RoomGroup)=>void;onRemove:()=>void}){
+  // The rooms text stays local while typing so a half-typed list (for
+  // example a trailing comma) is never eaten by the comma join; the
+  // parsed list commits on every keystroke.
+  const [roomsText,setRoomsText]=useState(group.rooms.join(', '));
+  return <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+    <input aria-label="Room group name" placeholder="Group name" value={group.name} onChange={e=>onChange({...group,name:e.target.value})} />
+    <input aria-label="Rooms in group, comma separated" placeholder="Rooms, comma separated" value={roomsText} onChange={e=>{
+      const next=e.target.value;setRoomsText(next);
+      onChange({...group,rooms:next.split(',').map(s=>s.trim()).filter(Boolean)});
+    }} onBlur={()=>setRoomsText(group.rooms.join(', '))} />
+    <button onClick={onRemove}>Remove</button>
+  </div>;
+}
 function StringList({ values, onChange, label }: { values:string[]; onChange:(next:string[])=>void; label:string }) {
   return <div>{values.map((value,i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6}}>
     <input aria-label={`${label} ${i+1}`} value={value} onChange={e=>{const next=[...values];next[i]=e.target.value;onChange(next);}} />
@@ -78,10 +107,14 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <StringList label="Allowed status" values={Array.isArray(doc.display?.allowed_statuses)?(doc.display.allowed_statuses as string[]):[]} onChange={next=>change(d=>{d.display={...(d.display||{}),allowed_statuses:next};})} />
         </section>
         <section><h2>Room configuration</h2><p>Large rooms use wider columns; small rooms use narrower columns. Base widths are minimums; columns expand proportionally if the screen has spare space.</p>
-          <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><label key={type}>{type==='other'?'Medium':type==='small'?'Small':'Large'} width (px) <input type="number" min={150} max={600} defaultValue={settings.room_widths[type]} key={`${type}-${settings.room_widths[type]}`} onBlur={e=>{const n=Number(e.target.value);if(!Number.isFinite(n)||n<150||n>600){e.target.value=String(settings.room_widths[type]);setMessage('Use a width from 150 to 600 pixels.');return;}updateSettings(s=>{s.room_widths[type]=n;});}}/></label>)}</div>
+          <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><WidthInput key={`${type}-${settings.room_widths[type]}`} type={type} value={settings.room_widths[type]} onCommit={n=>updateSettings(s=>{s.room_widths[type]=n;})} onInvalid={()=>setMessage('Use a width from 125 to 600 pixels.')} />)}</div>
           <table><thead><tr><th>Order</th><th>Room</th><th>Type</th><th>Base width</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{(doc.rooms.order as string[]).map((room,i)=>{const type=settings.room_types[room]||'other';return <tr key={room}><td>{i+1}</td><td>{room}</td><td><select aria-label={`${room} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[room]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td><td>{settings.room_widths[type]} px</td><td><button disabled={i===0} onClick={()=>move(i,-1)} aria-label={`Move ${room} up`}>Up</button><button disabled={i===doc!.rooms.order.length-1} onClick={()=>move(i,1)} aria-label={`Move ${room} down`}>Down</button></td><td><button onClick={()=>removeRoom(room)} aria-label={`Remove ${room}`}>Remove</button></td></tr>;})}</tbody></table>
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
+        </section>
+        <section><h2>Room groups</h2><p>Rooms in a group get a strong border at the group&apos;s edges, so Palladium reads as one block of rooms instead of five separate columns. Days are separated by the same strong border. Example: Palladium — Palladium A, Palladium B, Palladium C1, Palladium C2, Palladium C3.</p>
+          {settings.room_groups.map((group,i)=><GroupRow key={i} group={group} onChange={next=>updateSettings(s=>{s.room_groups=s.room_groups.map((g,j)=>j===i?next:g);})} onRemove={()=>updateSettings(s=>{s.room_groups=s.room_groups.filter((_,j)=>j!==i);})} />)}
+          <button onClick={()=>updateSettings(s=>{s.room_groups=[...s.room_groups,{name:'',rooms:[]}];})}>Add room group</button>
         </section>
         <section><h2>Room lists</h2>
           <p>Excluded rooms (bookings in these rooms are ignored)</p>
@@ -109,7 +142,7 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <label>Worksheet name <input value={doc.output?.worksheet_name||''} onChange={e=>change(d=>{d.output={...(d.output||{}),worksheet_name:e.target.value};})} /></label>{' '}
           <label><input type="checkbox" checked={doc.output?.show_timeline_panel!==false} onChange={e=>change(d=>{d.output={...(d.output||{}),show_timeline_panel:e.target.checked};})} /> Show timeline panel</label>
         </section>
-        <section><h2>Salesperson colour palette</h2><p>Set up the palette here. Assign a salesperson to a booking from its inspector (Unlock bookings, then click a block) — the block takes that salesperson&apos;s colour, and the assignment survives a forecast re-import. Pick Unavai in the inspector to mark a booking grey.</p>
+        <section><h2>Salesperson colour palette</h2><p>Set up the palette here. Assign a salesperson to a booking from its inspector (Unlock bookings, then click a block) — the block takes that salesperson&apos;s colour, and the assignment survives a forecast re-import. Pick Unavailable in the inspector to mark a booking grey.</p>
           <table><thead><tr><th>Name</th><th>Colour</th><th>Preview</th><th>Remove</th></tr></thead><tbody>{settings.salespeople.map((person:Salesperson)=><tr key={person.id}><td><input aria-label="Salesperson name" value={person.name} onChange={e=>{const value=e.target.value;updateSettings(s=>{s.salespeople=s.salespeople.map(p=>p.id===person.id?{...p,name:value}:p);});}}/></td><td><input type="color" aria-label={`${person.name||'Salesperson'} colour`} value={person.colour} onChange={e=>{const value=e.target.value;updateSettings(s=>{s.salespeople=s.salespeople.map(p=>p.id===person.id?{...p,colour:value}:p);});}}/> <code>{person.colour}</code></td><td><span className="configuration-swatch" style={{background:person.colour}} aria-label={person.colour}/></td><td><button onClick={()=>updateSettings(s=>{s.salespeople=s.salespeople.filter(p=>p.id!==person.id);})}>Remove</button></td></tr>)}</tbody></table>
           <button onClick={()=>updateSettings(s=>{s.salespeople.push({id:crypto.randomUUID(),name:'',colour:'#87b5e5'});})}>Add salesperson</button>
         </section>

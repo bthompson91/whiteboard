@@ -84,6 +84,10 @@ export default function Toolbar({
             <input type="file" accept=".xls,.xlsx" onChange={handleBookingFile} disabled={!venue || loading} />
           </label>
           <label>
+            Open published board
+            <input type="file" accept=".json" onChange={handlePublishedBoard} />
+          </label>
+          <label>
             Import contributor file
             <input type="file" accept=".json" onChange={handleContributorFile} />
           </label>

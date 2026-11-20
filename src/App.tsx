@@ -359,6 +359,7 @@ export default function App() {
           venue={venue}
           bookings={bookings}
           salespeople={settings?.salespeople || []}
+          roomGroups={settings?.room_groups || []}
           editingEnabled={editingEnabled && role !== 'viewer'}
           selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}

@@ -16,7 +16,8 @@ try {
       join(root, 'src/lib/importComparison.ts'),
       join(root, 'src/lib/reviewApply.ts'),
       join(root, 'src/lib/dateTime.ts'),
-      join(root, 'src/lib/configuration.ts')
+      join(root, 'src/lib/configuration.ts'),
+      join(root, 'src/lib/blocks.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -28,6 +29,7 @@ try {
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, UNAVAILABLE_SALESPERSON } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { blocksFor, groupEdges } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -130,12 +132,54 @@ try {
 
   // --- Salesperson colours ---
   const palette = [{ id: 'sp-1', name: 'Alex', colour: '#3366cc' }];
-  check('Unavai is the grey built-in option', UNAVAILABLE_SALESPERSON.name === 'Unavai' && UNAVAILABLE_SALESPERSON.colour === '#9aa0a6');
+  check('Unavailable is the grey built-in option', UNAVAILABLE_SALESPERSON.name === 'Unavailable' && UNAVAILABLE_SALESPERSON.colour === '#9aa0a6');
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
-  check('Unavai resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
+  check('Unavailable resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
   check('unknown salesperson falls back to the stored colour', bookingColour({ salespersonId: 'sp-gone', colour: '#ff0000' }, palette) === '#ff0000');
   check('no salesperson keeps the stored colour', bookingColour({ colour: '#ff0000' }, palette) === '#ff0000');
-  check('resolveSalesperson finds Unavai by id', resolveSalesperson(palette, 'unavailable')?.name === 'Unavai');
+  check('resolveSalesperson finds Unavailable by id', resolveSalesperson(palette, 'unavailable')?.name === 'Unavailable');
+
+  // --- Block merging: height merges and width merges ---
+  const venue = { rooms: [
+    { id: 'Palladium A', name: 'Palladium A', order: 0 },
+    { id: 'Palladium B', name: 'Palladium B', order: 1 },
+    { id: 'River Room 1', name: 'River Room 1', order: 2 },
+    { id: 'River Room 2', name: 'River Room 2', order: 3 }
+  ] };
+  const riverPair = [
+    booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00' }),
+    booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
+  ];
+  let blocks = blocksFor(riverPair, venue, [], false);
+  check('same title in adjacent rooms at the same time merges into one wide block', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].ids.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '20:00' }),
+    booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
+  ], venue, [], false);
+  check('same title in adjacent rooms at different times stays two blocks', blocks.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
+    booking({ id: 'b', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' })
+  ], venue, [], false);
+  check('same title in one room at different times merges into one tall block', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 23 * 60, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
+  ], venue, [], false);
+  check('one booking spanning two rooms renders as one wide block', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
+  check('hidden bookings are skipped when the board is locked', blocks.length === 0);
+  blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);
+  check('hidden bookings still render in unlock mode', blocks.length === 1 && blocks[0].hidden === true);
+
+  // --- Room groups: strong borders at group edges ---
+  const groups = groupEdges(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1', 'River Room 2'], [
+    { name: 'Palladium', rooms: ['Palladium A', 'Palladium B', 'Palladium C1'] },
+    { name: 'River Room', rooms: ['River Room 1', 'River Room 2'] }
+  ]);
+  check('strong border after the last room of each group', groups.strongAfter[2] === true && groups.strongAfter[4] === true && groups.strongAfter[0] === false && groups.strongAfter[1] === false && groups.strongAfter[3] === false, JSON.stringify(groups));
+  check('date column gets a strong edge when the first room is grouped', groups.dateEdge === true);
+  const noGroups = groupEdges(['Palladium A', 'Palladium B'], []);
+  check('no groups means no strong vertical borders', noGroups.strongAfter.every(v => !v) && noGroups.dateEdge === false);
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;
