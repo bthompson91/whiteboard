@@ -27,10 +27,15 @@ function firstTime(fact:string){return fact.match(/\d{2}:\d{2}/)?.[0]??fact;}
 function readableText(hex:string){const n=parseInt(hex.slice(1),16);const lum=0.2126*((n>>16)&255)+0.7152*((n>>8)&255)+0.0722*(n&255);return lum<140?'#ffffff':'#18202a';}
 // The block title grows to fill its block: the largest font (8-64px)
 // that still fits without cutting any text off, re-measured when the
-// text or the block size changes. The text itself is capped at 80% of
-// the block's height: a multi-line title at a large font can be taller
-// than the font size, so capping the font size alone still let titles
-// spill over the block and overlap the block below.
+// text or the block size changes. The font size is capped at 80% of
+// the block's height, and the text itself must fit inside the block:
+// a multi-line title at a large font can be taller than the font size,
+// so capping the font size alone still let titles spill over the block
+// and overlap the block below. (Capping the text itself at 80% of the
+// block forced every title to the 8px minimum, because a day is only
+// ~100px tall and the title's padding and line height already fill
+// most of a short block — the padding is gone and the text now fits
+// the block instead.)
 function FitTitle({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [fontSize, setFontSize] = useState(11);
@@ -41,7 +46,7 @@ function FitTitle({ text }: { text: string }) {
     let lo = 8, hi = Math.min(64, cap), best = 8;
     const fits = (size: number) => {
       el.style.fontSize = `${size}px`;
-      return el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight * 0.8 + 1;
+      return el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1;
     };
     if (fits(hi)) best = hi;
     else {
