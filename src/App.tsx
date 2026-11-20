@@ -120,6 +120,11 @@ export default function App() {
   const [markup, setMarkup] = useState<MarkupItem[]>(storedMarkup);
   const [editingEnabled, setEditingEnabled] = useState(false);
   const [markupMode, setMarkupMode] = useState<'none' | 'text' | 'arrow'>('none');
+  // Show hidden bookings on the board (faded, dashed) even while the
+  // board is locked, so they can be found and — once unlocked —
+  // restored from the inspector. Hidden bookings already show while
+  // unlocked; this is the explicit toggle issue #2 asks for.
+  const [showHidden, setShowHidden] = useState(false);
   const [error, setError] = useState<string | null>(initial.error);
   const [configurationOpen, setConfigurationOpen] = useState(false);
   // The linked files. The board works from two files that sit in one
@@ -590,9 +595,11 @@ export default function App() {
         displayName={displayName}
         editingEnabled={editingEnabled}
         markupMode={markupMode}
+        showHidden={showHidden}
         error={error}
         revision={revision}
         onToggleEditing={() => setEditingEnabled(value => !value)}
+        onToggleShowHidden={() => setShowHidden(value => !value)}
         onSetMarkupMode={setMarkupMode}
         onOpenConfiguration={() => {
           setMarkupMode('none');
@@ -615,6 +622,7 @@ export default function App() {
           salespeople={settings?.salespeople || []}
           roomBorders={settings?.room_borders || []}
           editingEnabled={editingEnabled && role !== 'viewer'}
+          showHidden={showHidden}
           selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}
           onSelectedBookingChange={setSelectedBookingId}

@@ -7,6 +7,7 @@ interface Props {
   displayName: string;
   editingEnabled: boolean;
   markupMode: 'none' | 'text' | 'arrow';
+  showHidden: boolean;
   error: string | null;
   revision: number;
   saving: boolean;
@@ -14,6 +15,7 @@ interface Props {
   canLinkFiles: boolean;
   editorLockName: string | null;
   onToggleEditing: () => void;
+  onToggleShowHidden: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
   onRoleChange: (role: BoardRole) => void;
@@ -23,9 +25,9 @@ interface Props {
   onOpenLinkFiles: () => void;
 }
 export default function Toolbar({
-  venue, bookingCount, role, displayName, editingEnabled, markupMode, error, revision,
+  venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, error, revision,
   saving, linkedFiles, canLinkFiles, editorLockName,
-  onToggleEditing, onSetMarkupMode, onOpenConfiguration,
+  onToggleEditing, onToggleShowHidden, onSetMarkupMode, onOpenConfiguration,
   onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles
 }: Props) {
   return (
@@ -67,6 +69,11 @@ export default function Toolbar({
       {role !== 'viewer' && (
         <button onClick={onToggleEditing} title={editingEnabled ? 'Lock bookings' : 'Unlock bookings'}>
           {editingEnabled ? '🔓' : '🔒'}
+        </button>
+      )}
+      {role !== 'viewer' && (
+        <button className={showHidden ? 'active' : ''} onClick={onToggleShowHidden} title="Show hidden bookings on the board (faded, dashed) so they can be found and restored">
+          {showHidden ? '👁️ Show hidden' : '🙈 Hidden off'}
         </button>
       )}
       {role !== 'viewer' && (
