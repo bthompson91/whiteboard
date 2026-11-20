@@ -46,7 +46,7 @@ try {
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
-  const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, salespersonShortName, salespeopleFromNames, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
+  const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
 
   let failures = 0;
@@ -427,7 +427,11 @@ try {
   check('the header row is the first row when there is no title row', detectHeaderRow([crownHeaders, ['09/11/2026', '07:00', '17:00', 'Setup', 'Palladium', 'Gala', 'Definite']]) === 1);
   check('header candidates include the real header row', headerCandidates(mcgAoa).some(c => c.row === 2));
   const mcgMapping = suggestFieldMapping(['', '', '', 'Status', 'Event ID', 'Bump In', 'Start Time', 'Description', 'Type', 'Booked Spaces', 'Attendance', 'End Date', 'End Time', 'Bump Out', 'Salesperson', 'Coordinator', 'Special Notes for the Event', 'Revenue', 'Open Balance'].filter(Boolean));
-  check('the MCG columns are suggested correctly', mcgMapping.booking_name === 'Description' && mcgMapping.activity_name === 'Type' && mcgMapping.event_date === 'Bump In' && mcgMapping.start_time === 'Start Time' && mcgMapping.end_time === 'End Time' && mcgMapping.room_name === 'Booked Spaces' && mcgMapping.booking_status === 'Status' && mcgMapping.salesperson === 'Salesperson' && mcgMapping.setup_start === 'Bump In' && mcgMapping.teardown_end === 'Bump Out');
+  check('the MCG columns are suggested correctly', mcgMapping.booking_name === 'Description' && mcgMapping.activity_name === 'Type' && mcgMapping.event_date === 'Bump In' && mcgMapping.start_time === 'Start Time' && mcgMapping.end_time === 'End Time' && mcgMapping.room_name === 'Booked Spaces' && mcgMapping.booking_status === 'Status' && mcgMapping.setup_start === 'Bump In' && mcgMapping.teardown_end === 'Bump Out');
+  // Salespeople are always assigned by hand: the people named in a
+  // venue's file are the hotel's salespeople, not Encore's, so the
+  // wizard never suggests a salesperson column.
+  check('no salesperson column is suggested', !('salesperson' in mcgMapping));
   const crownMapping = suggestFieldMapping(crownHeaders);
   check('the Crown columns are suggested correctly', crownMapping.booking_name === 'Booking: Booking Post As' && crownMapping.activity_name === 'Booking Event: Name' && crownMapping.event_date === 'Start Date' && crownMapping.start_time === 'Start Time 24 Hour' && crownMapping.end_time === 'End Time 24 Hour' && crownMapping.room_name === 'Function Room' && crownMapping.booking_status === 'Booking: Status');
   check("a ';' room separator is detected", detectRoomSeparator(['Room A;  Room B']) === ';');
@@ -437,13 +441,6 @@ try {
   check('room parts are counted most-used first', (() => {
     const parts = roomParts([{ room: 'A; B' }, { room: 'A' }, { room: 'B' }, { room: 'C' }], 'room', ';');
     return parts[0].name === 'A' && parts[0].count === 2 && parts[1].name === 'B' && parts[1].count === 2 && parts[2].name === 'C';
-  })());
-  check("a 'Last, First' name gives first-then-last initials", salespersonShortName('Anderson, Ruby') === 'RA');
-  check("a 'First Last' name gives its initials", salespersonShortName('Alex Lee') === 'AL');
-  check('a single name gives its first two letters', salespersonShortName('Alex') === 'AL');
-  check('salespeople made from names get distinct colours and short names', (() => {
-    const people = salespeopleFromNames(['Anderson, Ruby', 'Bromell, Matthew']);
-    return people.length === 2 && people[0].shortName === 'RA' && people[1].shortName === 'MB' && people[0].colour !== people[1].colour && people[0].id !== people[1].id;
   })());
   const mcgVenue = parseVenueConfig(`site:\n  name: MCG\nfile_input:\n  header_row: 2\n  room_separator: ';'\nfields:\n  booking_name: Description\n  event_date: Bump In\n  start_time: Start Time\n  end_time: End Time\n  room_name: Booked Spaces\nrooms:\n  order: [Chadwick Room, Long Room, Unassigned]\n  unassigned_room: Unassigned\n`);
   check('a multi-room cell resolves to every room', JSON.stringify(resolveRooms('Chadwick Room;  Long Room', mcgVenue)) === JSON.stringify(['Chadwick Room', 'Long Room']));
@@ -492,7 +489,6 @@ try {
       excludedRooms: ['OB Van Compound'],
       unassignedRoom: true,
       allowedStatuses: ['Firm/Definite (30)', 'On Hold (25)'],
-      salespeople: salespeopleFromNames(['Anderson, Ruby']),
       setupLabel: 'Bump In',
       teardownLabel: 'Bump Out'
     });
@@ -503,13 +499,12 @@ try {
       && back.fields.booking_name === 'Description'
       && back.fields.setup_start === 'Bump In'
       && back.fields.teardown_end === 'Bump Out'
-      && back.fields.salesperson === 'Salesperson'
+      && !('salesperson' in back.fields)
       && back.rooms.order.includes('Unassigned')
       && back.rooms.unassigned_room === 'Unassigned'
       && back.rooms.exclude.includes('OB Van Compound')
       && JSON.stringify(back.timeline_items) === JSON.stringify(['Bump In', 'Bump Out'])
-      && back.whiteboard.salespeople.length === 1
-      && back.whiteboard.salespeople[0].shortName === 'RA';
+      && back.whiteboard.salespeople.length === 0;
   })());
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);

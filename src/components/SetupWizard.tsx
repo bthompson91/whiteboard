@@ -3,12 +3,12 @@ import * as XLSX from 'xlsx';
 import {
   readWizardFile, detectHeaderRow, headerCandidates, headersFromAoA, sheetRecords,
   suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues,
-  countInRange, salespeopleFromNames, buildVenueYaml, previewRow,
+  countInRange, buildVenueYaml, previewRow,
   WIZARD_FIELDS, FieldKey, WizardChoices
 } from '../lib/wizard';
 import './setupWizard.css';
 
-const STEP_TITLES = ['Booking file', 'Columns', 'Rooms', 'Statuses, people and dates', 'Name the venue'];
+const STEP_TITLES = ['Booking file', 'Columns', 'Rooms', 'Statuses and dates', 'Name the venue'];
 const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d: Date, n: number) => { const c = new Date(d); c.setDate(c.getDate() + n); return c; };
 
@@ -29,7 +29,6 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
   const [roomFilter, setRoomFilter] = useState('');
   const [unassigned, setUnassigned] = useState(true);
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string> | null>(null);
-  const [createSalespeople, setCreateSalespeople] = useState(true);
   const [noDateLimit, setNoDateLimit] = useState(false);
   const [rangeStart, setRangeStart] = useState(fmtDate(new Date()));
   const [rangeEnd, setRangeEnd] = useState(fmtDate(addDays(new Date(), 90)));
@@ -63,10 +62,6 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
     () => (mapping.booking_status ? columnValues(dataRows, mapping.booking_status) : []),
     [dataRows, mapping.booking_status]
   );
-  const salespersonNames = useMemo(
-    () => (mapping.salesperson ? columnValues(dataRows, mapping.salesperson).map(v => v.value) : []),
-    [dataRows, mapping.salesperson]
-  );
   // The date format only matters when the date column holds text like
   // 09/11/2026. Excel dates and ISO dates read the same either way.
   const needsDateFormat = useMemo(() => {
@@ -83,7 +78,6 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
   );
   const keptRooms = parts.filter(p => !excluded.has(p.name)).map(p => p.name);
   const chosenStatuses = statuses.filter(s => (selectedStatuses ?? new Set(statuses.filter(x => !/cancel/i.test(x.value)).map(x => x.value))).has(s.value)).map(s => s.value);
-  const chosenSalespeople = createSalespeople && mapping.salesperson ? salespeopleFromNames(salespersonNames) : [];
 
   const pickFile = async (picked: File | undefined) => {
     if (!picked) return;
@@ -145,7 +139,6 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
         excludedRooms: parts.filter(p => excluded.has(p.name)).map(p => p.name),
         unassignedRoom: unassigned && emptySpaceCount > 0,
         allowedStatuses: chosenStatuses,
-        salespeople: chosenSalespeople,
         setupLabel: mapping.setup_start ? (bump(mapping.setup_start) ? 'Bump In' : 'Setup') : 'Setup',
         teardownLabel: mapping.teardown_end ? (bump(mapping.teardown_end) ? 'Bump Out' : 'Teardown') : 'Teardown'
       };
@@ -248,13 +241,6 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
                 ))}
               </div>
             )}
-            {mapping.salesperson && salespersonNames.length > 0 && (
-              <div>
-                <h3>Salespeople</h3>
-                <label><input type="checkbox" checked={createSalespeople} onChange={e => setCreateSalespeople(e.target.checked)} /> Create {salespersonNames.length} salespeople from the {mapping.salesperson} column</label>
-                {createSalespeople && <p>{salespersonNames.join(', ')}</p>}
-              </div>
-            )}
             {mapping.setup_start && <p>Setup start ({mapping.setup_start}) and teardown end ({mapping.teardown_end || '—'}) will show as setup and teardown on the blocks.</p>}
             <h3>First import — date range</h3>
             <p>The file spans more than the board should show at once. Import from a range now; a later re-import can bring in the rest.</p>
@@ -273,7 +259,6 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
             <ul>
               <li>{keptRooms.length} rooms{excluded.size ? `, ${excluded.size} excluded` : ''}{unassigned && emptySpaceCount > 0 ? `, plus Unassigned for ${emptySpaceCount} events with no space` : ''}.</li>
               <li>{mapping.booking_status ? `${chosenStatuses.length} of ${statuses.length} statuses import` : 'No status column mapped — every event imports'}.</li>
-              <li>{chosenSalespeople.length ? `${chosenSalespeople.length} salespeople created` : 'No salespeople created'}.</li>
               <li>{dateRange ? `${inRangeCount} events from ${dateRange.start} to ${dateRange.end}` : `${dataRows.length} events, all dates`}.</li>
               <li>{mapping.setup_start ? 'Setup and teardown times from the file' : 'No setup or teardown times'}.</li>
             </ul>

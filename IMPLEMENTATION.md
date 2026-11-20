@@ -65,11 +65,10 @@ Sections, all editable on the Configuration page (see below):
 - **`site`** — venue name.
 - **`fields`** — column-header mappings: `booking_name` (the block title),
   `activity_name` (Setup/Dinner/etc.), `event_date`, `start_time`,
-  `end_time`, `room_name`, `booking_status`, plus three optional ones:
+  `end_time`, `room_name`, `booking_status`, plus two optional ones:
   `setup_start` (a setup/bump-in time column — the block spans it, as
-  for an attached timeline row), `teardown_end` (a teardown/bump-out
-  time column), and `salesperson` (a column whose value is matched by
-  name to a salesperson in the palette). The Crown YAML has no
+  for an attached timeline row) and `teardown_end` (a teardown/bump-out
+  time column). The Crown YAML has no
   Confirmation No, BEO # or job-number field, so imported bookings arrive
   with `jobNumber: ''` and job numbers only exist when a user sets one in
   the inspector. There is no job-number row in Field mappings: job numbers
@@ -142,10 +141,6 @@ otherwise skipped.
   the event end to the teardown end, labelled with the first and second
   `timeline_items` entries. A column that cannot be read as a time leaves
   the booking without that end instead of failing the whole import.
-- **Salesperson column.** When `fields.salesperson` is mapped, the import
-  attaches the salesperson whose name matches the cell (case-insensitive);
-  a name that matches nobody leaves the booking unassigned, and a
-  salesperson set by hand on the board still wins on re-import.
 - **Date range.** `parseBookingWorkbook` takes an optional date range and
   skips bookings outside it. The setup wizard uses it for a first import
   so a file spanning years does not make a board four years tall; a plain
@@ -564,26 +559,28 @@ Five steps, all driven by the file itself:
    Events with no space go in an "Unassigned" room when the box is ticked.
    Only rows with a title count as events: the total and day-group rows
    below the header have no title, and would otherwise inflate the counts.
-4. **Statuses, people and dates.** Tick which statuses import ("To Be
-   Cancelled" starts off). Salespeople can be created from the salesperson
-   column, with colours from a fixed palette and a short name derived from
-   the name ("Anderson, Ruby" → RA). A date range for the first import,
-   defaulting to today → today + 90 days, or all dates.
+4. **Statuses and dates.** Tick which statuses import ("To Be
+   Cancelled" starts off). A date range for the first import,
+   defaulting to today → today + 90 days, or all dates. Salespeople are
+   not part of this step: they are always assigned by hand, in the
+   inspector or with paint mode — the people named in a venue's file
+   are the hotel's salespeople, not Encore's, so the wizard creates
+   none and the import attaches none.
 5. **Name the venue.** A summary of the choices, then "Create venue and
    import": the YAML is built (`buildVenueYaml`), a save picker asks where
    to put it so it is linked like the other venues, and the file imports
    straight onto the board through the normal review flow, with the chosen
-   date range and the new salespeople.
+   date range.
 
 The wizard's choices become the YAML: `file_input.header_row` and
 `room_separator` when they differ from the defaults, `rooms.unassigned_room`
-when set, `fields.setup_start` / `fields.teardown_end` / `fields.salesperson`
-when mapped, and `timeline_items` in the venue's own words ("Bump In",
+when set, `fields.setup_start` / `fields.teardown_end` when mapped,
+and `timeline_items` in the venue's own words ("Bump In",
 "Bump Out" for MCG, "Setup", "Teardown" otherwise). The MCG export was the
-test case: 608 events, 84 spaces, 13 salespeople, headers on row 2,
+test case: 608 events, 84 spaces, headers on row 2,
 rooms separated by ";", bump in/out as setup/teardown. A full import of it
-gives 602 bookings (6 "To Be Cancelled" excluded), every one with a
-salesperson, 534 with a bump-in/out timeline, 60 in "Unassigned", and a
+gives 602 bookings (6 "To Be Cancelled" excluded), 534 with a bump-in/out
+timeline, 60 in "Unassigned", and a
 90-day first import gives 172.
 
 ## Planned: TimeTarget setup-time import
@@ -603,7 +600,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-184 checks covering matching tiers and weights, booking identity, height and
+181 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

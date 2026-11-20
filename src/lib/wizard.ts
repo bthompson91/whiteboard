@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { readWorkbook, sheetRecords } from './bookingImport';
-import { writeConfiguration, normalizeConfigDoc, Salesperson } from './configuration';
+import { writeConfiguration, normalizeConfigDoc } from './configuration';
 import { dateValue, timeValue } from './dateTime';
 
 // Pure helpers for the first-time setup wizard: reading a venue's
@@ -48,7 +48,7 @@ export async function readWizardFile(file: File): Promise<{ workbook: XLSX.WorkB
 
 // --- Guessing the column mapping --------------------------------------
 
-export type FieldKey = 'booking_name' | 'activity_name' | 'event_date' | 'start_time' | 'end_time' | 'room_name' | 'booking_status' | 'salesperson' | 'setup_start' | 'teardown_end';
+export type FieldKey = 'booking_name' | 'activity_name' | 'event_date' | 'start_time' | 'end_time' | 'room_name' | 'booking_status' | 'setup_start' | 'teardown_end';
 export const WIZARD_FIELDS: { key: FieldKey; label: string; required: boolean }[] = [
   { key: 'booking_name', label: 'Title', required: true },
   { key: 'activity_name', label: 'Activity', required: false },
@@ -57,7 +57,6 @@ export const WIZARD_FIELDS: { key: FieldKey; label: string; required: boolean }[
   { key: 'end_time', label: 'End time', required: true },
   { key: 'room_name', label: 'Room', required: true },
   { key: 'booking_status', label: 'Status', required: false },
-  { key: 'salesperson', label: 'Salesperson', required: false },
   { key: 'setup_start', label: 'Setup start', required: false },
   { key: 'teardown_end', label: 'Teardown end', required: false },
 ];
@@ -72,7 +71,6 @@ const FIELD_HINTS: Record<FieldKey, string[]> = {
   end_time: ['end time'],
   room_name: ['booked spaces', 'function room', 'room', 'space'],
   booking_status: ['status'],
-  salesperson: ['salesperson', 'sales', 'event manager'],
   setup_start: ['bump in'],
   teardown_end: ['bump out'],
 };
@@ -82,7 +80,7 @@ export function suggestFieldMapping(headers: string[]): Record<FieldKey, string>
   const out = {} as Record<FieldKey, string>;
   // Setup and teardown may reuse a column another field already
   // claimed: Bump In is both the date and the setup start.
-  const primary: FieldKey[] = ['booking_name', 'activity_name', 'event_date', 'start_time', 'end_time', 'room_name', 'booking_status', 'salesperson'];
+  const primary: FieldKey[] = ['booking_name', 'activity_name', 'event_date', 'start_time', 'end_time', 'room_name', 'booking_status'];
   for (const key of primary) {
     out[key] = '';
     for (const hint of FIELD_HINTS[key]) {
@@ -156,30 +154,6 @@ export function countInRange(records: Record<string, unknown>[], dateColumn: str
   return n;
 }
 
-// --- Salespeople ------------------------------------------------------
-
-// The two-letter tag for a salesperson made from a column value.
-// "Anderson, Ruby" is Ruby Anderson, so the tag is RA; "Alex Lee"
-// is AL; a single name gives its first two letters.
-export function salespersonShortName(name: string): string {
-  const trimmed = name.trim();
-  const comma = trimmed.split(',').map(s => s.trim()).filter(Boolean);
-  if (comma.length >= 2) return (comma[1][0] + comma[0][0]).toUpperCase();
-  const words = trimmed.split(/\s+/).filter(Boolean);
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  if (!words.length) return '';
-  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-}
-export const SALESPERSON_PALETTE = ['#d32f2f', '#7b1fa2', '#1565c0', '#00695c', '#558b2f', '#f9a825', '#ef6c00', '#4e342e', '#00838f', '#ad1457', '#2e7d32', '#5d4037'];
-export function salespeopleFromNames(names: string[]): Salesperson[] {
-  return names.map((name, i) => ({
-    id: `sp-${i + 1}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || i + 1}`,
-    name,
-    colour: SALESPERSON_PALETTE[i % SALESPERSON_PALETTE.length],
-    shortName: salespersonShortName(name)
-  }));
-}
-
 // --- Building the venue YAML ------------------------------------------
 
 export interface WizardChoices {
@@ -192,7 +166,6 @@ export interface WizardChoices {
   excludedRooms: string[];
   unassignedRoom: boolean;
   allowedStatuses: string[];
-  salespeople: Salesperson[];
   setupLabel: string;
   teardownLabel: string;
   date1904?: boolean;
@@ -224,7 +197,10 @@ export function buildVenueDoc(choices: WizardChoices): Record<string, any> {
     whiteboard: {
       room_types: Object.fromEntries(choices.rooms.map(r => [r, 'other'])),
       room_widths: { large: 200, small: 125, other: 150 },
-      salespeople: choices.salespeople,
+      // Salespeople are always assigned by hand, in the inspector or
+      // with paint mode: the people named in a venue's file are the
+      // hotel's salespeople, not Encore's, so the wizard creates none.
+      salespeople: [],
       room_borders: [],
       operable_walls: []
     }

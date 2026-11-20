@@ -122,9 +122,6 @@ export function sheetRecords(workbook: XLSX.WorkBook, headerRow = 1): Record<str
   return out;
 }
 export interface ImportOptions {
-  // The venue's salespeople, so a mapped salesperson column can attach
-  // the right person (matched on name) instead of leaving blocks grey.
-  salespeople?: { id: string; name: string }[];
   // Only import bookings dated inside this range, inclusive. The
   // setup wizard uses it for a first import; a plain re-import has
   // no range and takes everything, as before.
@@ -188,11 +185,6 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig,
         if (teardownEnd && teardownEnd > booking.endTime) timeline.push({ label: labels[1] || labels[0] || 'Teardown', start: booking.endTime, end: teardownEnd });
       } catch { /* An unreadable teardown time leaves the booking without it. */ }
       if (timeline.length) booking.timeline = timeline;
-      // A salesperson column attaches the person by name. A name that
-      // matches nobody leaves the booking unassigned, as before.
-      const salespersonName = venue.fields.salesperson ? text(get('salesperson')) : '';
-      const salesperson = salespersonName && options.salespeople?.find(p => p.name.trim().toLowerCase() === salespersonName.toLowerCase());
-      if (salesperson) booking.salespersonId = salesperson.id;
       booking.id = bookingId(booking, venue.name);
       const existing = previousByIdentity.get(identityKey(booking, venue.name));
       if (existing) {

@@ -356,10 +356,7 @@ export default function App() {
       }
     }
     try {
-      const result = await parseBookingWorkbook(file, venueConfig, {
-        salespeople: boardSettings(readConfiguration(text)).salespeople,
-        dateRange
-      });
+      const result = await parseBookingWorkbook(file, venueConfig, { dateRange });
       handleBookingsLoaded(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -636,7 +633,7 @@ export default function App() {
         setLinkedFiles(current => ({ ...current, bookings: name }));
         await saveLinkedHandle('bookings', handle);
       }
-      handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue, { salespeople: settings?.salespeople || [] }));
+      handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
