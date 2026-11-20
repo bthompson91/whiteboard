@@ -182,14 +182,14 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
         }}
       >
         <defs>
-          <marker id="markup-arrow" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
-            <path d="M0 0L18 9L0 18Z" fill="#6a3fb5" />
+          <marker id="markup-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0 0L8 4L0 8Z" fill="#6a3fb5" />
           </marker>
         </defs>
         {markup.map((item) =>
           item.type === 'arrow' ? (
             <g key={item.id}>
-              <line x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="#6a3fb5" strokeWidth={7} markerEnd="url(#markup-arrow)" />
+              <line x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="#6a3fb5" strokeWidth={3} markerEnd="url(#markup-arrow)" />
               <line className="markup-hit" x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="transparent" strokeWidth={16} onPointerDown={(event) => begin(event, item)} />
               {selected === item.id && (
                 <>
@@ -200,7 +200,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
             </g>
           ) : null
         )}
-        {draft && <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#6a3fb5" strokeWidth={7} />}
+        {draft && <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#6a3fb5" strokeWidth={3} />}
         {active && active.type === 'arrow' && (
           <foreignObject x={arrowActionX} y={arrowActionY} width={180} height={26}>
             <div className="markup-actions" onPointerDown={(event) => event.stopPropagation()}>
