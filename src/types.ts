@@ -24,6 +24,7 @@ export interface Booking {
   notes?: string;
   colour?: string;
   salespersonId?: string;
+  unavailable?: boolean;
   hidden?: boolean;
 }
 

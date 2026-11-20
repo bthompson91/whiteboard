@@ -208,6 +208,7 @@ export default function App() {
         id: previous.id,
         colour: booking.colour || previous.colour,
         salespersonId: booking.salespersonId || previous.salespersonId,
+        unavailable: booking.unavailable ?? previous.unavailable,
         hidden: booking.hidden ?? previous.hidden,
         jobNumber: booking.jobNumber || previous.jobNumber
       };
@@ -359,7 +360,7 @@ export default function App() {
           venue={venue}
           bookings={bookings}
           salespeople={settings?.salespeople || []}
-          roomGroups={settings?.room_groups || []}
+          roomBorders={settings?.room_borders || []}
           editingEnabled={editingEnabled && role !== 'viewer'}
           selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}

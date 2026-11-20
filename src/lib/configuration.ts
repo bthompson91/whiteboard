@@ -14,11 +14,15 @@ export function resolveSalesperson(salespeople: Salesperson[], salespersonId?: s
 // The colour a booking block shows: its salesperson's current palette
 // colour when one is assigned (so recolouring the palette recolours the
 // block), otherwise the colour stored on the booking itself.
-export function bookingColour(booking: { colour?: string; salespersonId?: string }, salespeople: Salesperson[]): string | undefined {
+export function bookingColour(booking: { colour?: string; salespersonId?: string; unavailable?: boolean }, salespeople: Salesperson[]): string | undefined {
+  // Unavailable is its own tick box now, not a salesperson: it always
+  // renders grey, whichever salesperson the booking belongs to. A booking
+  // whose salespersonId is still the legacy 'unavailable' resolves grey
+  // through resolveSalesperson below.
+  if (booking.unavailable) return UNAVAILABLE_SALESPERSON.colour;
   return resolveSalesperson(salespeople, booking.salespersonId)?.colour ?? booking.colour;
 }
-export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; salespeople:Salesperson[]; room_groups:RoomGroup[] }
-export interface RoomGroup { name:string; rooms:string[] }
+export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; salespeople:Salesperson[]; room_borders:string[] }
 export type ConfigDocument = Record<string, any>;
 const object = (v:any):boolean => !!v && typeof v === 'object' && !Array.isArray(v);
 const strings = (v:any):boolean => Array.isArray(v) && v.every(x=>typeof x==='string');
@@ -49,16 +53,15 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
     const ids=new Set<string>();
     for(const p of w.salespeople){if(!object(p)||typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||(strict&&!p.name.trim())||typeof p.colour!=='string'||!/^#[0-9a-f]{6}$/i.test(p.colour))throw new Error('Each salesperson needs a unique ID, a name and a six-digit hex colour.');ids.add(p.id);}
   }
-  if(w.room_groups!==undefined){
-    if(!Array.isArray(w.room_groups))throw new Error('Room groups must be a list.');
-    for(const g of w.room_groups){if(!object(g)||typeof g.name!=='string'||(strict&&!g.name.trim())||!Array.isArray(g.rooms)||!g.rooms.every((r:unknown)=>typeof r==='string'))throw new Error('Each room group needs a name and a list of room names.');}
+  if(w.room_borders!==undefined){
+    if(!Array.isArray(w.room_borders)||!w.room_borders.every((r:unknown)=>typeof r==='string'))throw new Error('Room borders must be a list of room names.');
   }
   parseVenueConfig(text);
   return d;
 }
 export function boardSettings(d:ConfigDocument):BoardSettings {
   const w=d.whiteboard||{};
-  return {room_types:{...(w.room_types||{})},room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_groups:(w.room_groups||[]).map((g:RoomGroup)=>({name:g.name,rooms:[...(g.rooms||[])]}) )};
+  return {room_types:{...(w.room_types||{})},room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])]};
 }
 export function writeConfiguration(d:ConfigDocument):string { return yaml.dump(d,{noRefs:true,lineWidth:120,sortKeys:false}); }
 // Tidy a configuration document before saving: trim stray whitespace
@@ -82,9 +85,14 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
     }
   }
   if (Array.isArray(d.timeline_items)) d.timeline_items = trimList(d.timeline_items);
-  if (object(d.whiteboard) && Array.isArray(d.whiteboard.room_groups)) d.whiteboard.room_groups = d.whiteboard.room_groups.map((g: any) => object(g) ? { ...g, name: typeof g.name === 'string' ? g.name.trim() : g.name, rooms: trimList(g.rooms) } : g);
+  if (object(d.whiteboard)) {
+    // room_groups was replaced by a plain list of rooms to put a strong
+    // border after; drop the dead key when the configuration is next saved.
+    if ('room_groups' in d.whiteboard) delete d.whiteboard.room_groups;
+    if (Array.isArray(d.whiteboard.room_borders)) d.whiteboard.room_borders = trimList(d.whiteboard.room_borders);
+  }
   if (object(d.display) && Array.isArray(d.display.allowed_statuses)) d.display.allowed_statuses = trimList(d.display.allowed_statuses);
   if (Array.isArray(d.time_slots)) d.time_slots = d.time_slots.map(s => object(s) ? { ...s, label: typeof s.label === 'string' ? s.label.trim() : s.label, start: typeof s.start === 'string' ? s.start.trim() : s.start, end: typeof s.end === 'string' ? s.end.trim() : s.end } : s);
   return d;
 }
-export const starterConfiguration=writeConfiguration({site:{name:'New venue'},fields:{booking_name:'Booking: Booking Post As',activity_name:'Booking Event: Name',event_date:'Start Date',start_time:'Start Time 24 Hour',end_time:'End Time 24 Hour',room_name:'Function Room',booking_status:'Booking: Status'},display:{primary_label:'booking_name',secondary_label:'activity_name',allowed_statuses:['Definite']},rooms:{order:['Room 1'],exclude:[],room_aliases:{},room_mappings:{}},timeline_items:['Setup','Teardown'],whiteboard:{room_types:{'Room 1':'other'},room_widths:{large:200,small:125,other:150},salespeople:[],room_groups:[]}});
+export const starterConfiguration=writeConfiguration({site:{name:'New venue'},fields:{booking_name:'Booking: Booking Post As',activity_name:'Booking Event: Name',event_date:'Start Date',start_time:'Start Time 24 Hour',end_time:'End Time 24 Hour',room_name:'Function Room',booking_status:'Booking: Status'},display:{primary_label:'booking_name',secondary_label:'activity_name',allowed_statuses:['Definite']},rooms:{order:['Room 1'],exclude:[],room_aliases:{},room_mappings:{}},timeline_items:['Setup','Teardown'],whiteboard:{room_types:{'Room 1':'other'},room_widths:{large:200,small:125,other:150},salespeople:[],room_borders:[]}});

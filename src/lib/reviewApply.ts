@@ -44,6 +44,7 @@ export function applyReview(changes: BookingChange[], selected: Record<string, b
           id: previous.id,
           colour: change.booking.colour ?? previous.colour,
           salespersonId: change.booking.salespersonId ?? previous.salespersonId,
+          unavailable: change.booking.unavailable ?? previous.unavailable,
           hidden: change.booking.hidden ?? previous.hidden,
           jobNumber: change.booking.jobNumber || previous.jobNumber
         });

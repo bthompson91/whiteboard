@@ -1,5 +1,5 @@
 import { ChangeEvent, useState } from 'react';
-import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, RoomGroup, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
+import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
 import '../configuration.css';
 interface Props { yamlText:string; hasBookings:boolean; onSave:(text:string)=>void; onClose:()=>void }
 type TimeSlot = { label:string; start:string; end:string };
@@ -28,20 +28,6 @@ function WidthInput({type,value,onCommit,onInvalid}:{type:RoomType;value:number;
     const n=Number(text);
     if(text.trim()===''||!Number.isFinite(n)||n<125||n>600){setText(String(value));onInvalid();}
   }} /></label>;
-}
-function GroupRow({group,onChange,onRemove}:{group:RoomGroup;onChange:(next:RoomGroup)=>void;onRemove:()=>void}){
-  // The rooms text stays local while typing so a half-typed list (for
-  // example a trailing comma) is never eaten by the comma join; the
-  // parsed list commits on every keystroke.
-  const [roomsText,setRoomsText]=useState(group.rooms.join(', '));
-  return <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-    <input aria-label="Room group name" placeholder="Group name" value={group.name} onChange={e=>onChange({...group,name:e.target.value})} />
-    <input aria-label="Rooms in group, comma separated" placeholder="Rooms, comma separated" value={roomsText} onChange={e=>{
-      const next=e.target.value;setRoomsText(next);
-      onChange({...group,rooms:next.split(',').map(s=>s.trim()).filter(Boolean)});
-    }} onBlur={()=>setRoomsText(group.rooms.join(', '))} />
-    <button onClick={onRemove}>Remove</button>
-  </div>;
 }
 function StringList({ values, onChange, label }: { values:string[]; onChange:(next:string[])=>void; label:string }) {
   return <div>{values.map((value,i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6}}>
@@ -112,9 +98,10 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
         </section>
-        <section><h2>Room groups</h2><p>Rooms in a group get a strong border at the group&apos;s edges, so Palladium reads as one block of rooms instead of five separate columns. Days are separated by the same strong border. Example: Palladium — Palladium A, Palladium B, Palladium C1, Palladium C2, Palladium C3.</p>
-          {settings.room_groups.map((group,i)=><GroupRow key={i} group={group} onChange={next=>updateSettings(s=>{s.room_groups=s.room_groups.map((g,j)=>j===i?next:g);})} onRemove={()=>updateSettings(s=>{s.room_groups=s.room_groups.filter((_,j)=>j!==i);})} />)}
-          <button onClick={()=>updateSettings(s=>{s.room_groups=[...s.room_groups,{name:'',rooms:[]}];})}>Add room group</button>
+        <section><h2>Strong borders</h2><p>Tick a room to draw a strong border after it, so a block of rooms reads as one section — Palladium C3, for example, puts a strong border between Palladium and River Room. Days are separated by the same strong border.</p>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'4px 16px'}}>
+            {(doc.rooms.order as string[]).map(room=><label key={room} style={{display:'flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={settings.room_borders.includes(room)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,room]:s.room_borders.filter(r=>r!==room);});}} /> Border after {room}</label>)}
+          </div>
         </section>
         <section><h2>Room lists</h2>
           <p>Excluded rooms (bookings in these rooms are ignored)</p>
@@ -142,7 +129,7 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <label>Worksheet name <input value={doc.output?.worksheet_name||''} onChange={e=>change(d=>{d.output={...(d.output||{}),worksheet_name:e.target.value};})} /></label>{' '}
           <label><input type="checkbox" checked={doc.output?.show_timeline_panel!==false} onChange={e=>change(d=>{d.output={...(d.output||{}),show_timeline_panel:e.target.checked};})} /> Show timeline panel</label>
         </section>
-        <section><h2>Salesperson colour palette</h2><p>Set up the palette here. Assign a salesperson to a booking from its inspector (Unlock bookings, then click a block) — the block takes that salesperson&apos;s colour, and the assignment survives a forecast re-import. Pick Unavailable in the inspector to mark a booking grey.</p>
+        <section><h2>Salesperson colour palette</h2><p>Set up the palette here. Assign a salesperson to a booking from its inspector (Unlock bookings, then click a block) — the left side of the block, where the times are, takes that salesperson&apos;s colour, and the assignment survives a forecast re-import. Tick Unavailable in the inspector to mark a booking grey.</p>
           <table><thead><tr><th>Name</th><th>Colour</th><th>Preview</th><th>Remove</th></tr></thead><tbody>{settings.salespeople.map((person:Salesperson)=><tr key={person.id}><td><input aria-label="Salesperson name" value={person.name} onChange={e=>{const value=e.target.value;updateSettings(s=>{s.salespeople=s.salespeople.map(p=>p.id===person.id?{...p,name:value}:p);});}}/></td><td><input type="color" aria-label={`${person.name||'Salesperson'} colour`} value={person.colour} onChange={e=>{const value=e.target.value;updateSettings(s=>{s.salespeople=s.salespeople.map(p=>p.id===person.id?{...p,colour:value}:p);});}}/> <code>{person.colour}</code></td><td><span className="configuration-swatch" style={{background:person.colour}} aria-label={person.colour}/></td><td><button onClick={()=>updateSettings(s=>{s.salespeople=s.salespeople.filter(p=>p.id!==person.id);})}>Remove</button></td></tr>)}</tbody></table>
           <button onClick={()=>updateSettings(s=>{s.salespeople.push({id:crypto.randomUUID(),name:'',colour:'#87b5e5'});})}>Add salesperson</button>
         </section>

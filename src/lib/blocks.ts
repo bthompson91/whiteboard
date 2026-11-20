@@ -9,25 +9,14 @@ function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Numb
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
 
-export interface GroupEdges { strongAfter: boolean[]; dateEdge: boolean }
-// Which room columns get a strong vertical divider after them: after the
-// last room of each group, and before the first room of a group that does
-// not start at the first column. dateEdge marks a strong divider between
-// the date column and the first room when the first room is grouped.
-export function groupEdges(roomIds: string[], groups: { name: string; rooms: string[] }[]): GroupEdges {
-  const strongAfter = roomIds.map(() => false);
-  let dateEdge = false;
-  for (const group of groups) {
-    const indices = group.rooms
-      .map(name => roomIds.findIndex(id => id.trim().toLowerCase() === name.trim().toLowerCase()))
-      .filter(i => i >= 0)
-      .sort((a, b) => a - b);
-    if (!indices.length) continue;
-    strongAfter[indices[indices.length - 1]] = true;
-    if (indices[0] === 0) dateEdge = true;
-    else strongAfter[indices[0] - 1] = true;
-  }
-  return { strongAfter, dateEdge };
+// Which room columns get a strong vertical divider after them: exactly
+// the rooms named in the list, so a border is placed after a room rather
+// than around a named group of rooms. The date column always gets one —
+// it separates the dates from the rooms, like the strong line in the
+// Encore sheet.
+export function strongBorders(roomIds: string[], borders: string[]): boolean[] {
+  const wanted = new Set(borders.map(b => b.trim().toLowerCase()).filter(Boolean));
+  return roomIds.map(id => wanted.has(id.trim().toLowerCase()));
 }
 
 // Groups bookings into the blocks the grid renders. Bookings with the

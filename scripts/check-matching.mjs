@@ -29,7 +29,7 @@ try {
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, UNAVAILABLE_SALESPERSON } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
-  const { blocksFor, groupEdges } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -91,7 +91,7 @@ try {
 
   // --- Review application ---
   const previous = [
-    booking({ id: 'booking-1', title: 'Charity Gala', colour: '#ff0000', salespersonId: 'sp-1', hidden: true, jobNumber: '123' }),
+    booking({ id: 'booking-1', title: 'Charity Gala', colour: '#ff0000', salespersonId: 'sp-1', unavailable: true, hidden: true, jobNumber: '123' }),
     booking({ id: 'booking-2', title: 'Old Event' })
   ];
   const current = [booking({ id: 'booking-9', title: 'Charity Dinner' })];
@@ -101,6 +101,7 @@ try {
   const merged = published.find(b => b.id === 'booking-1');
   check('accepting a match merges onto the previous booking', !!merged && merged.title === 'Charity Dinner' && merged.colour === '#ff0000' && merged.hidden === true && merged.jobNumber === '123', JSON.stringify(merged));
   check('accepting a match keeps the salesperson', merged?.salespersonId === 'sp-1');
+  check('accepting a match keeps the unavailable flag', merged?.unavailable === true);
   check('accepting a match removes the disappeared booking', !published.some(b => b.id === 'booking-2'));
   const keepDisappeared = { ...selectAll, [changeKey(result.changes.find(c => c.type === 'disappeared'))]: false };
   published = applyReview(result.changes, keepDisappeared);
@@ -135,6 +136,8 @@ try {
   check('Unavailable is the grey built-in option', UNAVAILABLE_SALESPERSON.name === 'Unavailable' && UNAVAILABLE_SALESPERSON.colour === '#9aa0a6');
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
   check('Unavailable resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
+  check('unavailable tick box renders grey', bookingColour({ unavailable: true, salespersonId: 'sp-1' }, palette) === '#9aa0a6');
+  check('salesperson colour wins when not unavailable', bookingColour({ unavailable: false, salespersonId: 'sp-1' }, palette) === '#3366cc');
   check('unknown salesperson falls back to the stored colour', bookingColour({ salespersonId: 'sp-gone', colour: '#ff0000' }, palette) === '#ff0000');
   check('no salesperson keeps the stored colour', bookingColour({ colour: '#ff0000' }, palette) === '#ff0000');
   check('resolveSalesperson finds Unavailable by id', resolveSalesperson(palette, 'unavailable')?.name === 'Unavailable');
@@ -171,15 +174,11 @@ try {
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);
   check('hidden bookings still render in unlock mode', blocks.length === 1 && blocks[0].hidden === true);
 
-  // --- Room groups: strong borders at group edges ---
-  const groups = groupEdges(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1', 'River Room 2'], [
-    { name: 'Palladium', rooms: ['Palladium A', 'Palladium B', 'Palladium C1'] },
-    { name: 'River Room', rooms: ['River Room 1', 'River Room 2'] }
-  ]);
-  check('strong border after the last room of each group', groups.strongAfter[2] === true && groups.strongAfter[4] === true && groups.strongAfter[0] === false && groups.strongAfter[1] === false && groups.strongAfter[3] === false, JSON.stringify(groups));
-  check('date column gets a strong edge when the first room is grouped', groups.dateEdge === true);
-  const noGroups = groupEdges(['Palladium A', 'Palladium B'], []);
-  check('no groups means no strong vertical borders', noGroups.strongAfter.every(v => !v) && noGroups.dateEdge === false);
+  // --- Strong borders: placed after named rooms, not around groups ---
+  const borders = strongBorders(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1', 'River Room 2'], ['Palladium C1', 'River Room 2']);
+  check('strong border after each named room only', borders[2] === true && borders[4] === true && borders[0] === false && borders[1] === false && borders[3] === false, JSON.stringify(borders));
+  check('no borders means no strong vertical borders', strongBorders(['Palladium A', 'Palladium B'], []).every(v => !v));
+  check('border matching ignores case and whitespace', strongBorders(['Palladium A', 'Palladium B'], [' palladium a '])[0] === true);
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;
