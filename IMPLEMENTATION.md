@@ -78,9 +78,10 @@ Sections, all editable on the Configuration page (see below):
   `"Palladium"` → Palladium A, B, C1, C2, C3),
   `timetarget_areas` (board room → the name TimeTarget uses for that room,
   with the venue name on the front — the key the planned TimeTarget
-  setup-time import will match upload rows against). `exclude` and
-  `room_mappings` are still read at import but are no longer edited on
-  the Configuration page (see below); the combined names are load-bearing
+  setup-time import will match upload rows against). `room_mappings` is
+  edited in the Combined rooms section of the Configuration page;
+  `exclude` is still read at import but is not edited on the page. The
+  combined names are load-bearing
   — the Crown export has 174 rows with Function Room exactly `Palladium`,
   187 `River Room` and 47 `Garden Room`, which only become board bookings
   through the mapping.
@@ -405,12 +406,8 @@ parameter in the YAML is editable, not just the rooms: site, fields,
 display, rooms, timeline items, file input, time slots, and the
 whiteboard section, plus a raw YAML editor. Exceptions: the original
 planner's `output` settings are not shown (stripped from the YAML when a
-config is read or saved); `rooms.exclude` and `rooms.room_mappings` are
-kept in the YAML and still read at import, but the old Room lists section
-that edited them is gone — merging across rooms is now set with the
-Operable wall column, and an operable wall merges separate bookings, it
-does not expand one booking, so the mapping is still what turns a
-combined export name into board rooms. The room table is
+config is read or saved); `rooms.exclude` is kept in the YAML and still
+read at import, but is not edited on the page. The room table is
 **Order | Room | Alias | Timetarget Area Name | Type | Border after |
 Operable wall | Reorder | Remove**:
 
@@ -444,6 +441,13 @@ Operable wall | Reorder | Remove**:
   fields a preview shows the three columns at their set widths, scaled
   to fit, with the real pixel numbers — it resizes live as the fields
   are adjusted.
+- **Combined rooms** — its own section under the room table: each name on
+  the left is a name the export file uses for a combination of rooms, and
+  it expands to the rooms on the right. One entry per spelling the venue
+  uses. A combined booking only renders as one wide block when the walls
+  between those rooms are ticked operable; an operable wall merges
+  separate bookings, it does not expand one booking, so the mapping is
+  still what turns a combined export name into board rooms.
 
 Salespeople are edited in their own table (Name, Short name, Colour), and
 the YAML can be exported with a save-location prompt.
@@ -513,7 +517,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-154 checks covering matching tiers and weights, booking identity, height and
+155 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

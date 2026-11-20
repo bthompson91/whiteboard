@@ -391,6 +391,11 @@ try {
   })());
   check('a room rename to an existing name is refused', !renameRoomInConfig({ rooms: { order: ['Room 1', 'Room 2'] } }, 'Room 1', 'Room 2'));
   check('a room rename to a blank name is refused', !renameRoomInConfig({ rooms: { order: ['Room 1'] } }, 'Room 1', '   '));
+  // Combined-room mappings survive a save round-trip intact.
+  check('room_mappings survive a save round-trip', (() => {
+    const back = readConfiguration(writeConfiguration(normalizeConfigDoc(readConfiguration(`rooms:\n  order: [Room 1, Room 2]\n  room_mappings:\n    Combined:\n      - Room 1\n      - Room 2\n`, false))));
+    return JSON.stringify(back.rooms.room_mappings) === JSON.stringify({ Combined: ['Room 1', 'Room 2'] });
+  })());
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);

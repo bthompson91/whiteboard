@@ -73,6 +73,15 @@ function StringList({ values, onChange, label }: { values:string[]; onChange:(ne
   </div>)}
   <button onClick={()=>onChange([...values,''])}>Add</button></div>;
 }
+function MappingEditor({ map, onChange, keyLabel, valueLabel }: { map:Record<string,string[]>; onChange:(next:Record<string,string[]>)=>void; keyLabel:string; valueLabel:string }) {
+  const rows = Object.entries(map);
+  return <div>{rows.map(([key,values])=><div key={key} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+    <input aria-label={keyLabel} value={key} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k===key?e.target.value:k]=v;onChange(next);}} />
+    <input aria-label={valueLabel} value={values.join(', ')} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k]=k===key?e.target.value.split(',').map(s=>s.trim()).filter(Boolean):v;onChange(next);}} />
+    <button onClick={()=>{const next:Record<string,string[]>={};for(const [k,v] of rows)if(k!==key)next[k]=v;onChange(next);}}>Remove</button>
+  </div>)}
+  <button onClick={()=>onChange({ ...map, '': [] })}>Add</button></div>;
+}
 export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:Props){
   const initial=yamlText||starterConfiguration;
   const [text,setText]=useState(initial);
@@ -141,13 +150,9 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
         </section>
-        {/* Room lists (excluded rooms, combined rooms) used to be edited
-        here. The section was removed — merging across rooms is now set
-        with the Operable wall column — but the data stays in the YAML:
-        a combined name in the export still expands through
-        rooms.room_mappings at import, and rooms.exclude still skips
-        rooms. An operable wall merges separate bookings; it does not
-        expand one booking, so the mapping is still load-bearing. */}
+        <section><h2>Combined rooms</h2><p>Each name on the left is a name the venue&apos;s export file uses for a combination of rooms; it expands to the rooms on its right. Add one entry per spelling the venue uses — “Palladium A &amp; B”, “Palladium AB” and “Palladium A and B” are three different names, so each needs its own entry. A combined booking only renders as one wide block when the walls between those rooms are ticked operable. Excluded rooms are not edited here: they stay in the YAML (<code>rooms.exclude</code>) and still skip rooms at import.</p>
+          <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" onChange={next=>change(d=>{d.rooms.room_mappings=next;})} />
+        </section>
         <section><h2>Time slots</h2><p>Named blocks of the day, used by the original planner output.</p>
           {timeSlots.map((slot,i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
             <input aria-label={`Time slot ${i+1} label`} value={slot.label} onChange={e=>change(d=>{const list=[...(d.time_slots as TimeSlot[])];list[i]={...list[i],label:e.target.value};d.time_slots=list;})} />
