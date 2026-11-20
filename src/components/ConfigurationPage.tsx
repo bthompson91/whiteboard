@@ -1,7 +1,7 @@
-import { ChangeEvent, useEffect, useState } from 'react';
-import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, renameRoomInConfig, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
 import '../configuration.css';
-interface Props { yamlText:string; hasBookings:boolean; onSave:(text:string)=>void; onClose:()=>void }
+interface Props { yamlText:string; hasBookings:boolean; onSave:(text:string, renames?:Record<string,string>)=>void; onClose:()=>void }
 type TimeSlot = { label:string; start:string; end:string };
 const FIELD_KEYS: Array<{ key:string; label:string; optional?:boolean }> = [
   { key:'booking_name', label:'Booking name' },
@@ -10,9 +10,11 @@ const FIELD_KEYS: Array<{ key:string; label:string; optional?:boolean }> = [
   { key:'start_time', label:'Start time' },
   { key:'end_time', label:'End time' },
   { key:'room_name', label:'Room' },
-  { key:'booking_status', label:'Booking status' },
-  { key:'job_number', label:'Job number', optional:true }
+  { key:'booking_status', label:'Booking status' }
 ];
+// Job numbers are Encore data, not hotel data: they never come in on
+// the venue's export file, so there is no job-number mapping to offer
+// here. Job numbers are added to bookings later, in the inspector.
 const DATE_FORMATS = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
 // A width field that commits as you type, so clicking "Apply and save"
 // while the field still has focus can never lose the value (the old
@@ -49,6 +51,21 @@ function LimitInput({label,value,min,max,onCommit,onInvalid}:{label:string;value
     if(text.trim()===''||!Number.isFinite(n)||n<min||n>max){setText(String(value));onInvalid();}
   }} /></label>;
 }
+// A room-name field that commits on blur (or Enter), not per keystroke:
+// the row is keyed by the room name, so committing mid-typing would
+// remount the row and drop focus after the first character. A blank or
+// unchanged name resets silently; a name another room already has is
+// rejected by onRename, which returns false and resets the field.
+function RoomNameInput({value,onRename}:{value:string;onRename:(next:string)=>boolean}){
+  const [text,setText]=useState(value);
+  useEffect(()=>{setText(value);},[value]);
+  const commit=()=>{
+    const next=text.trim();
+    if(next===value||!next){setText(value);return;}
+    if(!onRename(next))setText(value);
+  };
+  return <input aria-label={`Room name for ${value}`} title="Rename this room — every reference in the configuration is renamed with it, and its bookings and notes follow it" value={text} onChange={e=>setText(e.target.value)} onBlur={commit} onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur();}} />;
+}
 function StringList({ values, onChange, label }: { values:string[]; onChange:(next:string[])=>void; label:string }) {
   return <div>{values.map((value,i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6}}>
     <input aria-label={`${label} ${i+1}`} value={value} onChange={e=>{const next=[...values];next[i]=e.target.value;onChange(next);}} />
@@ -56,35 +73,35 @@ function StringList({ values, onChange, label }: { values:string[]; onChange:(ne
   </div>)}
   <button onClick={()=>onChange([...values,''])}>Add</button></div>;
 }
-function MappingEditor({ map, onChange, keyLabel, valueLabel }: { map:Record<string,string[]>; onChange:(next:Record<string,string[]>)=>void; keyLabel:string; valueLabel:string }) {
-  const rows = Object.entries(map);
-  return <div>{rows.map(([key,values])=><div key={key} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-    <input aria-label={keyLabel} value={key} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k===key?e.target.value:k]=v;onChange(next);}} />
-    <input aria-label={valueLabel} value={values.join(', ')} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k]=k===key?e.target.value.split(',').map(s=>s.trim()).filter(Boolean):v;onChange(next);}} />
-    <button onClick={()=>{const next:Record<string,string[]>={};for(const [k,v] of rows)if(k!==key)next[k]=v;onChange(next);}}>Remove</button>
-  </div>)}
-  <button onClick={()=>onChange({ ...map, '': [] })}>Add</button></div>;
-}
 export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:Props){
   const initial=yamlText||starterConfiguration;
   const [text,setText]=useState(initial);
   const [message,setMessage]=useState('');
   const [newRoom,setNewRoom]=useState('');
+  // Rooms renamed in this editing session, as old name -> new name, so
+  // Apply and save can carry the rename through to bookings and notes
+  // (room names are the ids those carry). Chained renames compose:
+  // A->B then B->C records A->C.
+  const renamesRef=useRef<Record<string,string>>({});
   let doc:ConfigDocument|null=null,validation='';
   try{doc=readConfiguration(text,false);}catch(e){validation=e instanceof Error?e.message:String(e);}
   const settings=doc?boardSettings(doc):null;
   const change=(fn:(d:ConfigDocument)=>void)=>{if(!doc)return;const next=structuredClone(doc);fn(next);setText(writeConfiguration(next));setMessage('');};
   const updateSettings=(fn:(s:ReturnType<typeof boardSettings>)=>void)=>change(d=>{const s=boardSettings(d);fn(s);d.whiteboard={...(d.whiteboard||{}),...s};});
-  const importFile=async(e:ChangeEvent<HTMLInputElement>)=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(!file)return;try{const next=await file.text();readConfiguration(next);setText(next);setMessage('YAML loaded into draft. Apply it to update the board.');}catch(error){setMessage(error instanceof Error?error.message:String(error));}};
+  const importFile=async(e:ChangeEvent<HTMLInputElement>)=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(!file)return;try{const next=await file.text();readConfiguration(next);renamesRef.current={};setText(next);setMessage('YAML loaded into draft. Apply it to update the board.');}catch(error){setMessage(error instanceof Error?error.message:String(error));}};
   // Save trims stray whitespace from names and mappings, then validates
   // strictly: an empty field mapping fails here with a message instead of
   // silently dropping every row on the next import.
-  const save=()=>{if(!doc)return;try{const next=normalizeConfigDoc(structuredClone(doc));const nextText=writeConfiguration(next);readConfiguration(nextText);onSave(nextText);}catch(error){setMessage(error instanceof Error?error.message:String(error));}};
+  const save=()=>{if(!doc)return;try{const next=normalizeConfigDoc(structuredClone(doc));const nextText=writeConfiguration(next);readConfiguration(nextText);onSave(nextText,{...renamesRef.current});renamesRef.current={};}catch(error){setMessage(error instanceof Error?error.message:String(error));}};
   const exportFile=()=>{try{const d=readConfiguration(text);const blob=new Blob([text],{type:'text/yaml;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`${String(d.site?.name||'venue').toLowerCase().replace(/[^a-z0-9]+/g,'_')}.yaml`;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);setMessage('Exported this draft. Export does not apply changes to the board.');}catch(error){setMessage(error instanceof Error?error.message:String(error));}};
   const close=()=>{if(text!==initial&&!window.confirm('Discard unapplied configuration changes?'))return;onClose();};
   const move=(i:number,delta:number)=>change(d=>{const list=d.rooms.order as string[];const j=i+delta;if(j<0||j>=list.length)return;[list[i],list[j]]=[list[j],list[i]];});
   const addRoom=()=>{const name=newRoom.trim();if(!name)return;change(d=>{const list=d.rooms.order as string[];if(!list.some(r=>r.toLowerCase()===name.toLowerCase()))list.push(name);});setNewRoom('');};
   const removeRoom=(room:string)=>change(d=>{d.rooms.order=(d.rooms.order as string[]).filter(r=>r!==room);updateSettingsInPlace(d,room);});
+  // Rename a room in the draft, recording the rename so Apply and save
+  // can carry it through to bookings and notes. A name another room
+  // already has is refused with a message and the field resets.
+  const renameRoom=(oldName:string,nextName:string):boolean=>{if(!doc)return false;const next=structuredClone(doc);if(!renameRoomInConfig(next,oldName,nextName)){setMessage(`A room called "${nextName.trim()}" already exists.`);return false;}for(const k of Object.keys(renamesRef.current))if(renamesRef.current[k]===oldName)renamesRef.current[k]=nextName.trim();renamesRef.current[oldName]=nextName.trim();setText(writeConfiguration(next));setMessage('');return true;};
   function updateSettingsInPlace(d:ConfigDocument,room:string){const s=boardSettings(d);delete s.room_types[room.trim()];d.whiteboard={...(d.whiteboard||{}),...s};}
   const fields:Record<string,string>=(doc?.fields as Record<string,string>)||{};
   const timeSlots:TimeSlot[]=Array.isArray(doc?.time_slots)?(doc.time_slots as TimeSlot[]):[];
@@ -102,7 +119,7 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <label>Date format <select value={doc.file_input?.date_format||'DD/MM/YYYY'} onChange={e=>change(d=>{d.file_input={...(d.file_input||{}),date_format:e.target.value};})}>{DATE_FORMATS.map(f=><option key={f} value={f}>{f}</option>)}</select></label>
           <p>One venue&apos;s 11/19/2026 is another&apos;s 19/11/2026. The date format tells the reader which it is — it is never guessed.</p>
         </section>
-        <section><h2>Field mappings</h2><p>Each row names the column header in this venue&apos;s export file. Change a header here when the venue renames a column; nothing in the app hard-codes a column name.</p>
+        <section><h2>Field mappings</h2><p>Each row names the column header in this venue&apos;s export file. Change a header here when the venue renames a column; nothing in the app hard-codes a column name. Job numbers are not mapped here: they are Encore data, not hotel data, and are added to bookings later in the inspector.</p>
           <table><thead><tr><th>Field</th><th>Column header in the export file</th></tr></thead><tbody>{FIELD_KEYS.map(({key,label,optional})=><tr key={key}><td>{label}{optional?' (optional)':''}</td><td><input aria-label={`${label} column header`} placeholder={optional?'Not mapped':''} value={fields[key]||''} onChange={e=>{const value=e.target.value;change(d=>{d.fields={...(d.fields||{})};if(!value.trim()&&optional)delete d.fields[key];else d.fields[key]=value;});}}/></td></tr>)}</tbody></table>
         </section>
         <section><h2>Display</h2>
@@ -112,22 +129,25 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <p>Allowed statuses</p>
           <StringList label="Allowed status" values={Array.isArray(doc.display?.allowed_statuses)?(doc.display.allowed_statuses as string[]):[]} onChange={next=>change(d=>{d.display={...(d.display||{}),allowed_statuses:next};})} />
         </section>
-        <section><h2>Room configuration</h2><p>Large rooms use wider columns; small rooms use narrower columns. Base widths are minimums; columns expand proportionally if the screen has spare space. Tick “Border after” to draw a strong border after a room, so a block of rooms reads as one section — Palladium C3, for example, puts a strong border between Palladium and River Room. Days are separated by the same strong border. The “Alias” column holds the other names a room is called in the export file, comma separated — each alias reads as that room. The “Operable wall” tick box sits on the border between two rooms: tick it when the wall between this room and the next can be opened, so bookings can merge across them. A wall that is not ticked is fixed, and no booking merges across it.</p>
+        <section><h2>Room configuration</h2><p>Large rooms use wider columns; small rooms use narrower columns. Base widths are minimums; columns expand proportionally if the screen has spare space. The room name itself is editable: renaming a room renames it everywhere in the configuration, and its bookings and notes follow it. Tick “Border after” to draw a strong border after a room, so a block of rooms reads as one section — Palladium C3, for example, puts a strong border between Palladium and River Room. Days are separated by the same strong border. The “Alias” column holds the other names a room is called in the export file, comma separated — each alias reads as that room. The “Timetarget Area Name” column holds the TimeTarget area a room belongs to, for the rostering import. The “Operable wall” tick box sits on the border between two rooms: tick it when the wall between this room and the next can be opened, so bookings can merge across them. A wall that is not ticked is fixed, and no booking merges across it.</p>
           <div className="configuration-widths">
             <LimitInput label="Minimum width" value={settings.room_width_min} min={1} max={2000} onCommit={n=>updateSettings(s=>{s.room_width_min=n;if(s.room_width_max<n)s.room_width_max=n;for(const t of ['large','small','other'] as RoomType[])s.room_widths[t]=Math.max(n,Math.min(s.room_width_max,s.room_widths[t]));})} onInvalid={()=>setMessage('Use a minimum width from 1 to 2000 pixels.')} />
             <LimitInput label="Maximum width" value={settings.room_width_max} min={1} max={5000} onCommit={n=>updateSettings(s=>{s.room_width_max=n;if(s.room_width_min>n)s.room_width_min=n;for(const t of ['large','small','other'] as RoomType[])s.room_widths[t]=Math.max(s.room_width_min,Math.min(n,s.room_widths[t]));})} onInvalid={()=>setMessage('Use a maximum width from 1 to 5000 pixels.')} />
           </div>
           <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><WidthInput key={type} type={type} value={settings.room_widths[type]} min={settings.room_width_min} max={settings.room_width_max} onCommit={n=>updateSettings(s=>{s.room_widths[type]=n;})} onInvalid={()=>setMessage(`Use a width from ${settings.room_width_min} to ${settings.room_width_max} pixels.`)} />)}</div>
-          <table><thead><tr><th>Order</th><th>Room</th><th>Alias</th><th>Type</th><th>Border after</th><th>Operable wall</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{(doc.rooms.order as string[]).map((room,i)=>{const name=room.trim();const type=settings.room_types[name]||'other';const aliases=((doc.rooms.room_aliases as Record<string,string[]>)||{})[name]||[];const last=i===doc!.rooms.order.length-1;return <tr key={room}><td>{i+1}</td><td>{name}</td><td><input aria-label={`Aliases for ${name}`} title="Other names this room is called in the export file, comma separated — each alias reads as this room" placeholder="Aliases, comma separated" value={aliases.join(', ')} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.room_aliases as Record<string,string[]>)||{})};const next=value.split(',').map(s=>s.trim()).filter(Boolean);if(next.length)map[name]=next;else delete map[name];d.rooms.room_aliases=map;});}} /></td><td><select aria-label={`${name} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[name]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td><td><input type="checkbox" aria-label={`Strong border after ${name}`} checked={settings.room_borders.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,name]:s.room_borders.filter(r=>r!==name);});}} /></td><td className="operable-wall">{last?null:<span className="operable-wall-box"><input type="checkbox" aria-label={`Operable wall after ${name}`} title="Tick when the wall between this room and the next can be opened, so bookings can merge across them" checked={settings.operable_walls.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.operable_walls=on?[...s.operable_walls,name]:s.operable_walls.filter(r=>r!==name);});}} /></span>}</td><td><button disabled={i===0} onClick={()=>move(i,-1)} aria-label={`Move ${room} up`}>Up</button><button disabled={i===doc!.rooms.order.length-1} onClick={()=>move(i,1)} aria-label={`Move ${room} down`}>Down</button></td><td><button onClick={()=>removeRoom(room)} aria-label={`Remove ${room}`}>Remove</button></td></tr>;})}</tbody></table>
+          <div aria-label="Room width preview" style={{display:'flex',gap:12,alignItems:'flex-end',marginTop:12}}>{(['small','other','large'] as RoomType[]).map(type=>{const w=settings.room_widths[type];const total=settings.room_widths.small+settings.room_widths.other+settings.room_widths.large;const scale=420/Math.max(total,1);const label=type==='other'?'Medium':type==='small'?'Small':'Large';return <div key={type} style={{textAlign:'center'}}><div style={{width:Math.max(28,Math.round(w*scale)),height:44,background:'#fff',border:'1px solid #141414',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,overflow:'hidden'}}>{w}</div><div style={{fontSize:12,marginTop:4}}>{label} {w}px</div></div>;})}</div>
+          <p>Preview: the three columns at their set widths, scaled to fit — the numbers are the real pixel widths.</p>
+          <table><thead><tr><th>Order</th><th>Room</th><th>Alias</th><th>Timetarget Area Name</th><th>Type</th><th>Border after</th><th>Operable wall</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{(doc.rooms.order as string[]).map((room,i)=>{const name=room.trim();const type=settings.room_types[name]||'other';const aliases=((doc.rooms.room_aliases as Record<string,string[]>)||{})[name]||[];const timetarget=((doc.rooms.timetarget_areas as Record<string,string>)||{})[name]||'';const last=i===doc!.rooms.order.length-1;return <tr key={room}><td>{i+1}</td><td><RoomNameInput value={name} onRename={next=>renameRoom(name,next)} /></td><td><input aria-label={`Aliases for ${name}`} title="Other names this room is called in the export file, comma separated — each alias reads as this room" placeholder="Aliases, comma separated" value={aliases.join(', ')} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.room_aliases as Record<string,string[]>)||{})};const next=value.split(',').map(s=>s.trim()).filter(Boolean);if(next.length)map[name]=next;else delete map[name];d.rooms.room_aliases=map;});}} /></td><td><input aria-label={`TimeTarget area name for ${name}`} title="The TimeTarget area this room belongs to, for the rostering import" placeholder="TimeTarget area" value={timetarget} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.timetarget_areas as Record<string,string>)||{})};if(value.trim())map[name]=value;else delete map[name];d.rooms.timetarget_areas=map;});}} /></td><td><select aria-label={`${name} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[name]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td><td><input type="checkbox" aria-label={`Strong border after ${name}`} checked={settings.room_borders.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,name]:s.room_borders.filter(r=>r!==name);});}} /></td><td className="operable-wall">{last?null:<span className="operable-wall-box"><input type="checkbox" aria-label={`Operable wall after ${name}`} title="Tick when the wall between this room and the next can be opened, so bookings can merge across them" checked={settings.operable_walls.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.operable_walls=on?[...s.operable_walls,name]:s.operable_walls.filter(r=>r!==name);});}} /></span>}</td><td><button disabled={i===0} onClick={()=>move(i,-1)} aria-label={`Move ${room} up`}>Up</button><button disabled={i===doc!.rooms.order.length-1} onClick={()=>move(i,1)} aria-label={`Move ${room} down`}>Down</button></td><td><button onClick={()=>removeRoom(room)} aria-label={`Remove ${room}`}>Remove</button></td></tr>;})}</tbody></table>
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
         </section>
-        <section><h2>Room lists</h2>
-          <p>Excluded rooms (bookings in these rooms are ignored)</p>
-          <StringList label="Excluded room" values={Array.isArray(doc.rooms.exclude)?(doc.rooms.exclude as string[]):[]} onChange={next=>change(d=>{d.rooms.exclude=next;})} />
-          <p>Combined rooms (each name on the left expands to the rooms on its right)</p>
-          <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" onChange={next=>change(d=>{d.rooms.room_mappings=next;})} />
-        </section>
+        {/* Room lists (excluded rooms, combined rooms) used to be edited
+        here. The section was removed — merging across rooms is now set
+        with the Operable wall column — but the data stays in the YAML:
+        a combined name in the export still expands through
+        rooms.room_mappings at import, and rooms.exclude still skips
+        rooms. An operable wall merges separate bookings; it does not
+        expand one booking, so the mapping is still load-bearing. */}
         <section><h2>Time slots</h2><p>Named blocks of the day, used by the original planner output.</p>
           {timeSlots.map((slot,i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
             <input aria-label={`Time slot ${i+1} label`} value={slot.label} onChange={e=>change(d=>{const list=[...(d.time_slots as TimeSlot[])];list[i]={...list[i],label:e.target.value};d.time_slots=list;})} />

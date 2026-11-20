@@ -286,11 +286,21 @@ export default function App() {
     }, 500);
     return () => window.clearTimeout(timer);
   }, [bookings, revision, importHistory, markup, editorLock, role]);
-  const saveConfiguration = (text: string) => {
+  const saveConfiguration = (text: string, renames: Record<string,string> = {}) => {
     readConfiguration(text);
     parseVenueConfig(text);
     localStorage.setItem(VENUE_YAML_KEY, text);
     setYamlText(text);
+    // A room renamed in Configuration keeps its bookings and markup:
+    // room names are the ids bookings and anchors carry, so follow the
+    // rename instead of orphaning them under the old name.
+    if (Object.keys(renames).length) {
+      const renameId = (id: string) => renames[id] ?? id;
+      setBookings(bs => bs.map(b => ({ ...b, roomId: renameId(b.roomId), roomIds: b.roomIds.map(renameId) })));
+      setMarkup(ms => ms.map(m => m.type === 'text'
+        ? { ...m, roomId: m.roomId ? renameId(m.roomId) : m.roomId }
+        : { ...m, roomId1: m.roomId1 ? renameId(m.roomId1) : m.roomId1, roomId2: m.roomId2 ? renameId(m.roomId2) : m.roomId2 }));
+    }
     setError(null);
     setConfigurationOpen(false);
     // Write the YAML back to its linked file, so the venue config on

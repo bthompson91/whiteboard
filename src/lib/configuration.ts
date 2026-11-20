@@ -62,7 +62,7 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if(names.some(n=>!n.trim())||new Set(names.map(n=>n.trim().toLowerCase())).size!==names.length)throw new Error('Room names must be non-empty and unique.');
   if(d.site!==undefined&&(!object(d.site)||typeof d.site.name!=='string'))throw new Error('site.name must be text.');
   if(d.fields!==undefined&&(!object(d.fields)||!Object.values(d.fields).every(v=>typeof v==='string')))throw new Error('fields must map names to text column headers.');
-  if(strict&&d.fields!==undefined&&Object.values(d.fields).some(v=>!(v as string).trim()))throw new Error('Field mappings must name a column header; leave job_number out instead of blank.');
+  if(strict&&d.fields!==undefined&&Object.values(d.fields).some(v=>!(v as string).trim()))throw new Error('Field mappings must name a column header; leave a mapping out instead of blank.');
   if(d.file_input!==undefined&&(!object(d.file_input)||(d.file_input.format!==undefined&&typeof d.file_input.format!=='string')||(d.file_input.has_header!==undefined&&typeof d.file_input.has_header!=='boolean')))throw new Error('file_input must map format to text and has_header to true/false.');
   if(d.file_input?.date_format!==undefined&&!['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD'].includes(String(d.file_input.date_format)))throw new Error('file_input.date_format must be DD/MM/YYYY, MM/DD/YYYY or YYYY-MM-DD.');
   if(d.time_slots!==undefined&&(!Array.isArray(d.time_slots)||d.time_slots.some(s=>!object(s)||typeof s.label!=='string'||typeof s.start!=='string'||typeof s.end!=='string')))throw new Error('time_slots must be a list of label/start/end entries.');
@@ -74,6 +74,9 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if ('output' in d) delete d.output;
   if(d.rooms.exclude!==undefined&&!strings(d.rooms.exclude))throw new Error('rooms.exclude must be a list of room names.');
   for(const key of ['room_aliases','room_mappings'])if(d.rooms[key]!==undefined&&(!object(d.rooms[key])||!Object.values(d.rooms[key]).every(strings)))throw new Error(`rooms.${key} must map names to lists of names.`);
+  // TimeTarget area name per room: the rostering area the room belongs
+  // to, for the TimeTarget import. One area name per room, plain text.
+  if(d.rooms.timetarget_areas!==undefined&&(!object(d.rooms.timetarget_areas)||!Object.values(d.rooms.timetarget_areas).every(v=>typeof v==='string')))throw new Error('rooms.timetarget_areas must map room names to TimeTarget area names.');
   if(d.timeline_items!==undefined&&!strings(d.timeline_items))throw new Error('timeline_items must be a text list.');
   if(d.display!==undefined&&!object(d.display))throw new Error('display must be a mapping.');
   if(d.display?.allowed_statuses!==undefined&&!strings(d.display.allowed_statuses))throw new Error('display.allowed_statuses must be a text list.');
@@ -134,6 +137,16 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
   if (object(d.rooms)) {
     if (Array.isArray(d.rooms.order)) d.rooms.order = [...new Set((d.rooms.order as unknown[]).map(s => typeof s === 'string' ? s.trim() : s).filter((s): s is string => typeof s === 'string' && !!s))];
     if (Array.isArray(d.rooms.exclude)) d.rooms.exclude = trimList(d.rooms.exclude);
+    if (object(d.rooms.timetarget_areas)) {
+      const next: Record<string,string> = {};
+      for (const [k,v] of Object.entries(d.rooms.timetarget_areas as Record<string, unknown>)) {
+        const nk = k.trim();
+        if (!nk) continue;
+        const nv = typeof v === 'string' ? v.trim() : '';
+        if (nv) next[nk] = nv;
+      }
+      d.rooms.timetarget_areas = next;
+    }
     for (const key of ['room_aliases','room_mappings']) if (object(d.rooms[key])) {
       const next: Record<string,string[]> = {};
       for (const [k,v] of Object.entries(d.rooms[key] as Record<string, unknown>)) {
@@ -155,5 +168,45 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
   if (object(d.display) && Array.isArray(d.display.allowed_statuses)) d.display.allowed_statuses = trimList(d.display.allowed_statuses);
   if (Array.isArray(d.time_slots)) d.time_slots = d.time_slots.map(s => object(s) ? { ...s, label: typeof s.label === 'string' ? s.label.trim() : s.label, start: typeof s.start === 'string' ? s.start.trim() : s.start, end: typeof s.end === 'string' ? s.end.trim() : s.end } : s);
   return d;
+}
+// Rename a room everywhere the configuration references it by name:
+// the room order, the room-type keys, the strong-border and
+// operable-wall lists, the alias and TimeTarget-area keys, the
+// combined-room keys and values, and the exclude list. Returns false
+// when the new name is blank, unchanged, or already taken by another
+// room, so the caller can leave the draft alone. It does not touch
+// bookings or markup — the caller follows the rename there, since room
+// names are the ids bookings and anchors carry.
+export function renameRoomInConfig(d: ConfigDocument, oldName: string, nextName: string): boolean {
+  const old = oldName.trim();
+  const next = nextName.trim();
+  if (!old || !next || old.toLowerCase() === next.toLowerCase()) return false;
+  const order = d.rooms?.order as unknown;
+  if (!Array.isArray(order)) return false;
+  if (!order.some(r => typeof r === 'string' && r.trim().toLowerCase() === old.toLowerCase())) return false;
+  if (order.some(r => typeof r === 'string' && r.trim().toLowerCase() === next.toLowerCase())) return false;
+  const same = (v: unknown) => typeof v === 'string' && v.trim().toLowerCase() === old.toLowerCase();
+  const renameList = (list: unknown) => Array.isArray(list) ? list.map(x => same(x) ? next : x) : list;
+  const renameKey = (map: unknown) => {
+    if (!object(map)) return map;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(map as Record<string, unknown>)) out[same(k) ? next : k] = v;
+    return out;
+  };
+  d.rooms.order = (order as unknown[]).map(r => same(r) ? next : r);
+  if (Array.isArray(d.rooms.exclude)) d.rooms.exclude = renameList(d.rooms.exclude);
+  if (object(d.rooms.room_aliases)) d.rooms.room_aliases = renameKey(d.rooms.room_aliases);
+  if (object(d.rooms.timetarget_areas)) d.rooms.timetarget_areas = renameKey(d.rooms.timetarget_areas);
+  if (object(d.rooms.room_mappings)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(d.rooms.room_mappings as Record<string, unknown>)) out[same(k) ? next : k] = renameList(v);
+    d.rooms.room_mappings = out;
+  }
+  if (object(d.whiteboard)) {
+    if (object(d.whiteboard.room_types)) d.whiteboard.room_types = renameKey(d.whiteboard.room_types);
+    if (Array.isArray(d.whiteboard.room_borders)) d.whiteboard.room_borders = renameList(d.whiteboard.room_borders);
+    if (Array.isArray(d.whiteboard.operable_walls)) d.whiteboard.operable_walls = renameList(d.whiteboard.operable_walls);
+  }
+  return true;
 }
 export const starterConfiguration=writeConfiguration({site:{name:'New venue'},fields:{booking_name:'Booking: Booking Post As',activity_name:'Booking Event: Name',event_date:'Start Date',start_time:'Start Time 24 Hour',end_time:'End Time 24 Hour',room_name:'Function Room',booking_status:'Booking: Status'},display:{primary_label:'booking_name',secondary_label:'activity_name',allowed_statuses:['Definite']},rooms:{order:['Room 1'],exclude:[],room_aliases:{},room_mappings:{}},timeline_items:['Setup','Teardown'],whiteboard:{room_types:{'Room 1':'other'},room_widths:{large:200,small:125,other:150},salespeople:[],room_borders:[],operable_walls:[]}});

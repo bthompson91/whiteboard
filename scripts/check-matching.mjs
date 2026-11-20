@@ -31,7 +31,7 @@ try {
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
-  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
   const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
@@ -372,6 +372,25 @@ try {
   check('a malformed output section does not fail reading', (() => { try { return !('output' in readConfiguration(`rooms:\n  order: [Room 1]\noutput: not a mapping\n`, false)); } catch { return false; } })());
   check('normalizeConfigDoc strips an output section', !('output' in normalizeConfigDoc({ rooms: { order: ['Room 1'] }, output: { title: 'x' } })));
   check('a saved config no longer contains output', !writeConfiguration(normalizeConfigDoc(readConfiguration(`rooms:\n  order: [Room 1]\noutput:\n  title: x\n`, false))).includes('output'));
+  // TimeTarget area names: one per room, stored under rooms.
+  check('a TimeTarget area name is read from the YAML', readConfiguration(`rooms:\n  order: [Room 1]\n  timetarget_areas:\n    Room 1: Crown - Level 1\n`, false).rooms.timetarget_areas['Room 1'] === 'Crown - Level 1');
+  check('a non-text TimeTarget area name is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\n  timetarget_areas:\n    Room 1: 42\n`, false); return false; } catch (e) { return String(e.message || e).includes('timetarget_areas'); } })());
+  check('normalizeConfigDoc trims TimeTarget area names', (() => { const d = normalizeConfigDoc({ rooms: { order: ['Room 1'], timetarget_areas: { ' Room 1 ': ' Area A ', 'Room 2': '  ' } } }); return d.rooms.timetarget_areas['Room 1'] === 'Area A' && !('Room 2' in d.rooms.timetarget_areas); })());
+  // Renaming a room renames it everywhere the config references it.
+  check('a room rename moves every config reference', (() => {
+    const d = { rooms: { order: ['Room 1', 'Room 2'], exclude: ['Room 1'], room_aliases: { 'Room 1': ['R1'] }, timetarget_areas: { 'Room 1': 'Area A' }, room_mappings: { Combined: ['Room 1', 'Room 2'], 'Room 1': ['Room 2'] } }, whiteboard: { room_types: { 'Room 1': 'large' }, room_borders: ['Room 1'], operable_walls: ['Room 1'] } };
+    if (!renameRoomInConfig(d, 'Room 1', 'Room One')) return false;
+    return JSON.stringify(d.rooms.order) === JSON.stringify(['Room One', 'Room 2'])
+      && JSON.stringify(d.rooms.exclude) === JSON.stringify(['Room One'])
+      && JSON.stringify(d.rooms.room_aliases) === JSON.stringify({ 'Room One': ['R1'] })
+      && JSON.stringify(d.rooms.timetarget_areas) === JSON.stringify({ 'Room One': 'Area A' })
+      && JSON.stringify(d.rooms.room_mappings) === JSON.stringify({ Combined: ['Room One', 'Room 2'], 'Room One': ['Room 2'] })
+      && JSON.stringify(d.whiteboard.room_types) === JSON.stringify({ 'Room One': 'large' })
+      && JSON.stringify(d.whiteboard.room_borders) === JSON.stringify(['Room One'])
+      && JSON.stringify(d.whiteboard.operable_walls) === JSON.stringify(['Room One']);
+  })());
+  check('a room rename to an existing name is refused', !renameRoomInConfig({ rooms: { order: ['Room 1', 'Room 2'] } }, 'Room 1', 'Room 2'));
+  check('a room rename to a blank name is refused', !renameRoomInConfig({ rooms: { order: ['Room 1'] } }, 'Room 1', '   '));
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);

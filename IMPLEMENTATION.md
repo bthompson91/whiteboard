@@ -68,13 +68,22 @@ Sections, all editable on the Configuration page (see below):
   `end_time`, `room_name`, `booking_status`. The Crown YAML has no
   Confirmation No, BEO # or job-number field, so imported bookings arrive
   with `jobNumber: ''` and job numbers only exist when a user sets one in
-  the inspector.
+  the inspector. There is no job-number row in Field mappings: job numbers
+  are Encore data, not hotel data, and never come in on the venue file.
 - **`display`** — `primary_label`, `secondary_label`, `allowed_statuses`
   (only `Definite` rows are imported).
 - **`rooms`** — `order` (the board's room order), `exclude` (rooms to skip),
   `room_aliases` (canonical name → list of alias names the export may use),
   `room_mappings` (a combined export name → list of board rooms, e.g.
-  `"Palladium"` → Palladium A, B, C1, C2, C3).
+  `"Palladium"` → Palladium A, B, C1, C2, C3),
+  `timetarget_areas` (board room → the name TimeTarget uses for that room,
+  with the venue name on the front — the key the planned TimeTarget
+  setup-time import will match upload rows against). `exclude` and
+  `room_mappings` are still read at import but are no longer edited on
+  the Configuration page (see below); the combined names are load-bearing
+  — the Crown export has 174 rows with Function Room exactly `Palladium`,
+  187 `River Room` and 47 `Garden Room`, which only become board bookings
+  through the mapping.
 - **`timeline_items`** — activities that attach to a main booking instead of
   standing alone (Setup, Teardown).
 - **`file_input`** — `date_format` and friends, threaded into date parsing.
@@ -394,16 +403,33 @@ the top of the z-order (4000) so the lowlight never dims them.
 `src/components/ConfigurationPage.tsx` + `src/configuration.css`. Every
 parameter in the YAML is editable, not just the rooms: site, fields,
 display, rooms, timeline items, file input, time slots, and the
-whiteboard section, plus a raw YAML editor. (The original planner's
-`output` settings are not shown: they are stripped from the YAML when a
-config is read or saved.) The room table is
-**Order | Room | Alias | Type | Border after | Operable wall | Reorder |
-Remove**:
+whiteboard section, plus a raw YAML editor. Exceptions: the original
+planner's `output` settings are not shown (stripped from the YAML when a
+config is read or saved); `rooms.exclude` and `rooms.room_mappings` are
+kept in the YAML and still read at import, but the old Room lists section
+that edited them is gone — merging across rooms is now set with the
+Operable wall column, and an operable wall merges separate bookings, it
+does not expand one booking, so the mapping is still what turns a
+combined export name into board rooms. The room table is
+**Order | Room | Alias | Timetarget Area Name | Type | Border after |
+Operable wall | Reorder | Remove**:
 
+- **Room** — the name is an editable input, not fixed text. Renaming a
+  room (`renameRoomInConfig` in `configuration.ts`) renames it everywhere
+  the configuration references it (order, type keys, borders, operable
+  walls, aliases, TimeTarget areas, combined-room keys and values,
+  exclude list), and Apply and save carries the rename through to the
+  bookings and markup anchors that carry the room name, so they follow
+  it instead of being orphaned. A name another room already has is
+  refused. The input commits on blur, so typing never loses focus.
 - **Alias** — a text input per room (comma-separated) editing
   `rooms.room_aliases` inline, next to the room it belongs to. The old
-  separate "Room aliases" section is gone; "Combined rooms"
-  (`room_mappings`) is unchanged.
+  separate "Room aliases" section is gone.
+- **Timetarget Area Name** — a text input per room editing
+  `rooms.timetarget_areas`: the name TimeTarget uses for that room. It
+  exists for the planned TimeTarget setup-time import (see below): an
+  uploaded rostering export lists setup times per TimeTarget room, and
+  the import will match each row to a board room through this name.
 - **Type** — per-room select (`large` / `small` / `other`). The three width
   fields above the table (Small / Medium / Large) are the single place to
   set widths; the per-room "Base width" column was removed.
@@ -414,7 +440,10 @@ Remove**:
   those two rooms. The last room has no wall below it, so its cell is empty.
   The intro paragraph explains both new columns.
 - **Minimum / Maximum width** — settable limits above the width fields;
-  changing a limit re-clamps the three widths to it.
+  changing a limit re-clamps the three widths to it. Under the width
+  fields a preview shows the three columns at their set widths, scaled
+  to fit, with the real pixel numbers — it resizes live as the fields
+  are adjusted.
 
 Salespeople are edited in their own table (Name, Short name, Colour), and
 the YAML can be exported with a save-location prompt.
@@ -467,10 +496,24 @@ bookings) — and "Show print view" renders a print-friendly board.
   why printing the board directly never worked: the scroll container clips,
   the heights do not match the page, and the 38-room grid never paginates.
 
+## Planned: TimeTarget setup-time import
+
+Not built yet. In editor mode, an Excel export from the rostering system
+(TimeTarget) — a list of rooms, functions, and dates/times, the function
+usually "Set Up" — will be uploaded, and for each entry a text notation
+showing the time in 24-hour time will be added automatically at that time
+on the booking grid, editable like any other text notation. TimeTarget
+room names carry the venue name on the front and do not match board room
+names, so each row is matched to a board room through
+`rooms.timetarget_areas` (board room → the name TimeTarget uses for that
+room), edited in the Timetarget Area Name column of the room table. The
+import still needs the file's actual columns/sheet layout before it can
+be built.
+
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-144 checks covering matching tiers and weights, booking identity, height and
+154 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`
