@@ -4,7 +4,7 @@ import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
 import { bookingColour, isNoAv, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -19,6 +19,15 @@ export function strongBorders(roomIds: string[], borders: string[]): boolean[] {
   return roomIds.map(id => wanted.has(id.trim().toLowerCase()));
 }
 
+// Bookings with the exact same title as the given one (any room, any
+// day), excluding the booking itself: the "like bookings" a colour can
+// be applied to as a group. Only those whose salesperson differs from
+// the one being applied are returned, so the count is the bookings
+// that would actually change.
+export function likeBookings(bookings: Booking[], title: string, excludeId: string, salespersonId?: string): Booking[] {
+  return bookings.filter(b => b.id !== excludeId && b.title === title && b.salespersonId !== salespersonId);
+}
+
 // Groups bookings into the blocks the grid renders. Bookings with the
 // same title in the same room merge into one tall block spanning their
 // combined times (a height merge); the same event in adjacent rooms at
@@ -29,6 +38,9 @@ export function strongBorders(roomIds: string[], borders: string[]): boolean[] {
 // keeps the first booking's title as written. A merge never crosses a
 // strong border: the rooms named in `borders` divide the board, and a
 // block stops at the border even when the event continues next door.
+// Merging is per booking and manual: a booking with mergeTime false
+// never height-merges, and one with mergeRoom false never width-merges,
+// so a block keeps its original size unless the user merges it.
 function mergeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -47,9 +59,11 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
     for(const roomId of new Set(b.roomIds||[b.roomId])) {
       const room=venue.rooms.findIndex(r=>r.id===roomId);
       if(room<0)continue;
-      const key=JSON.stringify([b.date,mergeTitle(b.title),room]);
+      // A booking that opted out of merging by time gets its own group
+      // (its id in the key), so it never height-merges with like bookings.
+      const key=b.mergeTime===false?JSON.stringify([b.date,mergeTitle(b.title),room,b.id]):JSON.stringify([b.date,mergeTitle(b.title),room]);
       const old=groups.get(key);
-      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&!!b.hidden;}
+      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&!!b.hidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;}
       else {
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
@@ -62,7 +76,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         const noAv=isNoAv(b.jobNumber);
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false});
       }
     }
   }
@@ -73,7 +87,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
   const spans:Block[]=[];
   for(const b of [...groups.values()].sort((a,c)=>a.rooms[0]-c.rooms[0])) {
     b.ids=[...new Set(b.ids)].sort();b.facts=[...new Set(b.facts)];
-    const previous=spans.find(p=>p.date===b.date&&mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]);
+    const previous=spans.find(p=>p.date===b.date&&mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]&&p.mergeRoom&&b.mergeRoom);
     if(previous){
       previous.rooms.push(b.rooms[0]);
       previous.ids=[...new Set([...previous.ids,...b.ids])].sort();
@@ -84,6 +98,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       previous.mainEnd=Math.max(previous.mainEnd,b.mainEnd);
       previous.jobNumber=previous.jobNumber||b.jobNumber;
       previous.hidden=previous.hidden&&b.hidden;
+      previous.mergeRoom=previous.mergeRoom&&b.mergeRoom;
     } else spans.push(b);
   }
   // Blocks render snapped to the nearest 2-hour frame: 18:30-22:12 renders
@@ -99,27 +114,6 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
     const endRemainder = b.end % SNAP_MINUTES;
     b.end = endRemainder < SNAP_MINUTES / 2 ? b.end - endRemainder : b.end + (SNAP_MINUTES - endRemainder);
     if (b.end <= b.start) b.end = b.start + SNAP_MINUTES;
-  }
-  // Bookings never overlap in a room: if a later booking starts before
-  // an earlier booking's span ends, the earlier span ends where the
-  // later one starts (a lunch teardown ending at 17:00 is cut to 15:30
-  // when dinner's setup starts then). Only the rendered span is cut;
-  // the real times stay in the facts column and the tooltip. Spans are
-  // compared in absolute minutes, so a block running past midnight is
-  // cut by a booking the next day too. Blocks starting at the same time
-  // are left alone rather than cut to nothing.
-  const dayNumber = (date: string) => Math.floor(Date.parse(date + 'T00:00:00Z') / 86400000);
-  for (let room = 0; room < venue.rooms.length; room++) {
-    const inRoom = spans.filter(s => s.rooms.includes(room)).sort((a, c) => (dayNumber(a.date) * 1440 + a.start) - (dayNumber(c.date) * 1440 + c.start));
-    for (let i = 0; i + 1 < inRoom.length; i++) {
-      const earlier = inRoom[i], later = inRoom[i + 1];
-      const earlierStart = dayNumber(earlier.date) * 1440 + earlier.start;
-      const earlierEnd = dayNumber(earlier.date) * 1440 + earlier.end;
-      const laterStart = dayNumber(later.date) * 1440 + later.start;
-      if (laterStart > earlierStart && earlierEnd > laterStart) {
-        earlier.end = laterStart - dayNumber(earlier.date) * 1440;
-      }
-    }
   }
   return spans;
 }

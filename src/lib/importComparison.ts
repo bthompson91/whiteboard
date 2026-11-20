@@ -110,6 +110,11 @@ export function compareImports(previous: Booking[] | null, current: Booking[], v
   const matchedPreviousIds = new Set<string>();
   const changes: BookingChange[] = [];
   const unmatchedCurrent: Booking[] = [];
+  // The new file's date range: a previous booking outside it is not
+  // disappeared, it is simply on a day this file does not cover.
+  const dates = current.map(booking => booking.date).sort();
+  const firstDate = dates[0] ?? '';
+  const lastDate = dates[dates.length - 1] ?? '';
 
   for (const booking of current) {
     const previousBooking = previousById.get(booking.id) || previousByIdentity.get(identityKey(booking, venueName));
@@ -191,7 +196,17 @@ export function compareImports(previous: Booking[] | null, current: Booking[], v
 
   for (const booking of unmatchedPrevious) {
     if (linkedPreviousIds.has(booking.id)) continue;
-    changes.push({ type: 'disappeared', booking, previous: booking, changedFields: [] });
+    // A previous booking whose date is outside the new file's date
+    // range is not gone — the new file simply does not cover that day.
+    // Importing a different date range must not delete the bookings
+    // (and the colour coding on them) from other days, so those are
+    // kept as unchanged. Only a booking on a day the new file does
+    // cover, but missing from it, is treated as disappeared.
+    if (booking.date < firstDate || booking.date > lastDate) {
+      changes.push({ type: 'unchanged', booking, previous: booking, changedFields: [] });
+    } else {
+      changes.push({ type: 'disappeared', booking, previous: booking, changedFields: [] });
+    }
   }
 
   const summary: Record<ImportChangeType, number> = { unchanged: 0, changed: 0, new: 0, disappeared: 0 };

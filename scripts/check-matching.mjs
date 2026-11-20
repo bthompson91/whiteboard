@@ -17,7 +17,8 @@ try {
       join(root, 'src/lib/reviewApply.ts'),
       join(root, 'src/lib/dateTime.ts'),
       join(root, 'src/lib/configuration.ts'),
-      join(root, 'src/lib/blocks.ts')
+      join(root, 'src/lib/blocks.ts'),
+      join(root, 'src/lib/markupAnchor.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -29,7 +30,8 @@ try {
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
-  const { blocksFor, strongBorders } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, likeBookings } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -88,6 +90,29 @@ try {
   result = compareImports([booking(), booking({ id: 'booking-2', title: 'Other Event' })], [booking()], 'Venue');
   const disappeared = result.changes.find(c => c.type === 'disappeared');
   check('disappeared change carries previous', disappeared?.previous?.id === 'booking-2');
+
+  // --- Importing a different date range keeps the other days' bookings ---
+  // A previous booking on a day the new file does not cover is not gone,
+  // so it stays (colour coding and all) instead of being deleted as
+  // disappeared. Only a booking on a covered day that is missing is
+  // disappeared.
+  result = compareImports(
+    [
+      booking({ id: 'old-1', date: '2026-11-19', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00', colour: '#3366cc', salespersonId: 'sp-1' }),
+      booking({ id: 'old-2', date: '2026-11-20', title: 'Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00' })
+    ],
+    [
+      booking({ id: 'new-1', date: '2026-11-20', title: 'Lunch', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '12:00', endTime: '14:00' }),
+      booking({ id: 'new-2', date: '2026-11-21', title: 'Party', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '19:00', endTime: '23:00' })
+    ],
+    'Venue'
+  );
+  check('a booking outside the new file date range is kept, not disappeared', result.changes.find(c => c.booking.id === 'old-1')?.type === 'unchanged', JSON.stringify(result.changes.map(c => [c.type, c.booking.id])));
+  check('a booking on a covered day that is missing is still disappeared', result.changes.find(c => c.booking.id === 'old-2')?.type === 'disappeared');
+  const keptPublished = applyReview(result.changes, {});
+  const keptOld = keptPublished.find(b => b.id === 'old-1');
+  check('the kept booking keeps its colour coding', keptOld?.colour === '#3366cc' && keptOld?.salespersonId === 'sp-1', JSON.stringify(keptOld));
+  check('the disappeared booking on a covered day is still removed', !keptPublished.some(b => b.id === 'old-2'));
 
   // --- Review application ---
   const previous = [
@@ -248,27 +273,81 @@ try {
   check('no borders means no strong vertical borders', strongBorders(['Palladium A', 'Palladium B'], []).every(v => !v));
   check('border matching ignores case and whitespace', strongBorders(['Palladium A', 'Palladium B'], [' palladium a '])[0] === true);
 
-  // --- No overlap: a later booking cuts the earlier span short ---
+  // --- Blocks keep their original size: nothing cuts a span short ---
+  // A merged block keeps its full height even when another booking sits
+  // in the gap between its parts (that gap booking used to cut the
+  // whole merged block and delete its later part), and overlapping
+  // bookings keep their own spans rather than being cut to fit.
   blocks = blocksFor([
     booking({ id: 'a', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00', timeline: [{ label: 'Teardown', start: '16:00', end: '18:00' }] }),
     booking({ id: 'b', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '16:00', end: '18:00' }] })
   ], venue, [], false);
-  check('a later setup cuts the earlier teardown short', blocks.length === 2 && blocks.find(b => b.title === 'Lunch')?.end === 16 * 60 && blocks.find(b => b.title === 'Dinner')?.start === 16 * 60, JSON.stringify(blocks));
+  check('a later setup no longer cuts the earlier teardown short', blocks.length === 2 && blocks.find(b => b.title === 'Lunch')?.end === 18 * 60 && blocks.find(b => b.title === 'Dinner')?.start === 16 * 60, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '15:00', timeline: [{ label: 'Teardown', start: '15:00', end: '17:00' }] }),
     booking({ id: 'b', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '15:30', end: '18:00' }] })
   ], venue, [], false);
-  check('a 15:30 setup cuts a 17:00 teardown to the same point', blocks.find(b => b.title === 'Lunch')?.end === blocks.find(b => b.title === 'Dinner')?.start && blocks.find(b => b.title === 'Lunch')?.mainEnd === 15 * 60, JSON.stringify(blocks));
+  check('a 15:30 setup no longer cuts a 17:00 teardown', blocks.find(b => b.title === 'Lunch')?.end === 18 * 60 && blocks.find(b => b.title === 'Dinner')?.start === 16 * 60, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
+    booking({ id: 'b', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' }),
+    booking({ id: 'c', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '15:00', endTime: '17:00' })
+  ], venue, [], false);
+  check('a merged block keeps its full height with a booking in the gap', blocks.find(b => b.title === 'Gala')?.start === 12 * 60 && blocks.find(b => b.title === 'Gala')?.end === 24 * 60 && blocks.find(b => b.title === 'Gala')?.ids.length === 2, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Late Night', roomId: 'Palladium A', roomIds: ['Palladium A'], date: '2026-11-19', startTime: '22:00', endTime: '02:00' }),
     booking({ id: 'b', title: 'Early Morning', roomId: 'Palladium A', roomIds: ['Palladium A'], date: '2026-11-20', startTime: '00:00', endTime: '04:00' })
   ], venue, [], false);
-  check('a block running past midnight is cut by the next day booking', blocks.find(b => b.title === 'Late Night')?.end === 24 * 60, JSON.stringify(blocks));
+  check('a block running past midnight keeps its span', blocks.find(b => b.title === 'Late Night')?.end === 26 * 60, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '14:00' }),
     booking({ id: 'b', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00' })
   ], venue, [], false);
   check('bookings that do not overlap are left alone', blocks.length === 2 && blocks.find(b => b.title === 'Lunch')?.end === 14 * 60, JSON.stringify(blocks));
+
+  // --- Manual merge/unmerge: a booking opts out of merging by time or room ---
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00', mergeTime: false }),
+    booking({ id: 'b', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' })
+  ], venue, [], false);
+  check('a booking that opted out of merging by time stays separate', blocks.length === 2 && blocks.filter(b => b.title === 'Gala').length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00', mergeRoom: false }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
+  ], venue, [], false);
+  check('a booking that opted out of merging by room stays separate', blocks.length === 2 && blocks.filter(b => b.title === 'Dinner').length === 2 && blocks.every(b => b.rooms.length === 1), JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
+    booking({ id: 'b', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' })
+  ], venue, [], false);
+  check('merging by time still happens by default', blocks.length === 1 && blocks[0].ids.length === 2, JSON.stringify(blocks));
+
+  // --- Like bookings: the exact same title, any room or day ---
+  check('like bookings are the exact same title in any room or day', likeBookings([
+    booking({ id: 'a', title: 'Gala', salespersonId: 'sp-1' }),
+    booking({ id: 'b', title: 'Gala', roomId: 'River Room 1', roomIds: ['River Room 1'], date: '2026-11-20', salespersonId: 'sp-2' }),
+    booking({ id: 'c', title: 'Gala', salespersonId: 'sp-1' }),
+    booking({ id: 'd', title: 'Dinner', salespersonId: 'sp-2' })
+  ], 'Gala', 'a', 'sp-1').map(b => b.id).join(',') === 'b');
+  check('like bookings need the exact title, not just a loose match', likeBookings([booking({ id: 'b', title: 'gala' })], 'Gala', 'a', 'sp-1').length === 0);
+
+  // --- Markup anchors: a note is stored against its day and room ---
+  const anchorLayout = {
+    dates: ['2026-11-19', '2026-11-20'],
+    rowTops: [40, 160],
+    dayHeight: 120,
+    roomIds: ['A', 'B'],
+    roomLefts: [160, 310],
+    roomWidths: [150, 150]
+  };
+  const anchor = anchorFromPoint(anchorLayout, 200, 100);
+  check('a board point anchors to its day and room', anchor?.date === '2026-11-19' && anchor?.roomId === 'A' && Math.abs(anchor.fx - 40 / 150) < 0.01 && anchor.fy === 0.5, JSON.stringify(anchor));
+  const roundTrip = anchor ? pointFromAnchor(anchorLayout, anchor) : null;
+  check('an anchor renders back at the same point', roundTrip?.x === 200 && roundTrip?.y === 100, JSON.stringify(roundTrip));
+  check('a point in the date column has no anchor', anchorFromPoint(anchorLayout, 100, 100) === null);
+  check('a point past the last row has no anchor', anchorFromPoint(anchorLayout, 200, 300) === null);
+  check('an anchor for a day that is not shown resolves to nothing', pointFromAnchor(anchorLayout, { date: '2026-11-21', roomId: 'A', fx: 0.5, fy: 0.5 }) === null);
+  check('an anchor for a room that is not shown resolves to nothing', pointFromAnchor(anchorLayout, { date: '2026-11-19', roomId: 'C', fx: 0.5, fy: 0.5 }) === null);
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

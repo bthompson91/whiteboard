@@ -26,6 +26,12 @@ export interface Booking {
   salespersonId?: string;
   unavailable?: boolean;
   hidden?: boolean;
+  // Manual merge control: a booking merges with like bookings by time
+  // (same title, same room, other times — a tall block) and by room
+  // (same title, adjacent rooms, same time — a wide block) unless the
+  // corresponding flag is false. Undefined means merge, as before.
+  mergeTime?: boolean;
+  mergeRoom?: boolean;
   timeline?: { label: string; start: string; end: string }[];
 }
 
@@ -85,6 +91,15 @@ export type MarkupItem =
       text: string;
       highlight?: boolean;
       bookingId?: string;
+      // Anchor: the day and room the note sits in, plus its position
+      // within that day/room cell as a fraction (0-1). The note renders
+      // from the anchor, so it stays on the same day and room when the
+      // date range changes. x/y are the legacy absolute position, used
+      // when there is no anchor yet.
+      date?: string;
+      roomId?: string;
+      fx?: number;
+      fy?: number;
     }
   | {
       id: string;
@@ -94,4 +109,17 @@ export type MarkupItem =
       x2: number;
       y2: number;
       bookingId?: string;
+      // Anchors for each end: the day and room that end sits in, plus
+      // its position within that day/room cell as a fraction (0-1).
+      // Each end renders from its anchor, so the arrow stays on the
+      // same days and rooms when the date range changes. x1/y1/x2/y2
+      // are the legacy absolute positions, used when there is no anchor.
+      date1?: string;
+      roomId1?: string;
+      fx1?: number;
+      fy1?: number;
+      date2?: string;
+      roomId2?: string;
+      fx2?: number;
+      fy2?: number;
     };
