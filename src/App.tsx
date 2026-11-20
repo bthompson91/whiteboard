@@ -487,7 +487,27 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
-  const exportVenueConfig = () => {
+  // Export the venue YAML. This prompts for a location (a save picker)
+  // instead of downloading a copy, so it can be saved over the existing
+  // YAML file. The picked file is linked, so later config saves write
+  // back to it too. In a browser without a save picker it falls back
+  // to a download.
+  const exportVenueConfig = async () => {
+    if (hasFileSystemAccess()) {
+      try {
+        const handle = await pickLinkedFileToSave(linkedFiles.yaml || 'whiteboard-venue.yaml', 'Venue YAML', { 'text/yaml': ['.yaml', '.yml'] });
+        if (!handle) return;
+        yamlHandleRef.current = handle;
+        setLinkedFiles(current => ({ ...current, yaml: handle.name }));
+        await saveLinkedHandle('yaml', handle);
+        await writeLinkedFile(handle, yamlText, 'text/yaml');
+        setError(null);
+        return;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+    }
     const blob = new Blob([yamlText], { type: 'text/yaml' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -787,7 +807,7 @@ export default function App() {
             </header>
             <table><thead><tr><th>File</th><th>Linked</th><th></th></tr></thead><tbody>
               <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile}>Link</button> <button onClick={importEventsFile} disabled={!venue}>Import</button></td></tr>
-              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Download</button></td></tr>
+              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Save as</button></td></tr>
               <tr><td>Changes (changes.json)</td><td>{linkedFiles.changes || 'Not linked'}</td><td><button onClick={linkChangesFile}>Link</button> {role !== 'viewer' && <button onClick={() => { importChanges(); setSubmissionsOpen(true); setLinkFilesOpen(false); }}>Review submissions{submissions.length ? ` (${submissions.length})` : ''}</button>}</td></tr>
               <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile}>Open</button> <button onClick={linkBoardFileAsNew}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
             </tbody></table>

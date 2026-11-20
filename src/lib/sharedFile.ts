@@ -206,9 +206,9 @@ export async function pickLinkedFile(options: { types: { description: string; ac
   const [handle] = await w.showOpenFilePicker({ ...options, multiple: false });
   return handle || null;
 }
-export async function pickLinkedFileToSave(suggestedName: string, description: string): Promise<LinkedFileHandle | null> {
+export async function pickLinkedFileToSave(suggestedName: string, description: string, accept: Record<string, string[]> = { 'application/json': ['.json'] }): Promise<LinkedFileHandle | null> {
   const w = window as unknown as { showSaveFilePicker: (o: unknown) => Promise<LinkedFileHandle> };
-  return await w.showSaveFilePicker({ suggestedName, types: [{ description, accept: { 'application/json': ['.json'] } }] });
+  return await w.showSaveFilePicker({ suggestedName, types: [{ description, accept }] });
 }
 export async function writeLinkedFile(handle: LinkedFileHandle, text: string, mime = 'application/json'): Promise<void> {
   const writable = await handle.createWritable();
