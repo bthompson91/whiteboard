@@ -77,7 +77,15 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
 }
 export function boardSettings(d:ConfigDocument):BoardSettings {
   const w=d.whiteboard||{};
-  return {room_types:{...(w.room_types||{})},room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])]};
+  // Room type keys are room names; trim them so a stray space in the
+  // YAML cannot silently make a room fall back to Medium and ignore
+  // the width set for its type.
+  const room_types:Record<string,RoomType>={};
+  for(const [k,v] of Object.entries((w.room_types||{}) as Record<string,RoomType>)) {
+    const key=k.trim();
+    if(key)room_types[key]=v;
+  }
+  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])]};
 }
 export function writeConfiguration(d:ConfigDocument):string { return yaml.dump(d,{noRefs:true,lineWidth:120,sortKeys:false}); }
 // Tidy a configuration document before saving: trim stray whitespace

@@ -30,7 +30,7 @@ try {
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
-  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
@@ -214,6 +214,13 @@ try {
   // --- Salesperson colours ---
   const palette = [{ id: 'sp-1', name: 'Alex', colour: '#3366cc' }];
   check('Unavailable is the grey built-in option', UNAVAILABLE_SALESPERSON.name === 'Unavailable' && UNAVAILABLE_SALESPERSON.colour === '#9aa0a6');
+
+  // --- Room widths: the type widths above the table apply to all ---
+  // A room type key with a stray space must still match the room, so
+  // the width set for that type is the width the room gets instead of
+  // silently falling back to Medium.
+  const widthSettings = boardSettings({ whiteboard: { room_types: { 'Palladium A ': 'large', 'River Room 1': 'small' }, room_widths: { large: 400, small: 125, other: 150 } } });
+  check('room type keys are trimmed so the width applies', widthSettings.room_types['Palladium A'] === 'large' && widthSettings.room_types['River Room 1'] === 'small' && widthSettings.room_widths.large === 400, JSON.stringify(widthSettings.room_types));
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
   check('Unavailable resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
   check('unavailable tick box renders grey', bookingColour({ unavailable: true, salespersonId: 'sp-1' }, palette) === '#9aa0a6');

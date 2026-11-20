@@ -83,7 +83,7 @@ export default function App() {
   const venue = useMemo(() => yamlText ? parseVenueConfig(yamlText) : null, [yamlText]);
   const settings = useMemo(() => yamlText ? boardSettings(readConfiguration(yamlText)) : null, [yamlText]);
   const roomBaseWidths = useMemo(
-    () => venue?.rooms.map(room => settings?.room_widths[settings.room_types[room.id] || 'other'] || 175),
+    () => venue?.rooms.map(room => settings?.room_widths[settings.room_types[room.id.trim()] || 'other'] || 175),
     [venue, settings]
   );
   const [role, setRole] = useState<BoardRole>(() => {
