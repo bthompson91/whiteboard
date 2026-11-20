@@ -71,6 +71,21 @@ try {
   );
   check('differing job numbers veto the match', !result.changes.find(c => c.type === 'new')?.match);
 
+  // --- Job number is user-edited, never flagged by an import ---
+  // A booking that changes only in time (with the same job number on
+  // both sides) is a changed booking, but the job number is never
+  // listed as a changed field: the import must not remove or
+  // overwrite a job number the user set in the inspector. The job
+  // number is carried over from the previous booking on import, so a
+  // re-import still exact-matches instead of treating the booking as
+  // new because the file carries no job number.
+  result = compareImports(
+    [booking({ jobNumber: '1022948' })],
+    [booking({ id: 'booking-9', jobNumber: '1022948', startTime: '19:00', endTime: '23:00' })],
+    'Venue'
+  );
+  check('a changed booking never lists jobNumber as changed', result.changes[0].type === 'changed' && !result.changes[0].changedFields.includes('jobNumber') && result.changes[0].changedFields.includes('startTime'), JSON.stringify(result.changes[0]));
+
   // --- Tier 2 uniqueness: two one-field candidates fall through to fuzzy ---
   result = compareImports(
     [booking({ id: 'booking-a', title: 'Gala A' }), booking({ id: 'booking-b', title: 'Gala B' })],

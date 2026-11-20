@@ -27,13 +27,19 @@ export interface ImportComparison {
 const comparableFields: Array<{ field: string; read: (booking: Booking) => unknown }> = [
   { field: 'date', read: booking => booking.date },
   { field: 'title', read: booking => normalizeText(booking.title) },
-  { field: 'jobNumber', read: booking => normalizeJobNumber(booking.jobNumber) },
   { field: 'startTime', read: booking => booking.startTime },
   { field: 'endTime', read: booking => booking.endTime },
   { field: 'rooms', read: booking => [...booking.roomIds].sort() },
   { field: 'status', read: booking => booking.status || '' },
   { field: 'notes', read: booking => booking.notes || '' }
 ];
+// The job number is deliberately NOT a comparable field: it is set by
+// the user in the inspector, never by an import, so a difference in it
+// must never flag the booking as changed or removable. It is carried
+// over from the previous booking on import (see bookingImport.ts).
+// It still vetoes a fuzzy/single-field match in the tiers below —
+// a different job number on both sides means a different booking —
+// but that is matching, not changing the job number.
 
 function changedFields(current: Booking, previous: Booking): string[] {
   return comparableFields

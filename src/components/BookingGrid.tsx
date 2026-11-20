@@ -27,21 +27,21 @@ function firstTime(fact:string){return fact.match(/\d{2}:\d{2}/)?.[0]??fact;}
 function readableText(hex:string){const n=parseInt(hex.slice(1),16);const lum=0.2126*((n>>16)&255)+0.7152*((n>>8)&255)+0.0722*(n&255);return lum<140?'#ffffff':'#18202a';}
 // The block title grows to fill its block: the largest font (8-64px)
 // that still fits without cutting any text off, re-measured when the
-// text or the block size changes.
+// text or the block size changes. The text itself is capped at 80% of
+// the block's height: a multi-line title at a large font can be taller
+// than the font size, so capping the font size alone still let titles
+// spill over the block and overlap the block below.
 function FitTitle({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [fontSize, setFontSize] = useState(11);
   const fit = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    // The text size is capped at 80% of the block's height, so a short
-    // block never gets a title so large it spills over the block and
-    // overlaps the block below it.
     const cap = Math.max(8, Math.floor(el.clientHeight * 0.8));
     let lo = 8, hi = Math.min(64, cap), best = 8;
     const fits = (size: number) => {
       el.style.fontSize = `${size}px`;
-      return el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1;
+      return el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight * 0.8 + 1;
     };
     if (fits(hi)) best = hi;
     else {
@@ -183,6 +183,25 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const draftRoomIndices=draft?((draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId]).map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0)):[];
   const mergeLeftBlocked=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0||!!strongAfter[Math.min(...draftRoomIndices)-1];
   const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)];
+  // The board opens scrolled to the current day: on load, and whenever
+  // a new import changes the date range, scroll so the row for today
+  // (or the next date after it, when today is not on the board) sits
+  // just below the sticky header. It only runs when the range changes,
+  // so resizing or editing a booking never yanks the scroll position.
+  const scrolledRangeRef=useRef<string>('');
+  useLayoutEffect(()=>{
+    if(!dates.length)return;
+    const rangeKey=`${dates[0]}|${dates[dates.length-1]}`;
+    if(scrolledRangeRef.current===rangeKey)return;
+    scrolledRangeRef.current=rangeKey;
+    const container=root.current?.parentElement;
+    if(!container)return;
+    const target=dates.find(d=>d>=today)??dates[dates.length-1];
+    const row=root.current?.querySelector(`[data-date="${target}"]`) as HTMLElement|null;
+    if(!row)return;
+    const headerHeight=header.current?.offsetHeight||0;
+    container.scrollTop=row.offsetTop-headerHeight;
+  },[dates[0],dates[dates.length-1],today]);
   return <div className="booking-grid" ref={root} style={style}>
     <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id}>{r.name}</div>)}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}

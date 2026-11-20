@@ -60,9 +60,20 @@ export function readImportHistory(): ImportHistoryEntry[] {
   }
 }
 export function saveImportHistory(entry: ImportHistoryEntry) {
-  const history = [entry, ...readImportHistory()].slice(0, 10);
+  let history = [entry, ...readImportHistory()].slice(0, 10);
+  // Each entry holds a full board snapshot, so a long history can
+  // exceed this browser's storage. Drop the oldest entries until it
+  // fits instead of losing the whole history.
+  while (history.length) {
+    try {
+      localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
+      return;
+    } catch {
+      history = history.slice(0, -1);
+    }
+  }
   try {
-    localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
+    localStorage.setItem(IMPORT_HISTORY_KEY, '[]');
   } catch {
     /* Import history is a convenience cache and must not prevent publishing. */
   }
@@ -140,6 +151,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
         if (existing.salespersonId) booking.salespersonId = existing.salespersonId;
         if (existing.unavailable !== undefined) booking.unavailable = existing.unavailable;
         if (existing.hidden !== undefined) booking.hidden = existing.hidden;
+        if (existing.jobNumber) booking.jobNumber = existing.jobNumber;
         if (existing.timeline?.length) booking.timeline = existing.timeline;
       }
       rows.push(booking);

@@ -157,7 +157,16 @@ export default function App() {
     try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(importHistory));
     } catch {
-      setError('Import history could not be saved in this browser.');
+      // Each history entry holds a full board snapshot, so a long
+      // history can exceed this browser's storage. Drop the oldest
+      // entry and try again on the next render, so the history shrinks
+      // to fit instead of failing entirely. Only report an error when
+      // even an empty history cannot be saved (storage unavailable).
+      if (importHistory.length > 0) {
+        setImportHistory(current => current.slice(0, -1));
+      } else {
+        setError('Import history could not be saved in this browser.');
+      }
     }
   }, [importHistory]);
   const saveConfiguration = (text: string) => {
