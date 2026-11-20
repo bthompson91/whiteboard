@@ -209,7 +209,9 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
   // A viewer is read-only: markup is visible but cannot be selected,
   // dragged, edited, created or deleted. Without this gate a viewer
   // clicking a note selected it, and Delete, Backspace or the Delete
-  // button then removed it from their board.
+  // button then removed it from their board. The gate is the role,
+  // not the board lock: the editor can annotate without unlocking
+  // the board for booking edits.
   const begin = (event: PE, item: MarkupItem, part: Drag['part'] = 'move') => {
     if (!editingEnabled) return;
     event.stopPropagation();
@@ -225,8 +227,13 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     if (!editingEnabled) return;
     const position = point(event);
     if (mode === 'text') {
-      // A new note starts unhighlighted and opens straight into typing
-      // in the box, so the user types into it rather than a pop-up.
+      // A new note prompts for its text in a pop-up. The inline box
+      // that opened straight into typing stopped working reliably, so
+      // creation is back on the prompt; editing an existing note still
+      // types straight into the box. Cancel or an empty answer creates
+      // nothing.
+      const text = window.prompt('Note text:');
+      if (!text || !text.trim()) return;
       const id = crypto.randomUUID();
       const a = layout ? anchorFromPoint(layout, position.x, position.y) : null;
       const note: Extract<MarkupItem, { type: 'text' }> = {
@@ -234,15 +241,13 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
         type: 'text',
         x: position.x,
         y: position.y,
-        text: '',
+        text: text.trim(),
         highlight: false,
         bookingId: selectedBookingId || undefined,
         ...(a ? { date: a.date, roomId: a.roomId, fx: a.fx, fy: a.fy } : {})
       };
       onChange([...markup, note]);
       setSelected(id);
-      setEditing(id);
-      setEditValue('');
     }
     if (mode === 'arrow') {
       setDraft({

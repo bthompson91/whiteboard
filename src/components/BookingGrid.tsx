@@ -23,37 +23,40 @@ interface Props {
   // BookingGrid assigns the scroll function to it.
   scrollToTodayRef?: MutableRefObject<(() => void) | null>;
 }
-// Room names share one font size, normalised to the largest size that
-// fits every name in its own column. Each name is measured at a
-// reference size and scaled to its column width, and the smallest
-// fitting size across all rooms wins, so the tightest room decides
-// the size for all of them. The header does not wrap, so a name that
-// fits at the computed size stays on one line.
-function roomNameFontSize(names: string[], widths: number[]): number {
-  if (typeof document === 'undefined') return 13;
+// Each room name gets its own font size: the biggest size that fits
+// that name in its own column. Each name is measured at a reference
+// size and scaled to its column width, so a short name in a wide room
+// renders larger than a long name in a narrow room. The header does
+// not wrap, so a name that fits at the computed size stays on one line.
+function roomNameFontSizes(names: string[], widths: number[]): number[] {
+  if (typeof document === 'undefined') return names.map(() => 13);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  if (!ctx) return 13;
+  if (!ctx) return names.map(() => 13);
   const ref = 13;
   ctx.font = `700 ${ref}px Calibri, 'Segoe UI', sans-serif`;
-  const textWidths = names.map(name => ctx.measureText(name).width);
-  const availableWidths = widths.map(width => Math.max(1, (width || 150) - 20));
-  return fitFontSize(textWidths, availableWidths, ref);
+  return names.map((name, i) => {
+    const textWidth = ctx.measureText(name).width;
+    const available = Math.max(1, (widths[i] || 150) - 20);
+    return fitFontSize([textWidth], [available], ref);
+  });
 }
-// The date in the left column fills the column width, the same way the
-// room names fill theirs: every date label is measured at a reference
-// size and scaled to the 160px date column, and the smallest fitting
-// size across all dates wins, so every date shares one size.
-function dateFontSize(labels: string[], columnWidth: number): number {
-  if (typeof document === 'undefined') return 23;
+// Each date label gets its own font size: the biggest size that fits
+// that date in the 160px date column. Each label is measured at a
+// reference size and scaled to the column width, so a short date
+// renders larger than a long one. The label does not wrap.
+function dateFontSizes(labels: string[], columnWidth: number): number[] {
+  if (typeof document === 'undefined') return labels.map(() => 23);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  if (!ctx) return 23;
+  if (!ctx) return labels.map(() => 23);
   const ref = 23;
   ctx.font = `700 ${ref}px Calibri, 'Segoe UI', sans-serif`;
-  const textWidths = labels.map(label => ctx.measureText(label).width);
-  const availableWidths = labels.map(() => Math.max(1, columnWidth - 8));
-  return fitFontSize(textWidths, availableWidths, ref, 48, 12);
+  return labels.map(label => {
+    const textWidth = ctx.measureText(label).width;
+    const available = Math.max(1, columnWidth - 8);
+    return fitFontSize([textWidth], [available], ref, 48, 12);
+  });
 }
 function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed)return '';return /^\d+$/.test(trimmed)?trimmed.replace(/^0+(?=\d)/,''):trimmed;}
 // The times strip shows only the first time of each entry: a setup that
@@ -219,7 +222,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
   const columns=`160px ${widths.map(width=>`${width}px`).join(' ')}`;
   const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+widths.reduce((sum,width)=>sum+width,0)} as CSSProperties;
-  const roomFontSize=roomNameFontSize(venue.rooms.map(r=>r.name),widths);
+  const roomFontSizes=roomNameFontSizes(venue.rooms.map(r=>r.name),widths);
   const today=format(new Date(),'yyyy-MM-dd');
   const jobNumberInvalid=!!draft?.jobNumber&&!/^\d+$/.test(draft.jobNumber.trim())&&!isNoAv(draft.jobNumber);
   // Merge left / Merge right are greyed out when the room beside this
@@ -231,7 +234,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)];
   // The date labels share one fitted size that fills the 160px date
   // column, the same way the room names fill theirs.
-  const dateFontSizeValue=dateFontSize(dates.map(d=>format(parseISO(d),'EEE dd MMM')),160);
+  const dateFontSizesValue=dateFontSizes(dates.map(d=>format(parseISO(d),'EEE dd MMM')),160);
   // Snap to today: scroll so today's row (or the next date after it,
   // when today is not on the board) sits just below the sticky header.
   // This is what the Today button calls, and what the board does on
@@ -263,10 +266,10 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     scrollToToday(false);
   },[dates[0],dates[dates.length-1],today]);
   return <div className="booking-grid" ref={root} style={style}>
-    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{fontSize:roomFontSize}}>{r.name}</div>)}</div>
+    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{fontSize:roomFontSizes[i]}}>{r.name}</div>)}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
-    {dates.map(date=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
-      <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizeValue}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
+    {dates.map((date,dateIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
+      <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizesValue[dateIndex]}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
       {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,right:strongAfter[b.rooms[b.rooms.length-1]]?3:0,top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{if(editingEnabled&&!draft){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}}}>
         <div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined)}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}<div>{clock(b.mainStart).slice(0,5)}</div><div>{clock(b.mainEnd).slice(0,5)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}</div>
