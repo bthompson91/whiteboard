@@ -59,5 +59,15 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       previous.hidden=previous.hidden&&b.hidden;
     } else spans.push(b);
   }
+  // Blocks render snapped to 3-hour frames: a block starting at 18:37
+  // renders from 18:00 and one ending at 22:12 renders to 00:00, so
+  // blocks line up in general time frames instead of ragged exact times.
+  // The exact times are kept in mainStart/mainEnd and shown in the facts
+  // column and the tooltip, so the snap is visual only.
+  const SNAP_MINUTES = 180;
+  for (const b of spans) {
+    b.start = Math.floor(b.start / SNAP_MINUTES) * SNAP_MINUTES;
+    b.end = Math.ceil(b.end / SNAP_MINUTES) * SNAP_MINUTES;
+  }
   return spans;
 }

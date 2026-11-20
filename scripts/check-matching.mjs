@@ -164,7 +164,7 @@ try {
     booking({ id: 'a', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
     booking({ id: 'b', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' })
   ], venue, [], false);
-  check('same title in one room at different times merges into one tall block', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 23 * 60, JSON.stringify(blocks));
+  check('same title in one room at different times merges into one tall block', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 24 * 60, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false);
@@ -181,6 +181,15 @@ try {
   check('unavailable booking block is flagged unavailable and grey', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'unavailable' })], venue, palette, false);
   check('legacy unavailable salesperson still flags the block', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
+
+  // --- 3-hour snap: blocks line up in general time frames ---
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:37', endTime: '22:12' })], venue, [], false);
+  check('block snaps out to the 3-hour frames', blocks.length === 1 && blocks[0].start === 18 * 60 && blocks[0].end === 24 * 60, JSON.stringify(blocks));
+  check('exact times are kept for display', blocks[0].mainStart === 18 * 60 + 37 && blocks[0].mainEnd === 22 * 60 + 12, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '21:00' })], venue, [], false);
+  check('block already on the grid is unchanged', blocks.length === 1 && blocks[0].start === 18 * 60 && blocks[0].end === 21 * 60, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:30', endTime: '13:00' })], venue, [], false);
+  check('short block snaps to one full frame', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 15 * 60, JSON.stringify(blocks));
 
   // --- Strong borders: placed after named rooms, not around groups ---
   const borders = strongBorders(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1', 'River Room 2'], ['Palladium C1', 'River Room 2']);
