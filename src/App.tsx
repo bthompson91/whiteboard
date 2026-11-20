@@ -19,6 +19,7 @@ import {
 } from './lib/bookingImport';
 import { BookingChange, compareImports } from './lib/importComparison';
 import { mergeMatchedBooking } from './lib/reviewApply';
+import { applyTimetargetRows, parseTimetargetWorkbook, TimetargetSkipped } from './lib/timetargetImport';
 import {
   createSharedFile,
   downloadSharedFile,
@@ -190,6 +191,8 @@ export default function App() {
   // for Print -> Save as PDF. The dialog picks the range (defaulting
   // to the bookings on the board); confirming opens the print view.
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  // The last TimeTarget import's result, shown as a summary dialog.
+  const [timetargetResult, setTimetargetResult] = useState<{ added: number; updated: number; skipped: TimetargetSkipped[] } | null>(null);
   const [printStart, setPrintStart] = useState('');
   const [printEnd, setPrintEnd] = useState('');
   const [printRange, setPrintRange] = useState<{ start: string; end: string } | null>(null);
@@ -653,6 +656,24 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+  // Import setup times from TimeTarget (one-off, not a linked file):
+  // pick the export, turn each row into a text note on the grid at
+  // that time in that room. A row updates the note for its setup
+  // instead of duplicating it; a hand-typed note is never touched.
+  const importTimetargetTimes = async () => {
+    if (!venue) return;
+    try {
+      const file = await pickFileViaInput('.xls,.xlsx,.xml,.csv');
+      if (!file) return;
+      const parsed = await parseTimetargetWorkbook(file, venue, bookings);
+      const applied = applyTimetargetRows(markup, parsed.rows);
+      setMarkup(applied.markup);
+      setTimetargetResult({ added: applied.added, updated: applied.updated, skipped: parsed.skipped });
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
   // Refresh only: re-read the linked board file. This is what a viewer
   // does, and what the board does automatically every 30 seconds in
   // viewer mode.
@@ -738,6 +759,7 @@ export default function App() {
         editorLockName={editorLock && editorLock.id !== editorSessionId && Date.now() - editorLock.at < EDITOR_LOCK_TTL_MS ? editorLock.name : null}
         onOpenLinkFiles={() => setLinkFilesOpen(true)}
         onOpenPrint={openPrintDialog}
+        onImportTimes={importTimetargetTimes}
       />
       <main className="board-container">
         <BookingGrid
@@ -868,6 +890,28 @@ export default function App() {
             <footer>
               <button onClick={() => setPendingRole(null)}>Cancel</button>
               <button className="primary" onClick={confirmRoleChange}>OK, switch to {pendingRole}</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {timetargetResult && (
+        <div className="review-overlay">
+          <section className="review-panel" aria-label="TimeTarget times imported">
+            <header>
+              <h2>TimeTarget times imported</h2>
+              <p>
+                Added {timetargetResult.added} {timetargetResult.added === 1 ? 'note' : 'notes'}
+                {timetargetResult.updated ? `, updated ${timetargetResult.updated}` : ''}.
+                {timetargetResult.skipped.length ? ` ${timetargetResult.skipped.length} ${timetargetResult.skipped.length === 1 ? 'row was' : 'rows were'} skipped:` : ' Nothing was skipped.'}
+              </p>
+            </header>
+            {timetargetResult.skipped.length > 0 && (
+              <ul>
+                {timetargetResult.skipped.map(s => <li key={s.row}>Row {s.row}: {s.reason}</li>)}
+              </ul>
+            )}
+            <footer>
+              <button className="primary" onClick={() => setTimetargetResult(null)}>Done</button>
             </footer>
           </section>
         </div>

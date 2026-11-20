@@ -16,6 +16,7 @@ interface RawVenue {
     exclude?: string[];
     room_aliases?: Record<string, string[]>;
     room_mappings?: Record<string, string[]>;
+    timetarget_areas?: Record<string, string>;
     unassigned_room?: string;
   };
 }
@@ -41,6 +42,10 @@ export interface ParsedVenueConfig extends VenueConfig {
   excludedRooms: string[];
   aliases: Record<string, string[]>;
   mappings: Record<string, string[]>;
+  // Board room → the name TimeTarget uses for that room (venue name on
+  // the front). The TimeTarget import matches each row's area against
+  // these values to find its board room.
+  timetargetAreas: Record<string, string>;
 }
 
 const normalizeRoomName = (value: string) => value.trim().toLowerCase();
@@ -74,7 +79,8 @@ export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
     },
     excludedRooms: data.rooms.exclude ?? [],
     aliases: data.rooms.room_aliases ?? {},
-    mappings: data.rooms.room_mappings ?? {}
+    mappings: data.rooms.room_mappings ?? {},
+    timetargetAreas: data.rooms.timetarget_areas ?? {}
   };
 }
 

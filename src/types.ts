@@ -101,6 +101,11 @@ export type MarkupItem =
       roomId?: string;
       fx?: number;
       fy?: number;
+      // A note the TimeTarget import created: 'timetarget', with the key
+      // (date|room|function|event) it is updated by on the next import.
+      // A hand-typed note has neither, and the import never touches it.
+      source?: 'timetarget';
+      timetargetKey?: string;
     }
   | {
       id: string;

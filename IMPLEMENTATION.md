@@ -637,24 +637,53 @@ gives 602 bookings (6 "To Be Cancelled" excluded), 534 with a bump-in/out
 timeline, 60 in "Unassigned", and a
 90-day first import gives 172.
 
-## Planned: TimeTarget setup-time import
+## TimeTarget setup-time import
 
-Not built yet. In editor mode, an Excel export from the rostering system
-(TimeTarget) — a list of rooms, functions, and dates/times, the function
-usually "Set Up" — will be uploaded, and for each entry a text notation
-showing the time in 24-hour time will be added automatically at that time
-on the booking grid, editable like any other text notation. TimeTarget
-room names carry the venue name on the front and do not match board room
-names, so each row is matched to a board room through
-`rooms.timetarget_areas` (board room → the name TimeTarget uses for that
-room), edited in the Timetarget Area Name column of the room table. The
-import still needs the file's actual columns/sheet layout before it can
-be built.
+Shipped 2026-11-21 (tests 227/227, live verified). In editor mode, the
+⏱️ Times button on the top bar imports a TimeTarget rostering export —
+columns Date, Start Time, Function, Area, Event, row 1 the header — as a
+one-off import, not a linked file: plain file picker, no refresh. Each
+row becomes a text notation on the grid at that time in that room
+("Set Up 06:30"), editable like any other note afterwards, and it saves
+with the board like any other note. The sample file the import was built
+against is `test-data/timetarget-sample.xlsx`, made by
+`scripts/make-timetarget-sample.mjs` from real Crown bookings.
+
+- **Columns** (`src/lib/timetargetImport.ts`): matched case-insensitively
+  (Start Time also answers to Start/Time, Area to Room, Event to Event
+  Name/Title). Date is DD/MM/YYYY (Excel serials work too); the event
+  column is optional. A file missing Date, Start Time, Function or Area
+  is refused with the missing columns named.
+- **Rooms:** each row's area is matched to a board room through
+  `rooms.timetarget_areas` first, then a board room name itself, then an
+  alias. A row whose area matches nothing is skipped and reported by
+  row number, never silently dropped. The import ends with a summary:
+  notes added, notes updated, skipped rows with reasons.
+- **Event (fuzzy):** the event name may not match the board title
+  exactly ("2026 Carji Greeves Medal Dinner" against "2026 Carji
+  Greeves Medal"), so the match is loose — one name contains the other
+  once both are normalised. The date and room already pin the booking
+  down. When several sessions of one event share the room and day, the
+  closest start time wins (a setup precedes its session). A row with no
+  event still imports, with no booking attached.
+- **Notes and re-imports:** a note the import creates carries
+  `source: 'timetarget'` and a key (date|room|function|event|booking).
+  A later import updates that note's text and position instead of
+  duplicating it — first by the exact key, then by the only note for
+  that date, room, function and booking when the event name was tweaked.
+  The booking is part of that fallback on purpose: two sessions of one
+  event share date, room, function and event, and only their bookings
+  tell them apart. A hand-typed note has no key and is never touched,
+  and the import never deletes a note — a setup that drops off the
+  export keeps its note until someone deletes it.
+- **Still to do on Brendan's side:** fill in the Timetarget Area Name
+  column in Configuration for the rooms (the Crown YAML has none yet),
+  and lay out the real export in the sample's format.
 
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-215 checks covering matching tiers and weights, booking identity, height and
+227 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

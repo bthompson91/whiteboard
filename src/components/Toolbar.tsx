@@ -38,12 +38,13 @@ interface Props {
   onToday: () => void;
   onOpenLinkFiles: () => void;
   onOpenPrint: () => void;
+  onImportTimes: () => void;
 }
 export default function Toolbar({
   venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, filterSalespersonId, error, revision,
   saving, linkedFiles, editorLockName,
   onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onFilterSalespersonChange, onSetMarkupMode, onOpenConfiguration,
-  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint
+  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint, onImportTimes
 }: Props) {
   return (
     <header className="toolbar">
@@ -64,6 +65,9 @@ export default function Toolbar({
       {editorLockName && <span title="Only one editor at a time">✏️ {editorLockName} is editing</span>}
       {role === 'editor' && (
         <button onClick={onOpenConfiguration} title="Configuration">⚙️</button>
+      )}
+      {role === 'editor' && (
+        <button onClick={onImportTimes} title="Import setup times from TimeTarget (one-off): a Date, Start Time, Function, Area, Event spreadsheet. Each row becomes a text note on the grid at that time in that room.">⏱️ Times</button>
       )}
       <button onClick={onSaveAndRefresh} disabled={saving} title="Re-read the linked files, so the board shows what everyone else has saved. Any edit made in the last moment is written out first, so the refresh cannot lose it.">
         {saving ? 'Refreshing…' : '🔄 Refresh'}

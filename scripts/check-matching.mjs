@@ -4,6 +4,7 @@
 // parsing. Run with `npm test`. Exits non-zero on any failure.
 import { build } from 'esbuild';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -28,7 +29,8 @@ try {
       join(root, 'src/lib/sharedFile.ts'),
       join(root, 'src/lib/venueConfig.ts'),
       join(root, 'src/lib/wizard.ts'),
-      join(root, 'src/lib/bookingImport.ts')
+      join(root, 'src/lib/bookingImport.ts'),
+      join(root, 'src/lib/timetargetImport.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -48,6 +50,7 @@ try {
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
+  const { findTimetargetColumns, resolveTimetargetRoom, eventMatchesEvent, timetargetNoteKey, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -454,6 +457,58 @@ try {
     'Venue'
   );
   check('differing per-room job numbers veto the match too', !result.changes.find(c => c.type === 'new')?.match);
+
+  // --- TimeTarget setup-time import ---
+  const ttVenue = parseVenueConfig(`site:\n  name: Crown Melbourne\nrooms:\n  order: [Garden Room 3, Crown Aviary, Evergreen, River Room 2, River Room 1, M8, M15, M9]\n  room_aliases:\n    'M9': ['M Nine']\n  timetarget_areas:\n    'Garden Room 3': 'Crown Melbourne - Garden Room 3'\n    'Crown Aviary': 'Crown Melbourne - Crown Aviary'\n    'Evergreen': 'Crown Melbourne - Evergreen'\n    'River Room 2': 'Crown Melbourne - River Room 2'\n    'River Room 1': 'Crown Melbourne - River Room 1'\n    'M8': 'Crown Melbourne - M8'\n    'M15': 'Crown Melbourne - M15'\n    'M9': 'Crown Melbourne - M9'\n`);
+  check('TimeTarget columns are found case-insensitively, event optional', (() => {
+    const cols = findTimetargetColumns(['date', 'START TIME', 'Function', 'AREA', 'event name']);
+    return cols.date === 'date' && cols.startTime === 'START TIME' && cols.function === 'Function' && cols.area === 'AREA' && cols.event === 'event name';
+  })());
+  throws('TimeTarget import refuses a file without the Area column', () => findTimetargetColumns(['Date', 'Start Time', 'Function', 'Event']));
+  check('a TimeTarget area resolves through timetarget_areas, a room name, and an alias', resolveTimetargetRoom('Crown Melbourne - Garden Room 3', ttVenue) === 'Garden Room 3' && resolveTimetargetRoom('M9', ttVenue) === 'M9' && resolveTimetargetRoom('M Nine', ttVenue) === 'M9' && resolveTimetargetRoom('Nowhere', ttVenue) === null);
+  check('an event name matches a board title loosely, one containing the other', eventMatchesEvent('2026 Carji Greeves Medal Dinner', '2026 Carji Greeves Medal') && eventMatchesEvent('Gala', 'Annual Gala Dinner') && !eventMatchesEvent('Gala', 'Dinner') && !eventMatchesEvent('', 'Dinner'));
+  const ttBookings = [
+    booking({ id: 'b-carji', title: '2026 Carji Greeves Medal', date: '2026-10-01', roomId: 'Garden Room 3', roomIds: ['Garden Room 3'], startTime: '17:00', endTime: '23:00' }),
+    booking({ id: 'b-carlisle', title: '2026 Carlisle Homes Supplier of the Year Awards', date: '2026-10-02', roomId: 'Crown Aviary', roomIds: ['Crown Aviary'], startTime: '11:00', endTime: '15:00' }),
+    booking({ id: 'b-charlize', title: "Charlize's 18th Birthday & Year 12 Graduation", date: '2026-10-03', roomId: 'Evergreen', roomIds: ['Evergreen'], startTime: '18:30', endTime: '23:30' }),
+    booking({ id: 'b-nicholls', title: '2026 John Nicholls Medal', date: '2026-10-04', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '15:00', endTime: '23:00' }),
+    booking({ id: 'b-barker', title: '2026 Trevor Barker Award and Hall of Fame', date: '2026-10-05', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '23:00' }),
+    booking({ id: 'b-cfo', title: 'CFO Day', date: '2026-10-06', roomId: 'M8', roomIds: ['M8'], startTime: '08:45', endTime: '17:00' }),
+    booking({ id: 'b-hello-1', title: 'Helloworld / MTA Conference', date: '2026-10-01', roomId: 'M9', roomIds: ['M9'], startTime: '15:00', endTime: '22:00' }),
+    booking({ id: 'b-hello-2', title: 'Helloworld / MTA Conference', date: '2026-10-01', roomId: 'M9', roomIds: ['M9'], startTime: '22:00', endTime: '07:00' })
+  ];
+  const ttFile = new File([readFileSync(join(root, 'test-data', 'timetarget-sample.xlsx'))], 'timetarget-sample.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const ttParsed = await parseTimetargetWorkbook(ttFile, ttVenue, ttBookings);
+  check('the sample TimeTarget file parses to 10 rows with 1 skipped (the ghost area)', ttParsed.rows.length === 10 && ttParsed.skipped.length === 1 && ttParsed.skipped[0].reason.includes('Imaginary Room'), JSON.stringify(ttParsed.skipped));
+  check('a fuzzy event name still finds its booking, and the two sessions find theirs', (() => {
+    const carji = ttParsed.rows.find(r => r.roomId === 'Garden Room 3');
+    const hello1 = ttParsed.rows.find(r => r.roomId === 'M9' && r.startTime === '13:00');
+    const hello2 = ttParsed.rows.find(r => r.roomId === 'M9' && r.startTime === '20:00');
+    return carji?.bookingId === 'b-carji' && hello1?.bookingId === 'b-hello-1' && hello2?.bookingId === 'b-hello-2';
+  })());
+  check('a setup with no event name still imports, with no booking attached', (() => {
+    const blank = ttParsed.rows.find(r => r.roomId === 'M15');
+    return blank && blank.event === '' && blank.bookingId === undefined && blank.startTime === '04:00';
+  })());
+  let ttApplied = applyTimetargetRows([], ttParsed.rows);
+  check('the sample import adds 10 TimeTarget notes, each marked with its key', ttApplied.added === 10 && ttApplied.updated === 0 && ttApplied.markup.every(m => m.type === 'text' && m.source === 'timetarget' && m.timetargetKey) && ttApplied.markup.filter(m => m.text === 'Set Up 15:00').length === 1, JSON.stringify(ttApplied.markup.map(m => m.text)));
+  check('the two sessions of one event get two notes, at their own times', (() => {
+    const notes = ttApplied.markup.filter(m => m.type === 'text' && m.roomId === 'M9');
+    return notes.length === 2 && notes.some(m => m.text === 'Set Up 13:00') && notes.some(m => m.text === 'Set Up 20:00');
+  })());
+  ttApplied = applyTimetargetRows(ttApplied.markup, ttParsed.rows);
+  check('re-importing the same file updates the notes instead of duplicating them', ttApplied.added === 0 && ttApplied.updated === 10 && ttApplied.markup.length === 10);
+  check('a changed setup time moves its note instead of adding one', (() => {
+    const moved = ttParsed.rows.map(r => (r.roomId === 'Garden Room 3' ? { ...r, startTime: '16:00', startMinutes: 960 } : r));
+    const again = applyTimetargetRows(ttApplied.markup, moved);
+    const note = again.markup.find(m => m.type === 'text' && m.roomId === 'Garden Room 3');
+    return again.added === 0 && again.updated === 10 && note?.text === 'Set Up 16:00' && note?.id === ttApplied.markup.find(m => m.type === 'text' && m.roomId === 'Garden Room 3')?.id;
+  })());
+  check('a hand-typed note at the same place is never touched by the import', (() => {
+    const manual = { id: 'manual-1', type: 'text', x: 0, y: 0, text: 'Setup 06:30 — crew call 06:00', date: '2026-10-01', roomId: 'Garden Room 3', fx: 0.5, fy: 0.5 };
+    const again = applyTimetargetRows([manual, ...ttApplied.markup], ttParsed.rows);
+    return again.markup.find(m => m.id === 'manual-1')?.text === 'Setup 06:30 — crew call 06:00' && again.markup.length === 11;
+  })());
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);
