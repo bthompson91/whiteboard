@@ -65,6 +65,11 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if(strict&&d.fields!==undefined&&Object.values(d.fields).some(v=>!(v as string).trim()))throw new Error('Field mappings must name a column header; leave a mapping out instead of blank.');
   if(d.file_input!==undefined&&(!object(d.file_input)||(d.file_input.format!==undefined&&typeof d.file_input.format!=='string')||(d.file_input.has_header!==undefined&&typeof d.file_input.has_header!=='boolean')))throw new Error('file_input must map format to text and has_header to true/false.');
   if(d.file_input?.date_format!==undefined&&!['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD'].includes(String(d.file_input.date_format)))throw new Error('file_input.date_format must be DD/MM/YYYY, MM/DD/YYYY or YYYY-MM-DD.');
+  // The header row, 1-based: some exports put a title row first, or
+  // group rows above the headers (MCG's headers are on row 2).
+  if(d.file_input?.header_row!==undefined&&(!Number.isInteger(d.file_input.header_row)||d.file_input.header_row<1))throw new Error('file_input.header_row must be a whole number from 1.');
+  // How one cell can name several rooms, e.g. ';' for "Room A;  Room B".
+  if(d.file_input?.room_separator!==undefined&&typeof d.file_input.room_separator!=='string')throw new Error('file_input.room_separator must be text.');
   // Named blocks of the day for the original planner output. Dead like
   // `output`: the board never reads them, and the Configuration page no
   // longer shows them. Drop the key when a config is read, so a YAML
@@ -78,6 +83,8 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   // carrying it on the next save instead of erroring on it.
   if ('output' in d) delete d.output;
   if(d.rooms.exclude!==undefined&&!strings(d.rooms.exclude))throw new Error('rooms.exclude must be a list of room names.');
+  // The room events with no room at all go to, when the venue sets one.
+  if(d.rooms.unassigned_room!==undefined&&typeof d.rooms.unassigned_room!=='string')throw new Error('rooms.unassigned_room must be text.');
   for(const key of ['room_aliases','room_mappings'])if(d.rooms[key]!==undefined&&(!object(d.rooms[key])||!Object.values(d.rooms[key]).every(strings)))throw new Error(`rooms.${key} must map names to lists of names.`);
   // TimeTarget area name per room: the rostering area the room belongs
   // to, for the TimeTarget import. One area name per room, plain text.
@@ -141,7 +148,11 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
   const trimList = (v: unknown) => Array.isArray(v) ? v.map(x => typeof x === 'string' ? x.trim() : x).filter(x => typeof x === 'string' && x) : v;
   if (d.site && typeof d.site.name === 'string') d.site.name = d.site.name.trim();
   if (object(d.fields)) for (const k of Object.keys(d.fields)) { const v = d.fields[k]; if (typeof v === 'string') d.fields[k] = v.trim(); }
+  if (object(d.file_input)) {
+    if (typeof d.file_input.room_separator === 'string') d.file_input.room_separator = d.file_input.room_separator.trim();
+  }
   if (object(d.rooms)) {
+    if (typeof d.rooms.unassigned_room === 'string') d.rooms.unassigned_room = d.rooms.unassigned_room.trim();
     if (Array.isArray(d.rooms.order)) d.rooms.order = [...new Set((d.rooms.order as unknown[]).map(s => typeof s === 'string' ? s.trim() : s).filter((s): s is string => typeof s === 'string' && !!s))];
     if (Array.isArray(d.rooms.exclude)) d.rooms.exclude = trimList(d.rooms.exclude);
     if (object(d.rooms.timetarget_areas)) {

@@ -3,7 +3,7 @@ import { VenueConfig, VenueRoom } from '../types';
 
 interface RawVenue {
   site?: { name?: string };
-  file_input?: { date_format?: string };
+  file_input?: { date_format?: string; header_row?: number; room_separator?: string };
   fields?: Record<string, string>;
   display?: {
     primary_label?: string;
@@ -16,12 +16,22 @@ interface RawVenue {
     exclude?: string[];
     room_aliases?: Record<string, string[]>;
     room_mappings?: Record<string, string[]>;
+    unassigned_room?: string;
   };
 }
 
 export interface ParsedVenueConfig extends VenueConfig {
   fields: Record<string, string>;
   dateFormat: string;
+  // The row the header names sit on, 1-based (1 = the first row). Some
+  // exports put a title row first, or group rows above the headers.
+  headerRow: number;
+  // How one cell can name several rooms, e.g. "Room A;  Room B" with a
+  // ';' separator. Empty means one room per cell.
+  roomSeparator: string;
+  // The room events with no room at all go to, when the venue sets one.
+  // Empty means they are skipped, as before.
+  unassignedRoom: string;
   display: {
     primaryLabel: string;
     secondaryLabel: string;
@@ -53,6 +63,9 @@ export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
     rooms,
     fields: data.fields ?? {},
     dateFormat: data.file_input?.date_format ?? 'DD/MM/YYYY',
+    headerRow: data.file_input?.header_row ?? 1,
+    roomSeparator: data.file_input?.room_separator ?? '',
+    unassignedRoom: data.rooms?.unassigned_room ?? '',
     display: {
       primaryLabel: data.display?.primary_label ?? 'booking_name',
       secondaryLabel: data.display?.secondary_label ?? 'activity_name',
@@ -66,6 +79,22 @@ export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
 }
 
 export function resolveRooms(roomName: string, venue: ParsedVenueConfig): string[] {
+  // An event with no room at all goes to the venue's unassigned room
+  // when one is set, instead of being dropped from the board.
+  if (!roomName.trim()) return venue.unassignedRoom ? [venue.unassignedRoom] : [];
+  // One cell can name several rooms, separated the way the venue's
+  // export separates them. Each part resolves on its own, so a
+  // combined name still needs a mapping entry, and an excluded part
+  // is dropped while the rest of the booking keeps its rooms.
+  const parts = venue.roomSeparator
+    ? roomName.split(venue.roomSeparator).map(p => p.trim()).filter(Boolean)
+    : [roomName];
+  const resolved: string[] = [];
+  for (const part of parts) resolved.push(...resolveOneRoom(part, venue));
+  return [...new Set(resolved)];
+}
+
+function resolveOneRoom(roomName: string, venue: ParsedVenueConfig): string[] {
   const normalized = normalizeRoomName(roomName);
 
   if (venue.excludedRooms.some((room) => normalizeRoomName(room) === normalized)) {

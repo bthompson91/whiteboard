@@ -9,7 +9,10 @@ const FIELD_KEYS: Array<{ key:string; label:string; optional?:boolean }> = [
   { key:'start_time', label:'Start time' },
   { key:'end_time', label:'End time' },
   { key:'room_name', label:'Room' },
-  { key:'booking_status', label:'Booking status' }
+  { key:'booking_status', label:'Booking status' },
+  { key:'setup_start', label:'Setup start', optional:true },
+  { key:'teardown_end', label:'Teardown end', optional:true },
+  { key:'salesperson', label:'Salesperson', optional:true }
 ];
 // Job numbers are Encore data, not hotel data: they never come in on
 // the venue's export file, so there is no job-number mapping to offer

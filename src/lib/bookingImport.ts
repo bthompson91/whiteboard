@@ -82,7 +82,7 @@ export function revertToImport(entry: ImportHistoryEntry): Booking[] {
   savePreviousImport(entry.bookings);
   return entry.bookings;
 }
-async function readWorkbook(file: File): Promise<{ workbook: XLSX.WorkBook; fingerprint: string }> {
+export async function readWorkbook(file: File): Promise<{ workbook: XLSX.WorkBook; fingerprint: string }> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   const fingerprint = hashBytes(bytes);
@@ -100,7 +100,37 @@ async function readWorkbook(file: File): Promise<{ workbook: XLSX.WorkBook; fing
   if (!workbook.SheetNames.length) throw new Error('The export contains no readable HTML tables.');
   return { workbook, fingerprint };
 }
-export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig): Promise<ImportResult> {
+// The sheet as plain records, using the venue's header row (1-based)
+// for the column names instead of always the first row: some exports
+// put a title row first, or group rows above the headers. Rows above
+// the header row never become records; rows below it with no header
+// name in a column lose that cell. A header name used twice keeps the
+// later column's value.
+export function sheetRecords(workbook: XLSX.WorkBook, headerRow = 1): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const sheetName of workbook.SheetNames) {
+    const aoa = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: '', raw: true });
+    if (!aoa.length) continue;
+    const headerIndex = Math.min(Math.max(headerRow - 1, 0), aoa.length - 1);
+    const headers = aoa[headerIndex].map(h => String(h ?? '').trim());
+    for (let i = headerIndex + 1; i < aoa.length; i++) {
+      const row: Record<string, unknown> = {};
+      aoa[i].forEach((v, j) => { if (headers[j]) row[headers[j]] = v; });
+      out.push(row);
+    }
+  }
+  return out;
+}
+export interface ImportOptions {
+  // The venue's salespeople, so a mapped salesperson column can attach
+  // the right person (matched on name) instead of leaving blocks grey.
+  salespeople?: { id: string; name: string }[];
+  // Only import bookings dated inside this range, inclusive. The
+  // setup wizard uses it for a first import; a plain re-import has
+  // no range and takes everything, as before.
+  dateRange?: { start: string; end: string } | null;
+}
+export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig, options: ImportOptions = {}): Promise<ImportResult> {
   const { workbook, fingerprint } = await readWorkbook(file);
   let labels: string[] = [];
   try {
@@ -116,9 +146,8 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
     if (!previousByIdentity.has(identity)) previousByIdentity.set(identity, booking);
   }
   const rows: BoardBooking[] = [];
-  for (const sheetName of workbook.SheetNames) {
-    const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '', raw: true });
-    records.forEach((row, index) => {
+  const records = sheetRecords(workbook, venue.headerRow);
+  records.forEach((row, index) => {
       const get = (key: string) => row[venue.fields[key]];
       const title = text(get(venue.display.primaryLabel));
       const roomIds = resolveRooms(text(get('room_name')), venue).filter(id => venue.rooms.some(r => r.id === id));
@@ -139,7 +168,31 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
         roomId: roomIds[0],
         roomIds
       };
+      // A first import can be limited to a date range, so a file that
+      // spans years does not make a board four years tall.
+      if (options.dateRange && (booking.date < options.dateRange.start || booking.date > options.dateRange.end)) return;
       if (jobNumber) booking.jobNumber = jobNumber;
+      // Setup and teardown as columns, not rows: some venues give a
+      // bump-in time and a bump-out time per event instead of separate
+      // setup/teardown rows. The block spans them, as it does for
+      // attached timeline rows. A column that cannot be read as a
+      // time leaves the booking without that end instead of failing
+      // the whole import.
+      const timeline: { label: string; start: string; end: string }[] = [];
+      try {
+        const setupStart = venue.fields.setup_start ? timeValue(get('setup_start')) : '';
+        if (setupStart && setupStart < booking.startTime) timeline.push({ label: labels[0] || 'Setup', start: setupStart, end: booking.startTime });
+      } catch { /* An unreadable setup time leaves the booking without it. */ }
+      try {
+        const teardownEnd = venue.fields.teardown_end ? timeValue(get('teardown_end')) : '';
+        if (teardownEnd && teardownEnd > booking.endTime) timeline.push({ label: labels[1] || labels[0] || 'Teardown', start: booking.endTime, end: teardownEnd });
+      } catch { /* An unreadable teardown time leaves the booking without it. */ }
+      if (timeline.length) booking.timeline = timeline;
+      // A salesperson column attaches the person by name. A name that
+      // matches nobody leaves the booking unassigned, as before.
+      const salespersonName = venue.fields.salesperson ? text(get('salesperson')) : '';
+      const salesperson = salespersonName && options.salespeople?.find(p => p.name.trim().toLowerCase() === salespersonName.toLowerCase());
+      if (salesperson) booking.salespersonId = salesperson.id;
       booking.id = bookingId(booking, venue.name);
       const existing = previousByIdentity.get(identityKey(booking, venue.name));
       if (existing) {
@@ -156,7 +209,6 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
       }
       rows.push(booking);
     });
-  }
   const key = (b: BoardBooking) => JSON.stringify([b.title, b.date, [...b.roomIds].sort()]);
   const isTimeline = (b: BoardBooking) => labels.some(l => l.toLowerCase() === b.activity?.toLowerCase());
   const result: BoardBooking[] = rows.filter(b => !isTimeline(b));

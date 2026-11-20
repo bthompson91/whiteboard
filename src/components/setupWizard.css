@@ -1,0 +1,44 @@
+/* The first-time setup wizard. The review-panel shell gives it the
+   modal, the z-order and the scrolling; this adds the room list and
+   the check rows. */
+.setup-wizard {
+  width: min(760px, calc(100vw - 32px));
+}
+.setup-wizard table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.setup-wizard th,
+.setup-wizard td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--hatch-widget-border, #ddd);
+  vertical-align: middle;
+}
+.setup-wizard select,
+.setup-wizard input[type="text"],
+.setup-wizard input[type="date"] {
+  max-width: 100%;
+}
+.setup-room-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--hatch-widget-border, #ddd);
+  margin: 8px 0;
+}
+.setup-room-row,
+.setup-check-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--hatch-widget-border, #eee);
+}
+.setup-room-row span:first-of-type,
+.setup-check-row span:first-of-type {
+  flex: 1;
+}
+.setup-error {
+  color: #c62828;
+}

@@ -7,9 +7,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import * as XLSX from 'xlsx';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const dir = await mkdtemp(join(tmpdir(), 'whiteboard-test-'));
+// The bundle lives inside the repo (and is deleted afterwards) so the
+// one dependency left external — xlsx, which esbuild cannot bundle
+// into node ESM because it uses dynamic require — still resolves
+// from the repo's node_modules when the bundle imports it.
+const dir = await mkdtemp(join(root, '.test-'));
 try {
   await build({
     entryPoints: [
@@ -20,12 +25,16 @@ try {
       join(root, 'src/lib/blocks.ts'),
       join(root, 'src/lib/markupAnchor.ts'),
       join(root, 'src/lib/bookingIdentity.ts'),
-      join(root, 'src/lib/sharedFile.ts')
+      join(root, 'src/lib/sharedFile.ts'),
+      join(root, 'src/lib/venueConfig.ts'),
+      join(root, 'src/lib/wizard.ts'),
+      join(root, 'src/lib/bookingImport.ts')
     ],
     outdir: dir,
     bundle: true,
     format: 'esm',
     platform: 'node',
+    external: ['xlsx'],
     logLevel: 'silent'
   });
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
@@ -36,6 +45,9 @@ try {
   const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
+  const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
+  const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, salespersonShortName, salespeopleFromNames, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
+  const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -401,6 +413,104 @@ try {
   check('a malformed time_slots value does not fail reading', (() => { try { return !('time_slots' in readConfiguration(`rooms:\n  order: [Room 1]\ntime_slots: not a list\n`, false)); } catch { return false; } })());
   check('normalizeConfigDoc strips time_slots', !('time_slots' in normalizeConfigDoc({ rooms: { order: ['Room 1'] }, time_slots: [{ label: 'x', start: '00:00', end: '01:00' }] })));
   check('a saved config no longer contains time_slots', !writeConfiguration(normalizeConfigDoc(readConfiguration(`rooms:\n  order: [Room 1]\ntime_slots:\n  - label: x\n    start: "00:00"\n    end: "01:00"\n`, false))).includes('time_slots'));
+  // --- Setup wizard: header detection, column suggestions, rooms ---
+  const mcgAoa = [
+    ['NMD Current Events', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['', '', '', 'Status', 'Event ID', 'Bump In', 'Start Time', 'Description', 'Type', 'Booked Spaces', 'Attendance', 'End Date', 'End Time', 'Bump Out', 'Salesperson', 'Coordinator', 'Special Notes for the Event', 'Revenue', 'Open Balance'],
+    ['Grand Total - Count: 609'],
+    ['', 'Monday, November 9, 2026 - Count: 5'],
+    ['', '', '', 'Firm/Definite (30)', 147174, 46335.270833333336, 0.29166666666666674, 'Enterprise Leadership Forum', 'Conference (CNF)', '', 50, 46335, 0.7083333333333333, 46335.75, 'Santimano, Agneeta', 'Wild, Emma', '', 0, 0],
+    ['', '', '', 'Firm/Definite (30)', 148884, 46335.3125, 0.35416666666666674, 'MCC Internal Meeting', 'Meeting (MTG)', 'Chadwick Room', 10, 46335, 0.41666666666666674, 46335.458333333336, 'Anderson, Ruby', 'Barbir, Danielle', '', 40.73, 0]
+  ];
+  const crownHeaders = ['Start Date', 'Start Time 24 Hour', 'End Time 24 Hour', 'Booking Event: Name', 'Function Room', 'Booking: Booking Post As', 'Booking: Status'];
+  check('the header row is detected past a title row', detectHeaderRow(mcgAoa) === 2);
+  check('the header row is the first row when there is no title row', detectHeaderRow([crownHeaders, ['09/11/2026', '07:00', '17:00', 'Setup', 'Palladium', 'Gala', 'Definite']]) === 1);
+  check('header candidates include the real header row', headerCandidates(mcgAoa).some(c => c.row === 2));
+  const mcgMapping = suggestFieldMapping(['', '', '', 'Status', 'Event ID', 'Bump In', 'Start Time', 'Description', 'Type', 'Booked Spaces', 'Attendance', 'End Date', 'End Time', 'Bump Out', 'Salesperson', 'Coordinator', 'Special Notes for the Event', 'Revenue', 'Open Balance'].filter(Boolean));
+  check('the MCG columns are suggested correctly', mcgMapping.booking_name === 'Description' && mcgMapping.activity_name === 'Type' && mcgMapping.event_date === 'Bump In' && mcgMapping.start_time === 'Start Time' && mcgMapping.end_time === 'End Time' && mcgMapping.room_name === 'Booked Spaces' && mcgMapping.booking_status === 'Status' && mcgMapping.salesperson === 'Salesperson' && mcgMapping.setup_start === 'Bump In' && mcgMapping.teardown_end === 'Bump Out');
+  const crownMapping = suggestFieldMapping(crownHeaders);
+  check('the Crown columns are suggested correctly', crownMapping.booking_name === 'Booking: Booking Post As' && crownMapping.activity_name === 'Booking Event: Name' && crownMapping.event_date === 'Start Date' && crownMapping.start_time === 'Start Time 24 Hour' && crownMapping.end_time === 'End Time 24 Hour' && crownMapping.room_name === 'Function Room' && crownMapping.booking_status === 'Booking: Status');
+  check("a ';' room separator is detected", detectRoomSeparator(['Room A;  Room B']) === ';');
+  check('no room separator is detected for single rooms', detectRoomSeparator(['Room A']) === '');
+  check('a room value splits on its separator', JSON.stringify(splitRoomValue('Members Dining Room;  Percy Beames Bar', ';')) === JSON.stringify(['Members Dining Room', 'Percy Beames Bar']));
+  check('an empty room value splits to nothing', splitRoomValue('', ';').length === 0);
+  check('room parts are counted most-used first', (() => {
+    const parts = roomParts([{ room: 'A; B' }, { room: 'A' }, { room: 'B' }, { room: 'C' }], 'room', ';');
+    return parts[0].name === 'A' && parts[0].count === 2 && parts[1].name === 'B' && parts[1].count === 2 && parts[2].name === 'C';
+  })());
+  check("a 'Last, First' name gives first-then-last initials", salespersonShortName('Anderson, Ruby') === 'RA');
+  check("a 'First Last' name gives its initials", salespersonShortName('Alex Lee') === 'AL');
+  check('a single name gives its first two letters', salespersonShortName('Alex') === 'AL');
+  check('salespeople made from names get distinct colours and short names', (() => {
+    const people = salespeopleFromNames(['Anderson, Ruby', 'Bromell, Matthew']);
+    return people.length === 2 && people[0].shortName === 'RA' && people[1].shortName === 'MB' && people[0].colour !== people[1].colour && people[0].id !== people[1].id;
+  })());
+  const mcgVenue = parseVenueConfig(`site:\n  name: MCG\nfile_input:\n  header_row: 2\n  room_separator: ';'\nfields:\n  booking_name: Description\n  event_date: Bump In\n  start_time: Start Time\n  end_time: End Time\n  room_name: Booked Spaces\nrooms:\n  order: [Chadwick Room, Long Room, Unassigned]\n  unassigned_room: Unassigned\n`);
+  check('a multi-room cell resolves to every room', JSON.stringify(resolveRooms('Chadwick Room;  Long Room', mcgVenue)) === JSON.stringify(['Chadwick Room', 'Long Room']));
+  check('an empty room resolves to the unassigned room', JSON.stringify(resolveRooms('', mcgVenue)) === JSON.stringify(['Unassigned']));
+  check('a header row of 0 is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nfile_input:\n  header_row: 0\n`, false); return false; } catch { return true; } })());
+  check('a non-text room separator is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nfile_input:\n  room_separator: 5\n`, false); return false; } catch { return true; } })());
+  const mcgWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(mcgWorkbook, XLSX.utils.aoa_to_sheet(mcgAoa), 'Sheet1');
+  check('records use the venue header row', (() => {
+    // Rows below the header include the total and day-group rows; the
+    // import skips those for having no title. The data rows are last.
+    const records = sheetRecords(mcgWorkbook, 2);
+    return records.length === 4 && records[2]['Description'] === 'Enterprise Leadership Forum' && records[2]['Bump In'] === 46335.270833333336 && records[3]['Booked Spaces'] === 'Chadwick Room';
+  })());
+  check('records from row 1 treat the title row as the header', (() => {
+    const records = sheetRecords(mcgWorkbook, 1);
+    return records.length === 5 && records[0]['NMD Current Events'] === '';
+  })());
+  check('only rows with a title count as events', (() => {
+    const records = sheetRecords(mcgWorkbook, 2);
+    const data = dataRecords(records, 'Description');
+    return data.length === 2 && data[0]['Description'] === 'Enterprise Leadership Forum';
+  })());
+  check('a preview row reads the mapped values', (() => {
+    const records = sheetRecords(mcgWorkbook, 2);
+    const p = previewRow(records[3], mcgMapping, 'DD/MM/YYYY', ';');
+    return p.title === 'MCC Internal Meeting' && p.date === '2026-11-09' && p.start === '08:30' && p.end === '10:00' && p.rooms === 'Chadwick Room' && p.error === '';
+  })());
+  check('a preview row with no room reports it', (() => {
+    const records = sheetRecords(mcgWorkbook, 2);
+    return previewRow(records[2], mcgMapping, 'DD/MM/YYYY', ';').error === 'No room';
+  })());
+  check('events are counted inside a date range', (() => {
+    const records = sheetRecords(mcgWorkbook, 2);
+    return countInRange(records, 'Bump In', 'DD/MM/YYYY', { start: '2026-11-09', end: '2026-11-09' }) === 2
+      && countInRange(records, 'Bump In', 'DD/MM/YYYY', { start: '2026-11-10', end: '2026-11-10' }) === 0;
+  })());
+  check('the wizard YAML round-trips with the MCG choices', (() => {
+    const yamlText = buildVenueYaml({
+      venueName: 'MCG',
+      headerRow: 2,
+      roomSeparator: ';',
+      mapping: mcgMapping,
+      dateFormat: 'DD/MM/YYYY',
+      rooms: ['Chadwick Room', 'Long Room'],
+      excludedRooms: ['OB Van Compound'],
+      unassignedRoom: true,
+      allowedStatuses: ['Firm/Definite (30)', 'On Hold (25)'],
+      salespeople: salespeopleFromNames(['Anderson, Ruby']),
+      setupLabel: 'Bump In',
+      teardownLabel: 'Bump Out'
+    });
+    const back = readConfiguration(yamlText);
+    return back.site.name === 'MCG'
+      && back.file_input.header_row === 2
+      && back.file_input.room_separator === ';'
+      && back.fields.booking_name === 'Description'
+      && back.fields.setup_start === 'Bump In'
+      && back.fields.teardown_end === 'Bump Out'
+      && back.fields.salesperson === 'Salesperson'
+      && back.rooms.order.includes('Unassigned')
+      && back.rooms.unassigned_room === 'Unassigned'
+      && back.rooms.exclude.includes('OB Van Compound')
+      && JSON.stringify(back.timeline_items) === JSON.stringify(['Bump In', 'Bump Out'])
+      && back.whiteboard.salespeople.length === 1
+      && back.whiteboard.salespeople[0].shortName === 'RA';
+  })());
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);

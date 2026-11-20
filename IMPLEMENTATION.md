@@ -65,7 +65,11 @@ Sections, all editable on the Configuration page (see below):
 - **`site`** — venue name.
 - **`fields`** — column-header mappings: `booking_name` (the block title),
   `activity_name` (Setup/Dinner/etc.), `event_date`, `start_time`,
-  `end_time`, `room_name`, `booking_status`. The Crown YAML has no
+  `end_time`, `room_name`, `booking_status`, plus three optional ones:
+  `setup_start` (a setup/bump-in time column — the block spans it, as
+  for an attached timeline row), `teardown_end` (a teardown/bump-out
+  time column), and `salesperson` (a column whose value is matched by
+  name to a salesperson in the palette). The Crown YAML has no
   Confirmation No, BEO # or job-number field, so imported bookings arrive
   with `jobNumber: ''` and job numbers only exist when a user sets one in
   the inspector. There is no job-number row in Field mappings: job numbers
@@ -78,7 +82,9 @@ Sections, all editable on the Configuration page (see below):
   `"Palladium"` → Palladium A, B, C1, C2, C3),
   `timetarget_areas` (board room → the name TimeTarget uses for that room,
   with the venue name on the front — the key the planned TimeTarget
-  setup-time import will match upload rows against). `room_mappings` is
+  setup-time import will match upload rows against),
+  `unassigned_room` (the room events with no room at all go to, when the
+  venue sets one — otherwise they are skipped). `room_mappings` is
   edited in the Combined rooms section of the Configuration page;
   `exclude` is still read at import but is not edited on the page. The
   combined names are load-bearing
@@ -87,7 +93,11 @@ Sections, all editable on the Configuration page (see below):
   through the mapping.
 - **`timeline_items`** — activities that attach to a main booking instead of
   standing alone (Setup, Teardown).
-- **`file_input`** — `date_format` and friends, threaded into date parsing.
+- **`file_input`** — `date_format`, `header_row` (1-based: the row the
+  column names sit on — some exports put a title row first, or group
+  rows above the headers), and `room_separator` (how one cell can name
+  several rooms, e.g. `';'` for "Room A;  Room B"). `date_format` is
+  threaded into date parsing; the other two into the reader.
 - **`time_slots` and `output`** — the original planner's named day blocks
   and output settings (filename/title/worksheet). Neither is read, and
   both are stripped out of the YAML when a config is read or saved; the
@@ -112,14 +122,37 @@ when no YAML is loaded.
 
 `src/lib/bookingImport.ts` (`parseBookingWorkbook`, `compareImports`) and
 `src/lib/importComparison.ts` do the work. The export is an HTML table saved
-as `.xls`; the parser reads rows, maps columns through `fields`, rejects
-impossible dates/times (one bad row no longer aborts the whole import), and
-keeps only `allowed_statuses` rows.
+as `.xls`, a real spreadsheet (`.xlsx`, or SpreadsheetML `.xml` — the MCG
+export is one), or a CSV; the parser reads rows, maps columns through
+`fields`, rejects impossible dates/times (one bad row no longer aborts the
+whole import), and keeps only `allowed_statuses` rows. Rows are read from
+the venue's `header_row`, not always the first row, and a cell can name
+several rooms when `room_separator` is set — each part resolves on its own,
+so a combined name still needs a mapping entry and an excluded part is
+dropped while the rest of the booking keeps its rooms. An event with no
+room at all goes to `rooms.unassigned_room` when one is set, and is
+otherwise skipped.
 
 - **Timeline attach.** A Setup/Teardown row attaches to a main booking with
   the same `[title, date, roomIds]` when there is exactly one such candidate.
   If there are two (e.g. Dinner and Crew Meals under the same title), it
-  stays a standalone booking.
+  stays a standalone booking. A venue can also give setup and teardown as
+  columns instead of rows (`fields.setup_start` / `fields.teardown_end`):
+  the block then spans from the setup start to the event start and from
+  the event end to the teardown end, labelled with the first and second
+  `timeline_items` entries. A column that cannot be read as a time leaves
+  the booking without that end instead of failing the whole import.
+- **Salesperson column.** When `fields.salesperson` is mapped, the import
+  attaches the salesperson whose name matches the cell (case-insensitive);
+  a name that matches nobody leaves the booking unassigned, and a
+  salesperson set by hand on the board still wins on re-import.
+- **Date range.** `parseBookingWorkbook` takes an optional date range and
+  skips bookings outside it. The setup wizard uses it for a first import
+  so a file spanning years does not make a board four years tall; a plain
+  re-import has no range and takes everything, as before.
+- **Multi-day rows.** One booking per row, on the row's first day. A
+  three-day event shows on its first day only; the venue's own per-day
+  rows, where it emits them, import as separate bookings.
 - **Booking identity** (`src/lib/bookingIdentity.ts`, shared by the import and
   the comparison so they cannot drift). Two keys:
   - `identityKey` — the *event* identity: `[venue, date, jobNumber, title,
@@ -501,6 +534,58 @@ bookings) — and "Show print view" renders a print-friendly board.
   why printing the board directly never worked: the scroll container clips,
   the heights do not match the page, and the 38-room grid never paginates.
 
+## Setup wizard (first-time venue setup)
+
+`src/components/SetupWizard.tsx` + `src/lib/wizard.ts`. A new venue — one
+with no YAML yet — is set up from its booking file instead of by writing a
+YAML by hand. It opens from the Link files panel ("Set up a new venue"),
+and on first run, when no venue YAML has ever been stored, a welcome
+overlay offers it (or linking an existing YAML) instead of the empty board;
+dismissing the welcome is remembered.
+
+Five steps, all driven by the file itself:
+
+1. **Booking file.** Upload the export (`.xls`, `.xlsx`, `.xml`, `.csv`).
+   The wizard reads it with the same reader the import uses, so a file
+   the wizard accepts is a file the import can read. The header row is
+   detected (the first row with at least three text cells — MCG's headers
+   are on row 2, under a title row) and can be changed.
+2. **Columns.** Each app field gets a dropdown of the file's columns, with
+   a suggestion from the header names (Description as title, Bump In as
+   date and setup start, Booked Spaces as room, and so on — Crown's
+   headers suggest the same way). Title, Date, Start time, End time and
+   Room are required. A preview shows the first events as they will
+   import, with the error that stops any row. The date-order question
+   only appears when the date column holds text like 09/11/2026; Excel
+   dates and ISO dates read the same either way.
+3. **Rooms.** Every distinct space in the file, most-used first, with a
+   count — tick Exclude on the ones that are not rooms. One cell can name
+   several rooms; the separator is detected (`;` for MCG) and editable.
+   Events with no space go in an "Unassigned" room when the box is ticked.
+   Only rows with a title count as events: the total and day-group rows
+   below the header have no title, and would otherwise inflate the counts.
+4. **Statuses, people and dates.** Tick which statuses import ("To Be
+   Cancelled" starts off). Salespeople can be created from the salesperson
+   column, with colours from a fixed palette and a short name derived from
+   the name ("Anderson, Ruby" → RA). A date range for the first import,
+   defaulting to today → today + 90 days, or all dates.
+5. **Name the venue.** A summary of the choices, then "Create venue and
+   import": the YAML is built (`buildVenueYaml`), a save picker asks where
+   to put it so it is linked like the other venues, and the file imports
+   straight onto the board through the normal review flow, with the chosen
+   date range and the new salespeople.
+
+The wizard's choices become the YAML: `file_input.header_row` and
+`room_separator` when they differ from the defaults, `rooms.unassigned_room`
+when set, `fields.setup_start` / `fields.teardown_end` / `fields.salesperson`
+when mapped, and `timeline_items` in the venue's own words ("Bump In",
+"Bump Out" for MCG, "Setup", "Teardown" otherwise). The MCG export was the
+test case: 608 events, 84 spaces, 13 salespeople, headers on row 2,
+rooms separated by ";", bump in/out as setup/teardown. A full import of it
+gives 602 bookings (6 "To Be Cancelled" excluded), every one with a
+salesperson, 534 with a bump-in/out timeline, 60 in "Unassigned", and a
+90-day first import gives 172.
+
 ## Planned: TimeTarget setup-time import
 
 Not built yet. In editor mode, an Excel export from the rostering system
@@ -518,7 +603,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-159 checks covering matching tiers and weights, booking identity, height and
+184 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

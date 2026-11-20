@@ -5,6 +5,7 @@ import ImportHistoryPanel from './components/ImportHistoryPanel';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import MarkupLayer from './components/MarkupLayer';
 import PrintView from './components/PrintView';
+import SetupWizard from './components/SetupWizard';
 import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
 import { BoardRole, Booking, EditorLock, ImportHistoryEntry, MarkupItem } from './types';
@@ -36,6 +37,7 @@ import {
 import { parseVenueConfig } from './lib/venueConfig';
 import { boardSettings, readConfiguration } from './lib/configuration';
 const MARKUP_KEY = 'whiteboard-markup';
+const WELCOME_DISMISSED_KEY = 'whiteboard-welcome-dismissed';
 const VENUE_YAML_KEY = 'whiteboard-venue-yaml';
 const ROLE_KEY = 'whiteboard-role';
 const DISPLAY_NAME_KEY = 'whiteboard-display-name';
@@ -158,6 +160,16 @@ export default function App() {
   };
   const [error, setError] = useState<string | null>(initial.error);
   const [configurationOpen, setConfigurationOpen] = useState(false);
+  // The first-time setup wizard: creating a venue from its booking
+  // file. It opens from the Link files panel, and on first run — when
+  // no venue YAML has ever been stored and the welcome has not been
+  // dismissed — the welcome offers it instead of the empty board.
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(() => !initial.text && !localStorage.getItem(WELCOME_DISMISSED_KEY));
+  const dismissWelcome = () => {
+    localStorage.setItem(WELCOME_DISMISSED_KEY, '1');
+    setWelcomeOpen(false);
+  };
   // The linked files. The board works from two files that sit in one
   // folder: the bookings export and the venue YAML. The board JSON
   // itself is a third file the editor publishes. Each is a File System
@@ -315,6 +327,43 @@ export default function App() {
     setPendingReview(result);
     setLinkHistory([]);
     setError(null);
+  };
+  // Create a venue from the setup wizard: store the YAML the wizard
+  // built, offer to save it over a file (so it is linked like the
+  // other venues), then import the wizard's file with the new venue.
+  // The bookings file itself came from a file picker, so it has no
+  // handle to link; Link files can link it afterwards.
+  const createVenueFromWizard = async (text: string, file: File, dateRange: { start: string; end: string } | null) => {
+    readConfiguration(text);
+    const venueConfig = parseVenueConfig(text);
+    localStorage.setItem(VENUE_YAML_KEY, text);
+    setYamlText(text);
+    setError(null);
+    setSetupWizardOpen(false);
+    setWelcomeOpen(false);
+    if (hasFileSystemAccess()) {
+      try {
+        const suggested = `${venueConfig.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'venue'}.yaml`;
+        const handle = await pickLinkedFileToSave(suggested, 'Venue YAML', { 'text/yaml': ['.yaml', '.yml'] });
+        if (handle) {
+          yamlHandleRef.current = handle;
+          setLinkedFiles(current => ({ ...current, yaml: handle.name }));
+          await saveLinkedHandle('yaml', handle);
+          await writeLinkedFile(handle, text, 'text/yaml');
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    }
+    try {
+      const result = await parseBookingWorkbook(file, venueConfig, {
+        salespeople: boardSettings(readConfiguration(text)).salespeople,
+        dateRange
+      });
+      handleBookingsLoaded(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
   const publish = (approved: Booking[], result: ImportResult | null) => {
     setBookings(approved);
@@ -587,7 +636,7 @@ export default function App() {
         setLinkedFiles(current => ({ ...current, bookings: name }));
         await saveLinkedHandle('bookings', handle);
       }
-      handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue));
+      handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue, { salespeople: settings?.salespeople || [] }));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -752,12 +801,31 @@ export default function App() {
               <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile}>Open</button> <button onClick={linkBoardFileAsNew}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
             </tbody></table>
             <p>Linking the bookings export lets Refresh re-read it. The board file is written automatically whenever the editor changes the board.</p>
+            <p><button onClick={() => { setSetupWizardOpen(true); setLinkFilesOpen(false); }}>Set up a new venue</button></p>
             {role === 'editor' && <p><button onClick={() => { setHistoryOpen(true); setLinkFilesOpen(false); }}>Import history</button> <button onClick={revertLastImport} disabled={importHistory.length <= 1}>Revert last import</button></p>}
             <footer>
               <button onClick={() => setLinkFilesOpen(false)}>Done</button>
             </footer>
           </section>
         </div>
+      )}
+      {welcomeOpen && !setupWizardOpen && (
+        <div className="review-overlay">
+          <section className="review-panel" aria-label="Welcome">
+            <header>
+              <h2>Welcome to the whiteboard</h2>
+              <p>No venue is set up yet. Set one up from its booking file, or link a venue YAML you already have.</p>
+            </header>
+            <footer>
+              <button onClick={dismissWelcome}>Not now</button>
+              <button onClick={linkYamlFile}>Link an existing venue file</button>
+              <button className="primary" onClick={() => setSetupWizardOpen(true)}>Set up a new venue</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {setupWizardOpen && (
+        <SetupWizard onCreateVenue={createVenueFromWizard} onClose={() => setSetupWizardOpen(false)} />
       )}
       {lockConflict && (
         <div className="review-overlay">
