@@ -102,6 +102,10 @@ export default function App() {
   const editorLockRef = useRef<EditorLock | null>(null);
   editorLockRef.current = editorLock;
   const [pendingRole, setPendingRole] = useState<BoardRole | null>(null);
+  // Someone else holds a fresh editor lock, and the user asked to
+  // switch to editor anyway: this is the override dialog, with the
+  // holder's name and when they took the lock.
+  const [lockConflict, setLockConflict] = useState<{ name: string; at: number } | null>(null);
   // The name shown on the editor lock, so other devices can see who is
   // editing. It falls back to the old contributor name when present.
   const [displayName, setDisplayName] = useState(() => localStorage.getItem(DISPLAY_NAME_KEY) || localStorage.getItem('whiteboard-contributor-name') || 'Editor');
@@ -344,9 +348,28 @@ export default function App() {
       if (boardHandleRef.current) lock = (await readSharedFileFromHandle(boardHandleRef.current)).editorLock ?? null;
     } catch { /* fall back to the last lock this browser saw */ }
     if (lock && lock.id !== editorSessionId && Date.now() - lock.at < EDITOR_LOCK_TTL_MS) {
-      setError(`${lock.name || 'Someone'} is editing right now (since ${new Date(lock.at).toLocaleTimeString()}). Only one editor at a time — try again when they finish.`);
+      setLockConflict({ name: lock.name || 'Someone', at: lock.at });
       return;
     }
+    const claimed: EditorLock = { name: displayName || 'Editor', id: editorSessionId, at: Date.now() };
+    setEditorLock(claimed);
+    setRole('editor');
+    if (boardHandleRef.current) {
+      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, claimed)).catch(e => {
+        setError(e instanceof Error ? e.message : String(e));
+      });
+    }
+  };
+  // Force-take the editor lock when someone else holds it. This is
+  // the override for a lock that is fresh but the holder has walked
+  // away (or their browser is stuck): it claims the lock for this
+  // browser and switches to editor. If the other editor is still
+  // actively editing, both browsers can now edit — the other
+  // browser's next save will write its own lock back, so only use
+  // this when you know the other editor is done.
+  const forceTakeover = () => {
+    if (!lockConflict) return;
+    setLockConflict(null);
     const claimed: EditorLock = { name: displayName || 'Editor', id: editorSessionId, at: Date.now() };
     setEditorLock(claimed);
     setRole('editor');
@@ -653,6 +676,22 @@ export default function App() {
             {role === 'editor' && <p><button onClick={() => { setHistoryOpen(true); setLinkFilesOpen(false); }}>Import history</button> <button onClick={revertLastImport} disabled={importHistory.length <= 1}>Revert last import</button></p>}
             <footer>
               <button onClick={() => setLinkFilesOpen(false)}>Done</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {lockConflict && (
+        <div className="review-overlay">
+          <section className="review-panel" aria-label="Editor already editing">
+            <header>
+              <h2>{lockConflict.name} is editing right now</h2>
+              <p>
+                {lockConflict.name} has held the editor lock since {new Date(lockConflict.at).toLocaleTimeString()}. Only one editor at a time. If you know they have finished (or their browser is stuck), you can take the editor lock over. If they are still editing, taking over will let both of you edit at once.
+              </p>
+            </header>
+            <footer>
+              <button onClick={() => setLockConflict(null)}>Cancel</button>
+              <button className="primary" onClick={forceTakeover}>Take over anyway</button>
             </footer>
           </section>
         </div>
