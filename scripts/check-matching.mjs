@@ -213,6 +213,12 @@ try {
   check('unavailable block has no initials tag', blocks.length === 1 && blocks[0].initials === undefined, JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'] })], venue, palette, false);
   check('block without a salesperson has no initials tag', blocks.length === 1 && blocks[0].initials === undefined, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], unavailable: true, salespersonId: 'sp-1' })], venue, palette, false);
+  check('unavailable block keeps its salesperson colour for the strip', blocks.length === 1 && blocks[0].salespersonColour === '#3366cc' && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], unavailable: true })], venue, palette, false);
+  check('unavailable block without a salesperson has no strip colour', blocks.length === 1 && blocks[0].salespersonColour === undefined, JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], unavailable: true, salespersonId: 'unavailable' })], venue, palette, false);
+  check('legacy unavailable is not a real salesperson for the strip', blocks.length === 1 && blocks[0].salespersonColour === undefined, JSON.stringify(blocks));
 
   // --- 2-hour snap: blocks line up in general time frames ---
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:30', endTime: '22:12' })], venue, [], false);
@@ -235,6 +241,28 @@ try {
   check('strong border after each named room only', borders[2] === true && borders[4] === true && borders[0] === false && borders[1] === false && borders[3] === false, JSON.stringify(borders));
   check('no borders means no strong vertical borders', strongBorders(['Palladium A', 'Palladium B'], []).every(v => !v));
   check('border matching ignores case and whitespace', strongBorders(['Palladium A', 'Palladium B'], [' palladium a '])[0] === true);
+
+  // --- No overlap: a later booking cuts the earlier span short ---
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00', timeline: [{ label: 'Teardown', start: '16:00', end: '18:00' }] }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '16:00', end: '18:00' }] })
+  ], venue, [], false);
+  check('a later setup cuts the earlier teardown short', blocks.length === 2 && blocks.find(b => b.title === 'Lunch')?.end === 16 * 60 && blocks.find(b => b.title === 'Dinner')?.start === 16 * 60, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '15:00', timeline: [{ label: 'Teardown', start: '15:00', end: '17:00' }] }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '15:30', end: '18:00' }] })
+  ], venue, [], false);
+  check('a 15:30 setup cuts a 17:00 teardown to the same point', blocks.find(b => b.title === 'Lunch')?.end === blocks.find(b => b.title === 'Dinner')?.start && blocks.find(b => b.title === 'Lunch')?.mainEnd === 15 * 60, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Late Night', roomId: 'Palladium A', roomIds: ['Palladium A'], date: '2026-11-19', startTime: '22:00', endTime: '02:00' }),
+    booking({ id: 'b', title: 'Early Morning', roomId: 'Palladium A', roomIds: ['Palladium A'], date: '2026-11-20', startTime: '00:00', endTime: '04:00' })
+  ], venue, [], false);
+  check('a block running past midnight is cut by the next day booking', blocks.find(b => b.title === 'Late Night')?.end === 24 * 60, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '14:00' }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00' })
+  ], venue, [], false);
+  check('bookings that do not overlap are left alone', blocks.length === 2 && blocks.find(b => b.title === 'Lunch')?.end === 14 * 60, JSON.stringify(blocks));
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

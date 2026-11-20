@@ -4,7 +4,7 @@ import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
 import { bookingColour, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; initials?:string; unavailable?:boolean; hidden?:boolean }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -54,9 +54,12 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
         // tag, even though it keeps its salesperson assignment.
+        // salespersonColour is the assigned salesperson's colour even for
+        // an unavailable booking (whose block colour is grey): the render
+        // uses it for the left strip while the body stays grey.
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),initials:unavailable||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:unavailable||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden});
       }
     }
   }
@@ -93,6 +96,27 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
     const endRemainder = b.end % SNAP_MINUTES;
     b.end = endRemainder < SNAP_MINUTES / 2 ? b.end - endRemainder : b.end + (SNAP_MINUTES - endRemainder);
     if (b.end <= b.start) b.end = b.start + SNAP_MINUTES;
+  }
+  // Bookings never overlap in a room: if a later booking starts before
+  // an earlier booking's span ends, the earlier span ends where the
+  // later one starts (a lunch teardown ending at 17:00 is cut to 15:30
+  // when dinner's setup starts then). Only the rendered span is cut;
+  // the real times stay in the facts column and the tooltip. Spans are
+  // compared in absolute minutes, so a block running past midnight is
+  // cut by a booking the next day too. Blocks starting at the same time
+  // are left alone rather than cut to nothing.
+  const dayNumber = (date: string) => Math.floor(Date.parse(date + 'T00:00:00Z') / 86400000);
+  for (let room = 0; room < venue.rooms.length; room++) {
+    const inRoom = spans.filter(s => s.rooms.includes(room)).sort((a, c) => (dayNumber(a.date) * 1440 + a.start) - (dayNumber(c.date) * 1440 + c.start));
+    for (let i = 0; i + 1 < inRoom.length; i++) {
+      const earlier = inRoom[i], later = inRoom[i + 1];
+      const earlierStart = dayNumber(earlier.date) * 1440 + earlier.start;
+      const earlierEnd = dayNumber(earlier.date) * 1440 + earlier.end;
+      const laterStart = dayNumber(later.date) * 1440 + later.start;
+      if (laterStart > earlierStart && earlierEnd > laterStart) {
+        earlier.end = laterStart - dayNumber(earlier.date) * 1440;
+      }
+    }
   }
   return spans;
 }
