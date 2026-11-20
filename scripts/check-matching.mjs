@@ -31,7 +31,7 @@ try {
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
-  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { parseChangesFile, serializeChangesFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
   const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
@@ -231,6 +231,15 @@ try {
   check('small rooms obey the small width', widthFor(widthSettings, 'River Room 1') === 125);
   check('medium rooms obey the medium width', widthFor(widthSettings, 'Garden Room 1') === 150);
   check('a room with no type falls back to the medium width', widthFor(boardSettings({ whiteboard: { room_widths: { large: 400, small: 125, other: 150 } } }), 'Unknown Room') === 150);
+  // --- Room width limits are settable, not hard-coded ---
+  // The 125-600 defaults can be widened or narrowed in Configuration,
+  // and the three widths are validated against the set limits.
+  const wideSettings = boardSettings({ whiteboard: { room_types: { 'Palladium A': 'large', 'River Room 1': 'small' }, room_width_min: 80, room_width_max: 900, room_widths: { large: 800, small: 80, other: 150 } } });
+  check('width limits default to 125 and 600', boardSettings({ whiteboard: {} }).room_width_min === 125 && boardSettings({ whiteboard: {} }).room_width_max === 600);
+  check('a width above the old 600 cap is allowed when the limit is raised', wideSettings.room_widths.large === 800 && widthFor(wideSettings, 'Palladium A') === 800);
+  check('a width below the old 125 floor is allowed when the limit is lowered', wideSettings.room_widths.small === 80);
+  check('a width outside the set limits is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  room_width_min: 80\n  room_width_max: 900\n  room_widths:\n    large: 901\n`, false); return false; } catch (e) { return String(e.message || e).includes('80 to 900'); } })());
+  check('a maximum below the minimum is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  room_width_min: 500\n  room_width_max: 100\n`, false); return false; } catch (e) { return String(e.message || e).includes('must not be less than the minimum'); } })());
 
   // --- changes.json: the one shared list of changes ---
   // Everyone writes to the same file; the master imports it and yes/no's

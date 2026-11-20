@@ -38,7 +38,7 @@ export function bookingColour(booking: { colour?: string; salespersonId?: string
   if (booking.unavailable || isNoAv(booking.jobNumber)) return UNAVAILABLE_SALESPERSON.colour;
   return resolveSalesperson(salespeople, booking.salespersonId)?.colour ?? booking.colour;
 }
-export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; salespeople:Salesperson[]; room_borders:string[] }
+export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; room_width_min:number; room_width_max:number; salespeople:Salesperson[]; room_borders:string[] }
 export type ConfigDocument = Record<string, any>;
 const object = (v:any):boolean => !!v && typeof v === 'object' && !Array.isArray(v);
 const strings = (v:any):boolean => Array.isArray(v) && v.every(x=>typeof x==='string');
@@ -63,7 +63,15 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   const w=d.whiteboard||{};
   if(w.room_types!==undefined&&(!object(w.room_types)||!Object.values(w.room_types).every(t=>['large','small','other'].includes(String(t)))))throw new Error('Room types must be large, small or other.');
   if(w.room_widths!==undefined&&!object(w.room_widths))throw new Error('Room widths must be a mapping.');
-  for(const t of ['large','small','other']){const n=w.room_widths?.[t];if(n!==undefined&&(typeof n!=='number'||!Number.isFinite(n)||n<125||n>600))throw new Error('Room widths must be numbers from 125 to 600 pixels.');}
+  // The width limits are settable, not hard-coded: a venue can have a
+  // room narrower than 125px or wider than 600px. The limits themselves
+  // live in the same whiteboard section, defaulting to 125 and 600.
+  const widthMin=typeof w.room_width_min==='number'?w.room_width_min:125;
+  const widthMax=typeof w.room_width_max==='number'?w.room_width_max:600;
+  if(w.room_width_min!==undefined&&(typeof w.room_width_min!=='number'||!Number.isFinite(w.room_width_min)||w.room_width_min<1||w.room_width_min>2000))throw new Error('The minimum room width must be a number from 1 to 2000 pixels.');
+  if(w.room_width_max!==undefined&&(typeof w.room_width_max!=='number'||!Number.isFinite(w.room_width_max)||w.room_width_max<1||w.room_width_max>5000))throw new Error('The maximum room width must be a number from 1 to 5000 pixels.');
+  if(widthMax<widthMin)throw new Error('The maximum room width must not be less than the minimum.');
+  for(const t of ['large','small','other']){const n=w.room_widths?.[t];if(n!==undefined&&(typeof n!=='number'||!Number.isFinite(n)||n<widthMin||n>widthMax))throw new Error(`Room widths must be numbers from ${widthMin} to ${widthMax} pixels.`);}
   if(w.salespeople!==undefined){
     if(!Array.isArray(w.salespeople))throw new Error('Salespeople must be a list.');
     const ids=new Set<string>();
@@ -85,7 +93,7 @@ export function boardSettings(d:ConfigDocument):BoardSettings {
     const key=k.trim();
     if(key)room_types[key]=v;
   }
-  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])]};
+  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},room_width_min:typeof w.room_width_min==='number'?w.room_width_min:125,room_width_max:typeof w.room_width_max==='number'?w.room_width_max:600,salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])]};
 }
 export function writeConfiguration(d:ConfigDocument):string { return yaml.dump(d,{noRefs:true,lineWidth:120,sortKeys:false}); }
 // Tidy a configuration document before saving: trim stray whitespace

@@ -17,6 +17,7 @@ interface Props {
   onBookingsChange: (bookings: Booking[]) => void;
   onSelectedBookingChange: (bookingId: string | null) => void;
   roomBaseWidths?: number[];
+  roomWidthMin?: number;
 }
 function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed)return '';return /^\d+$/.test(trimmed)?trimmed.replace(/^0+(?=\d)/,''):trimmed;}
 // The times strip shows only the first time of each entry: a setup that
@@ -69,7 +70,7 @@ function FitTitle({ text }: { text: string }) {
   }, [fit, text]);
   return <div ref={ref} className="booking-title" style={{ fontSize }}>{text}</div>;
 }
-export default function BookingGrid({venue,bookings,salespeople,roomBorders,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths}:Props) {
+export default function BookingGrid({venue,bookings,salespeople,roomBorders,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
@@ -168,7 +169,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     measure();const observer=new ResizeObserver(measure);observer.observe(parent);if(header.current)observer.observe(header.current);return()=>observer.disconnect();
   },[venue]);
   if(!venue)return <div className="empty-state">Open Configuration to load a venue YAML file.</div>;
-  const baseWidths=venue.rooms.map((_,i)=>Math.max(125,roomBaseWidths?.[i]||150));
+  const baseWidths=venue.rooms.map((_,i)=>Math.max(roomWidthMin,roomBaseWidths?.[i]||150));
   const total=baseWidths.reduce((sum,width)=>sum+width,0);
   const scale=Math.max(1,size.availableWidth/Math.max(1,total));
   const widths=baseWidths.map(width=>width*scale);

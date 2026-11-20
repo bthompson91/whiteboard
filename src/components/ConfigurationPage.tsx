@@ -21,17 +21,32 @@ const DATE_FORMATS = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
 // every commit, which dropped focus mid-typing and made the Large and
 // Small fields look as if they never took. The text syncs from the
 // value when it changes from outside (another edit, Apply and save).
-function WidthInput({type,value,onCommit,onInvalid}:{type:RoomType;value:number;onCommit:(n:number)=>void;onInvalid:()=>void}){
+function WidthInput({type,value,min,max,onCommit,onInvalid}:{type:RoomType;value:number;min:number;max:number;onCommit:(n:number)=>void;onInvalid:()=>void}){
   const [text,setText]=useState(String(value));
   useEffect(()=>{setText(String(value));},[value]);
   const label=type==='other'?'Medium':type==='small'?'Small':'Large';
-  return <label>{label} width (px) <input type="number" min={125} max={600} value={text} onChange={e=>{
+  return <label>{label} width (px) <input type="number" min={min} max={max} value={text} onChange={e=>{
     const next=e.target.value;setText(next);
     const n=Number(next);
-    if(next.trim()!==''&&Number.isFinite(n)&&n>=125&&n<=600)onCommit(n);
+    if(next.trim()!==''&&Number.isFinite(n)&&n>=min&&n<=max)onCommit(n);
   }} onBlur={()=>{
     const n=Number(text);
-    if(text.trim()===''||!Number.isFinite(n)||n<125||n>600){setText(String(value));onInvalid();}
+    if(text.trim()===''||!Number.isFinite(n)||n<min||n>max){setText(String(value));onInvalid();}
+  }} /></label>;
+}
+// A min/max limit field for the room widths. The limits are settable so
+// a venue is not stuck with the 125-600 defaults: a room can be narrower
+// or wider than that. Changing a limit re-clamps the three widths to it.
+function LimitInput({label,value,min,max,onCommit,onInvalid}:{label:string;value:number;min:number;max:number;onCommit:(n:number)=>void;onInvalid:()=>void}){
+  const [text,setText]=useState(String(value));
+  useEffect(()=>{setText(String(value));},[value]);
+  return <label>{label} (px) <input type="number" min={min} max={max} value={text} onChange={e=>{
+    const next=e.target.value;setText(next);
+    const n=Number(next);
+    if(next.trim()!==''&&Number.isFinite(n)&&n>=min&&n<=max)onCommit(n);
+  }} onBlur={()=>{
+    const n=Number(text);
+    if(text.trim()===''||!Number.isFinite(n)||n<min||n>max){setText(String(value));onInvalid();}
   }} /></label>;
 }
 function StringList({ values, onChange, label }: { values:string[]; onChange:(next:string[])=>void; label:string }) {
@@ -98,7 +113,11 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <StringList label="Allowed status" values={Array.isArray(doc.display?.allowed_statuses)?(doc.display.allowed_statuses as string[]):[]} onChange={next=>change(d=>{d.display={...(d.display||{}),allowed_statuses:next};})} />
         </section>
         <section><h2>Room configuration</h2><p>Large rooms use wider columns; small rooms use narrower columns. Base widths are minimums; columns expand proportionally if the screen has spare space. Tick “Border after” to draw a strong border after a room, so a block of rooms reads as one section — Palladium C3, for example, puts a strong border between Palladium and River Room. Days are separated by the same strong border.</p>
-          <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><WidthInput key={type} type={type} value={settings.room_widths[type]} onCommit={n=>updateSettings(s=>{s.room_widths[type]=n;})} onInvalid={()=>setMessage('Use a width from 125 to 600 pixels.')} />)}</div>
+          <div className="configuration-widths">
+            <LimitInput label="Minimum width" value={settings.room_width_min} min={1} max={2000} onCommit={n=>updateSettings(s=>{s.room_width_min=n;if(s.room_width_max<n)s.room_width_max=n;for(const t of ['large','small','other'] as RoomType[])s.room_widths[t]=Math.max(n,Math.min(s.room_width_max,s.room_widths[t]));})} onInvalid={()=>setMessage('Use a minimum width from 1 to 2000 pixels.')} />
+            <LimitInput label="Maximum width" value={settings.room_width_max} min={1} max={5000} onCommit={n=>updateSettings(s=>{s.room_width_max=n;if(s.room_width_min>n)s.room_width_min=n;for(const t of ['large','small','other'] as RoomType[])s.room_widths[t]=Math.max(s.room_width_min,Math.min(n,s.room_widths[t]));})} onInvalid={()=>setMessage('Use a maximum width from 1 to 5000 pixels.')} />
+          </div>
+          <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><WidthInput key={type} type={type} value={settings.room_widths[type]} min={settings.room_width_min} max={settings.room_width_max} onCommit={n=>updateSettings(s=>{s.room_widths[type]=n;})} onInvalid={()=>setMessage(`Use a width from ${settings.room_width_min} to ${settings.room_width_max} pixels.`)} />)}</div>
           <table><thead><tr><th>Order</th><th>Room</th><th>Type</th><th>Border after</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{(doc.rooms.order as string[]).map((room,i)=>{const name=room.trim();const type=settings.room_types[name]||'other';return <tr key={room}><td>{i+1}</td><td>{name}</td><td><select aria-label={`${name} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[name]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td><td><input type="checkbox" aria-label={`Strong border after ${name}`} checked={settings.room_borders.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,name]:s.room_borders.filter(r=>r!==name);});}} /></td><td><button disabled={i===0} onClick={()=>move(i,-1)} aria-label={`Move ${room} up`}>Up</button><button disabled={i===doc!.rooms.order.length-1} onClick={()=>move(i,1)} aria-label={`Move ${room} down`}>Down</button></td><td><button onClick={()=>removeRoom(room)} aria-label={`Remove ${room}`}>Remove</button></td></tr>;})}</tbody></table>
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>

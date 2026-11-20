@@ -566,6 +566,7 @@ export default function App() {
           onBookingsChange={handleBookingsChange}
           onSelectedBookingChange={setSelectedBookingId}
           roomBaseWidths={roomBaseWidths}
+          roomWidthMin={settings?.room_width_min || 125}
         />
         <MarkupLayer
           markup={markup}
