@@ -7,6 +7,11 @@ interface Props {
   mode: 'none' | 'text' | 'arrow';
   selectedBookingId: string | null;
   editingEnabled: boolean;
+  // The salesperson filter's highlighted cells ("date|roomId"): when
+  // non-empty, only annotations anchored to one of these cells stay
+  // full; everything else dims to 25%, the same as a filtered-out
+  // block. Empty means no filter, so nothing dims.
+  highlightedCells?: Set<string>;
   onChange: (items: MarkupItem[]) => void;
   onClearSelectedBooking: () => void;
 }
@@ -18,11 +23,28 @@ type Drag = {
   part: 'move' | 'start' | 'end';
 };
 
-export default function MarkupLayer({ markup, mode, selectedBookingId, editingEnabled, onChange, onClearSelectedBooking }: Props) {
+export default function MarkupLayer({ markup, mode, selectedBookingId, editingEnabled, highlightedCells, onChange, onClearSelectedBooking }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [layout, setLayout] = useState<AnchorLayout | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // An annotation stays full when it is anchored to a highlighted
+  // cell — a date and room where the filtered salesperson has a block
+  // from yesterday onward — so a note or arrow above one of their
+  // blocks stays visible. An arrow counts when either end is in a
+  // highlighted cell. With no filter, or an unanchored item, nothing
+  // is highlighted; unanchored items dim when a filter is on, because
+  // they cannot be shown to sit above one of their blocks.
+  const isHighlighted = (item: MarkupItem): boolean => {
+    if (!highlightedCells || highlightedCells.size === 0) return true;
+    if (item.type === 'text') {
+      return !!(item.date && item.roomId && highlightedCells.has(`${item.date}|${item.roomId}`));
+    }
+    return !!(
+      (item.date1 && item.roomId1 && highlightedCells.has(`${item.date1}|${item.roomId1}`)) ||
+      (item.date2 && item.roomId2 && highlightedCells.has(`${item.date2}|${item.roomId2}`))
+    );
+  };
   const [drag, setDrag] = useState<Drag | null>(null);
   const [draft, setDraft] = useState<Extract<MarkupItem, { type: 'arrow' }> | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -327,7 +349,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
           const pos = positions.get(item.id);
           if (!pos || pos.x2 === undefined || pos.y2 === undefined) return null;
           return (
-            <g key={item.id}>
+            <g key={item.id} opacity={isHighlighted(item) ? undefined : 0.25}>
               <line x1={pos.x} y1={pos.y} x2={pos.x2} y2={pos.y2} stroke="#6a3fb5" strokeWidth={3} markerEnd="url(#markup-arrow)" />
               <line className="markup-hit" x1={pos.x} y1={pos.y} x2={pos.x2} y2={pos.y2} stroke="transparent" strokeWidth={16} onPointerDown={(event) => begin(event, item)} />
               {editingEnabled && selected === item.id && (
@@ -357,7 +379,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
           <div
             key={item.id}
             className={`markup-note ${selected === item.id ? 'selected' : ''} ${item.highlight ? 'highlight' : ''}`}
-            style={{ left: pos.x, top: pos.y }}
+            style={{ left: pos.x, top: pos.y, opacity: isHighlighted(item) ? undefined : 0.25 }}
             onPointerDown={(event) => begin(event, item)}
             onDoubleClick={(event) => {
               if (!editingEnabled) return;

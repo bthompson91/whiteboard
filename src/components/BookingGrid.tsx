@@ -264,6 +264,10 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+widths.reduce((sum,width)=>sum+width,0)} as CSSProperties;
   const roomFontSizes=roomNameFontSizes(venue.rooms.map(r=>r.name),widths);
   const today=format(new Date(),'yyyy-MM-dd');
+  // The salesperson filter's focus window starts at the previous day:
+  // only the filtered salesperson's blocks from yesterday onward stay
+  // full; older blocks dim too, even when they are that person's.
+  const yesterday=format(addDays(parseISO(today),-1),'yyyy-MM-dd');
   const jobNumberInvalid=!!draft?.jobNumber&&!/^\d+$/.test(draft.jobNumber.trim())&&!isNoAv(draft.jobNumber);
   // Merge left / Merge right are greyed out when the room beside this
   // booking is across a strong border (or there is no room that way):
@@ -311,7 +315,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     {dates.map((date,dateIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizesValue[dateIndex]}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
-      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,...laneInsets(b,strongAfter),top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:filterSalespersonId&&b.salespersonId!==filterSalespersonId?0.25:(b.hidden?0.45:undefined),borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
+      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,...laneInsets(b,strongAfter),top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:filterSalespersonId?(b.salespersonId===filterSalespersonId&&b.date>=yesterday?(b.hidden?0.45:undefined):0.25):(b.hidden?0.45:undefined),borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
           if(draft)return;
           // Paint mode: a click paints the block instead of opening it.
           // It works in editor role even while the board is locked, so

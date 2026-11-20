@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { addDays, format } from 'date-fns';
 import BookingGrid from './components/BookingGrid';
 import ImportHistoryPanel from './components/ImportHistoryPanel';
 import ImportReviewPanel from './components/ImportReviewPanel';
@@ -134,6 +135,20 @@ export default function App() {
   // Salesperson filter, for viewer and editor alike: when one is
   // picked, every other block dims to 25% opacity.
   const [filterSalespersonId, setFilterSalespersonId] = useState('');
+  // The filter's focus window starts at the previous day: only the
+  // filtered salesperson's blocks from yesterday onward stay full, and
+  // only annotations anchored to one of those blocks stay full. Older
+  // blocks and annotations dim too. The cells are "date|roomId" keys.
+  const yesterday = format(addDays(new Date(), -1), 'yyyy-MM-dd');
+  const highlightedCells = useMemo(() => {
+    const cells = new Set<string>();
+    if (!filterSalespersonId) return cells;
+    for (const b of bookings) {
+      if (b.salespersonId !== filterSalespersonId || b.date < yesterday) continue;
+      for (const roomId of b.roomIds || [b.roomId]) cells.add(`${b.date}|${roomId}`);
+    }
+    return cells;
+  }, [bookings, filterSalespersonId, yesterday]);
   const togglePaintMode = () => {
     if (!paintMode && !paintSalespersonId && settings?.salespeople?.length) {
       setPaintSalespersonId(settings.salespeople[0].id);
@@ -663,6 +678,7 @@ export default function App() {
           mode={markupMode}
           selectedBookingId={selectedBookingId}
           editingEnabled={role !== 'viewer'}
+          highlightedCells={highlightedCells}
           onChange={setMarkup}
           onClearSelectedBooking={() => setSelectedBookingId(null)}
         />
