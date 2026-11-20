@@ -277,6 +277,21 @@ try {
   ];
   let blocks = blocksFor(riverPair, venue, [], false);
   check('same title in adjacent rooms at the same time merges into one wide block', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].ids.length === 2, JSON.stringify(blocks));
+  // A merged block shows the job number even when it is only on a row
+  // other than the one that created the block: editing the job number
+  // used to leave some blocks showing the old number, because the
+  // block's number came from one row and only that row was updated.
+  const mergedPair = [
+    booking({ id: 'a', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '18:45', jobNumber: '' }),
+    booking({ id: 'b', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:45', endTime: '00:00', jobNumber: '1022948' })
+  ];
+  blocks = blocksFor(mergedPair, venue, [], false);
+  check('a merged block shows a job number carried by a later row', blocks.length === 1 && blocks[0].jobNumber === '1022948', JSON.stringify(blocks.map(b => b.jobNumber)));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '18:45', jobNumber: '1022948' }),
+    booking({ id: 'b', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:45', endTime: '00:00', jobNumber: '' })
+  ], venue, [], false);
+  check('a merged block keeps the first row’s job number when a later row has none', blocks.length === 1 && blocks[0].jobNumber === '1022948', JSON.stringify(blocks.map(b => b.jobNumber)));
   blocks = blocksFor([
     booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '20:00' }),
     booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })

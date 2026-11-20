@@ -88,13 +88,16 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     // the first booking id in the block, which need not be the one that
     // sets the block's colour — so colouring just that row left the
     // block showing the old colour, which is why "Just this one" looked
-    // broken). The other rows in the block keep their own times and
-    // titles; only their salesperson and colour change.
+    // broken). The same holds for the job number: the block shows the
+    // job number of whichever row set it, so an edit that only touched
+    // the opened row left some blocks showing the old number. The other
+    // rows in the block keep their own times and titles; only their
+    // salesperson, colour and job number change.
     const block=blocks.find(b=>b.ids.includes(draft.id));
     const blockIds=new Set(block?block.ids:[draft.id]);
     onBookingsChange(bookings.map(booking=>{
       if(booking.id===draft.id)return saved;
-      if(blockIds.has(booking.id))return {...booking,salespersonId:saved.salespersonId,colour:saved.colour};
+      if(blockIds.has(booking.id))return {...booking,salespersonId:saved.salespersonId,colour:saved.colour,jobNumber:saved.jobNumber};
       if(applyAll&&applyAllPrompt&&applyAllPrompt.like.some(like=>like.id===booking.id))return {...booking,salespersonId:applyAllPrompt.salespersonId,colour:applyAllPrompt.colour};
       return booking;
     }));
