@@ -612,6 +612,7 @@ export default function App() {
           markup={markup}
           mode={markupMode}
           selectedBookingId={selectedBookingId}
+          editingEnabled={editingEnabled && role !== 'viewer'}
           onChange={setMarkup}
           onClearSelectedBooking={() => setSelectedBookingId(null)}
         />

@@ -6,6 +6,7 @@ interface Props {
   markup: MarkupItem[];
   mode: 'none' | 'text' | 'arrow';
   selectedBookingId: string | null;
+  editingEnabled: boolean;
   onChange: (items: MarkupItem[]) => void;
   onClearSelectedBooking: () => void;
 }
@@ -17,7 +18,7 @@ type Drag = {
   part: 'move' | 'start' | 'end';
 };
 
-export default function MarkupLayer({ markup, mode, selectedBookingId, onChange, onClearSelectedBooking }: Props) {
+export default function MarkupLayer({ markup, mode, selectedBookingId, editingEnabled, onChange, onClearSelectedBooking }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [layout, setLayout] = useState<AnchorLayout | null>(null);
@@ -149,7 +150,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName)) return;
-      if (selected && (event.key === 'Delete' || event.key === 'Backspace')) {
+      if (editingEnabled && selected && (event.key === 'Delete' || event.key === 'Backspace')) {
         event.preventDefault();
         onChange(markup.filter((item) => item.id !== selected));
         setSelected(null);
@@ -159,7 +160,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selected, markup, onChange]);
+  }, [selected, markup, onChange, editingEnabled]);
 
   // Inline note editing: type straight into the note, no pop-up. The
   // box grows to fit what is typed.
@@ -205,7 +206,12 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
     root.current?.querySelector('svg')?.setPointerCapture(event.pointerId);
   };
 
+  // A viewer is read-only: markup is visible but cannot be selected,
+  // dragged, edited, created or deleted. Without this gate a viewer
+  // clicking a note selected it, and Delete, Backspace or the Delete
+  // button then removed it from their board.
   const begin = (event: PE, item: MarkupItem, part: Drag['part'] = 'move') => {
+    if (!editingEnabled) return;
     event.stopPropagation();
     setSelected(item.id);
     setDrag({ item, ...point(event), part });
@@ -216,6 +222,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
     setSelected(null);
     setEditing(null);
     onClearSelectedBooking();
+    if (!editingEnabled) return;
     const position = point(event);
     if (mode === 'text') {
       // A new note starts unhighlighted and opens straight into typing
@@ -318,7 +325,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
             <g key={item.id}>
               <line x1={pos.x} y1={pos.y} x2={pos.x2} y2={pos.y2} stroke="#6a3fb5" strokeWidth={3} markerEnd="url(#markup-arrow)" />
               <line className="markup-hit" x1={pos.x} y1={pos.y} x2={pos.x2} y2={pos.y2} stroke="transparent" strokeWidth={16} onPointerDown={(event) => begin(event, item)} />
-              {selected === item.id && (
+              {editingEnabled && selected === item.id && (
                 <>
                   <circle className="markup-handle" cx={pos.x} cy={pos.y} r={6} fill="white" stroke="#6a3fb5" onPointerDown={(event) => begin(event, item, 'start')} />
                   <circle className="markup-handle" cx={pos.x2} cy={pos.y2} r={6} fill="white" stroke="#6a3fb5" onPointerDown={(event) => begin(event, item, 'end')} />
@@ -328,7 +335,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
           );
         })}
         {draft && <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#6a3fb5" strokeWidth={3} />}
-        {active && active.type === 'arrow' && activePos && (
+        {editingEnabled && active && active.type === 'arrow' && activePos && (
           <foreignObject x={arrowActionX} y={arrowActionY} width={180} height={26}>
             <div className="markup-actions" onPointerDown={(event) => event.stopPropagation()}>
               <button onClick={remove}>Delete</button>
@@ -348,6 +355,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
             style={{ left: pos.x, top: pos.y }}
             onPointerDown={(event) => begin(event, item)}
             onDoubleClick={(event) => {
+              if (!editingEnabled) return;
               event.stopPropagation();
               startEdit(item);
             }}
@@ -373,7 +381,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
             ) : (
               item.text
             )}
-            {selected === item.id && (
+            {editingEnabled && selected === item.id && (
               <div className="markup-actions" onPointerDown={(event) => event.stopPropagation()}>
                 <button onClick={() => startEdit(item)}>Edit</button>
                 <button onClick={() => onChange(markup.map((item2) => (item2.type === 'text' && item2.id === item.id ? { ...item2, highlight: !item2.highlight } : item2)))}>{item.highlight ? 'Unhighlight' : 'Highlight'}</button>
