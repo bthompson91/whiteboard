@@ -34,7 +34,7 @@ function roomNameFontSizes(names: string[], widths: number[]): number[] {
   const ctx = canvas.getContext('2d');
   if (!ctx) return names.map(() => 13);
   const ref = 13;
-  ctx.font = `700 ${ref}px Calibri, 'Segoe UI', sans-serif`;
+  ctx.font = `700 ${ref}px 'Fira Sans', Calibri, 'Segoe UI', sans-serif`;
   return names.map((name, i) => {
     const textWidth = ctx.measureText(name).width;
     const available = Math.max(1, (widths[i] || 150) - 20);
@@ -51,7 +51,7 @@ function dateFontSizes(labels: string[], columnWidth: number): number[] {
   const ctx = canvas.getContext('2d');
   if (!ctx) return labels.map(() => 23);
   const ref = 23;
-  ctx.font = `700 ${ref}px Calibri, 'Segoe UI', sans-serif`;
+  ctx.font = `700 ${ref}px 'Fira Sans', Calibri, 'Segoe UI', sans-serif`;
   return labels.map(label => {
     const textWidth = ctx.measureText(label).width;
     const available = Math.max(1, columnWidth - 8);
