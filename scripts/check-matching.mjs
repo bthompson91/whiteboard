@@ -110,15 +110,15 @@ try {
   const otherDate = result.changes.find(c => c.type === 'new')?.match;
   check('different date cannot reach 80% even when everything else matches', !!otherDate && otherDate.score < 80 && otherDate.classification === 'possible', JSON.stringify(otherDate));
 
-  // --- Time scale: 00:00-06:00 is half height per hour ---
-  // The 6 night hours take 3 units, the 18 day hours 18 units, 21 in
-  // total, so a day hour is twice a night hour and daytime bookings
+  // --- Time scale: 00:00-06:00 is 75% height per hour ---
+  // The 6 night hours take 4.5 units, the 18 day hours 18 units, 22.5
+  // in total, so a night hour is 75% of a day hour and daytime bookings
   // read bigger.
   check('midnight is the top of the day', timeFraction(0) === 0);
-  check('06:00 is 3/21 of the day height', Math.abs(timeFraction(360) - 3 / 21) < 1e-9, String(timeFraction(360)));
+  check('06:00 is 4.5/22.5 of the day height', Math.abs(timeFraction(360) - 4.5 / 22.5) < 1e-9, String(timeFraction(360)));
   check('midnight next day is the bottom', timeFraction(1440) === 1);
-  check('a day hour is twice a night hour', Math.abs((timeFraction(780) - timeFraction(720)) - 2 * (timeFraction(60) - timeFraction(0))) < 1e-9);
-  check('a 3-hour daytime booking is twice a 3-hour night booking', Math.abs((timeFraction(720) - timeFraction(540)) - 2 * (timeFraction(180) - timeFraction(0))) < 1e-9);
+  check('a night hour is 75% of a day hour', Math.abs((timeFraction(60) - timeFraction(0)) - 0.75 * (timeFraction(780) - timeFraction(720))) < 1e-9);
+  check('a 3-hour night booking is 75% of a 3-hour daytime booking', Math.abs((timeFraction(180) - timeFraction(0)) - 0.75 * (timeFraction(720) - timeFraction(540))) < 1e-9);
 
   // --- Disappeared bookings carry their previous record (no render crash) ---
   result = compareImports([booking(), booking({ id: 'booking-2', title: 'Other Event' })], [booking()], 'Venue');

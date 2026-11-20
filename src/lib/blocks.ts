@@ -10,13 +10,14 @@ function range(start:string,end:string) { const a=minutes(start),b=minutes(end);
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
 
 // Fraction of the day's height for a minute of the day. 00:00–06:00 is
-// compressed to half height per hour so daytime bookings read bigger:
-// the 6 night hours take 3 units, the 18 day hours take 18 units, 21
-// units total. A day hour is 1/21 of the day height, a night hour 1/42.
+// compressed to 75% height per hour so daytime bookings read bigger:
+// the 6 night hours take 4.5 units, the 18 day hours take 18 units,
+// 22.5 units total. A day hour is 1/22.5 of the day height, a night
+// hour 1/30.
 export function timeFraction(minutesOfDay: number): number {
   const m = Math.max(0, Math.min(1440, minutesOfDay));
-  if (m <= 360) return m / 2520;
-  return (3 + (m - 360) / 60) / 21;
+  if (m <= 360) return m / 1800;
+  return (4.5 + (m - 360) / 60) / 22.5;
 }
 
 // Which room columns get a strong vertical divider after them: exactly
