@@ -177,10 +177,11 @@ otherwise skipped.
   different number in each room (`jobNumbers`, room id to number, on the
   booking; the booking's own `jobNumber` is the number for every room
   without an entry). The inspector edits the number for the block clicked,
-  with a "Same job number in all N rooms" tickbox that edits the booking's
-  one number instead, and a per-room list (with a NO AV tickbox per room)
-  when the tickbox is off — so 30 of 61 rooms can be NO AV while the rest
-  share a number. A wide block spanning several rooms is one big room with
+  with a "Same job number in all N rooms" tickbox (off by default — jobs
+  differ per room, only the colour is shared across the whole event) that
+  edits the booking's one number instead, and a per-room list (with a NO AV
+  tickbox per room) when the tickbox is off — so 30 of 61 rooms can be NO AV
+  while the rest share a number. A wide block spanning several rooms is one big room with
   one event and one job number, so it shows the booking's number (and its
   grey/NO AV rendering follows that number). The per-room numbers carry
   over on re-import like the booking's number. The event identity

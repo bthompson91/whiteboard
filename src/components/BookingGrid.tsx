@@ -152,11 +152,12 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
   const [inspectorRooms,setInspectorRooms]=useState<string[]>([]);
   // Job numbers are per room: the inspector edits the number for the
   // block clicked, unless "Same job number in all rooms" is on — then
-  // it edits the booking's one number for every room. The box starts
-  // on while the booking has no per-room numbers yet.
-  const [jobNumberAllRooms,setJobNumberAllRooms]=useState(true);
-  const openInspector=(booking:Booking,blockRooms:string[])=>{onSelectedBookingChange(booking.id);setDraft({...booking});setInspectorRooms(blockRooms);setJobNumberAllRooms(!(booking.jobNumbers&&Object.keys(booking.jobNumbers).length));setMergeMessage(null);};
-  const closeInspector=()=>{setDraft(null);setInspectorRooms([]);setJobNumberAllRooms(true);setApplyAllPrompt(null);setMergeMessage(null);};
+  // it edits the booking's one number for every room. The box is off
+  // by default: jobs differ per room (only the colour is shared across
+  // the whole event), so one number for all rooms is opt-in.
+  const [jobNumberAllRooms,setJobNumberAllRooms]=useState(false);
+  const openInspector=(booking:Booking,blockRooms:string[])=>{onSelectedBookingChange(booking.id);setDraft({...booking});setInspectorRooms(blockRooms);setJobNumberAllRooms(false);setMergeMessage(null);};
+  const closeInspector=()=>{setDraft(null);setInspectorRooms([]);setJobNumberAllRooms(false);setApplyAllPrompt(null);setMergeMessage(null);};
   const commitSave=(applyAll:boolean)=>{
     if(!draft)return;
     // A job number is per room: the number set for the block clicked,
