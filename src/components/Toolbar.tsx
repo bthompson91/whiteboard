@@ -19,13 +19,14 @@ interface Props {
   onRoleChange: (role: BoardRole) => void;
   onDisplayNameChange: (name: string) => void;
   onSaveAndRefresh: () => void;
+  onToday: () => void;
   onOpenLinkFiles: () => void;
 }
 export default function Toolbar({
   venue, bookingCount, role, displayName, editingEnabled, markupMode, error, revision,
   saving, linkedFiles, canLinkFiles, editorLockName,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration,
-  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onOpenLinkFiles
+  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles
 }: Props) {
   return (
     <header className="toolbar">
@@ -50,6 +51,7 @@ export default function Toolbar({
       <button onClick={onSaveAndRefresh} disabled={saving} title="Re-read the linked files, so the board shows what everyone else has saved. Any edit made in the last moment is written out first, so the refresh cannot lose it.">
         {saving ? 'Refreshing…' : '🔄 Refresh'}
       </button>
+      <button onClick={onToday} title="Snap to today">📅 Today</button>
       {canLinkFiles && (
         <button
           onClick={onOpenLinkFiles}

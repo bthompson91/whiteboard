@@ -128,6 +128,10 @@ export default function App() {
   const boardHandleRef = useRef<LinkedFileHandle | null>(null);
   const yamlHandleRef = useRef<LinkedFileHandle | null>(null);
   const bookingsHandleRef = useRef<LinkedFileHandle | null>(null);
+  // The Today button lives in the Toolbar, but the scroll itself lives
+  // in BookingGrid, where the rows are. This ref carries the scroll
+  // function up so the button can call it.
+  const scrollToTodayRef = useRef<(() => void) | null>(null);
   const [linkedFiles, setLinkedFiles] = useState<{ board: string | null; yaml: string | null; bookings: string | null }>({ board: null, yaml: null, bookings: null });
   const [linkFilesOpen, setLinkFilesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -574,6 +578,7 @@ export default function App() {
         onRoleChange={requestRoleChange}
         onDisplayNameChange={setDisplayName}
         onSaveAndRefresh={saveAndRefresh}
+        onToday={() => scrollToTodayRef.current?.()}
         saving={saving}
         linkedFiles={linkedFiles}
         canLinkFiles={hasFileSystemAccess()}
@@ -592,6 +597,7 @@ export default function App() {
           onSelectedBookingChange={setSelectedBookingId}
           roomBaseWidths={roomBaseWidths}
           roomWidthMin={settings?.room_width_min || 125}
+          scrollToTodayRef={scrollToTodayRef}
         />
         <MarkupLayer
           markup={markup}
