@@ -31,7 +31,7 @@ try {
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
-  const { blocksFor, strongBorders, likeBookings } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, likeBookings, blockCountForBookings } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
 
@@ -390,6 +390,24 @@ try {
     booking({ id: 'b', title: 'Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
   ], venue, [], false);
   check('a merge group does not join rooms that are not next to each other', blocks.length === 2, JSON.stringify(blocks));
+
+  // --- Apply-to-all counts merged blocks as one ---
+  // A Setup, a Dinner and a Crew Meals for one event render as one
+  // block, so the apply-to-all prompt counts them as one booking, not
+  // three. Bookings in separate blocks count separately.
+  const galaRows = [
+    booking({ id: 's', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '18:00' }),
+    booking({ id: 'd', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00' }),
+    booking({ id: 'c', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '20:00', endTime: '21:00' })
+  ];
+  const galaBlocks = blocksFor(galaRows, venue, [], false);
+  check('bookings merged into one block count as one', blockCountForBookings(galaBlocks, galaRows) === 1, JSON.stringify(galaBlocks));
+  const mixed = [
+    ...galaRows,
+    booking({ id: 'x', title: 'Other', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00' })
+  ];
+  const mixedBlocks = blocksFor(mixed, venue, [], false);
+  check('bookings in separate blocks count separately', blockCountForBookings(mixedBlocks, mixed) === 2, JSON.stringify(mixedBlocks));
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

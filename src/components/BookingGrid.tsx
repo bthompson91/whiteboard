@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, clock, likeBookings, strongBorders } from '../lib/blocks';
+import { Block, blocksFor, clock, likeBookings, blockCountForBookings, strongBorders } from '../lib/blocks';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
@@ -34,7 +34,11 @@ function FitTitle({ text }: { text: string }) {
   const fit = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    let lo = 8, hi = 64, best = 8;
+    // The text size is capped at 80% of the block's height, so a short
+    // block never gets a title so large it spills over the block and
+    // overlaps the block below it.
+    const cap = Math.max(8, Math.floor(el.clientHeight * 0.8));
+    let lo = 8, hi = Math.min(64, cap), best = 8;
     const fits = (size: number) => {
       el.style.fontSize = `${size}px`;
       return el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1;
@@ -65,15 +69,26 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
   const [draft,setDraft]=useState<Booking|null>(null);
-  const [applyAllPrompt,setApplyAllPrompt]=useState<{salespersonId:string;colour?:string;name:string;like:Booking[]}|null>(null);
+  const [applyAllPrompt,setApplyAllPrompt]=useState<{salespersonId:string;colour?:string;name:string;like:Booking[];likeBlockCount:number}|null>(null);
   const [mergeMessage,setMergeMessage]=useState<string|null>(null);
   const openInspector=(booking:Booking)=>{onSelectedBookingChange(booking.id);setDraft({...booking});setMergeMessage(null);};
   const closeInspector=()=>{setDraft(null);setApplyAllPrompt(null);setMergeMessage(null);};
   const commitSave=(applyAll:boolean)=>{
     if(!draft)return;
     const saved={...draft,jobNumber:draft.jobNumber?normalizeJobNumber(draft.jobNumber):undefined};
+    // The block this booking belongs to: a merged block is one booking
+    // to the user, so "Just this one" colours the whole block, not just
+    // the one row the inspector happened to open (the inspector opens
+    // the first booking id in the block, which need not be the one that
+    // sets the block's colour — so colouring just that row left the
+    // block showing the old colour, which is why "Just this one" looked
+    // broken). The other rows in the block keep their own times and
+    // titles; only their salesperson and colour change.
+    const block=blocks.find(b=>b.ids.includes(draft.id));
+    const blockIds=new Set(block?block.ids:[draft.id]);
     onBookingsChange(bookings.map(booking=>{
       if(booking.id===draft.id)return saved;
+      if(blockIds.has(booking.id))return {...booking,salespersonId:saved.salespersonId,colour:saved.colour};
       if(applyAll&&applyAllPrompt&&applyAllPrompt.like.some(like=>like.id===booking.id))return {...booking,salespersonId:applyAllPrompt.salespersonId,colour:applyAllPrompt.colour};
       return booking;
     }));
@@ -90,7 +105,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     const person=salespersonId?resolveSalesperson(salespeople,salespersonId):undefined;
     const like=salespersonId&&salespersonId!==original?.salespersonId?likeBookings(bookings,draft.title,draft.id,salespersonId):[];
     if(person&&like.length&&salespersonId){
-      setApplyAllPrompt({salespersonId,colour:person.colour,name:person.name,like});
+      setApplyAllPrompt({salespersonId,colour:person.colour,name:person.name,like,likeBlockCount:blockCountForBookings(blocks,like)});
       return;
     }
     commitSave(false);
@@ -218,9 +233,9 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
           {mergeMessage&&<p style={{margin:'0 20px 10px',fontSize:13}}>{mergeMessage}</p>}
           {applyAllPrompt&&(
             <div style={{margin:'0 20px 10px',padding:'12px',border:'1px solid #1d4e89',borderRadius:7,background:'#eef4fb',fontSize:13}}>
-              <p style={{margin:'0 0 10px'}}>{applyAllPrompt.name} is also on {applyAllPrompt.like.length} other booking{applyAllPrompt.like.length===1?'':'s'} titled “{draft.title}”. Apply {applyAllPrompt.name} to all of them?</p>
+              <p style={{margin:'0 0 10px'}}>{applyAllPrompt.name} is also on {applyAllPrompt.likeBlockCount} other booking{applyAllPrompt.likeBlockCount===1?'':'s'} titled “{draft.title}”. Apply {applyAllPrompt.name} to all of them?</p>
               <div style={{display:'flex',gap:8}}>
-                <button className="primary" onClick={()=>commitSave(true)}>Apply to all {applyAllPrompt.like.length+1}</button>
+                <button className="primary" onClick={()=>commitSave(true)}>Apply to all {applyAllPrompt.likeBlockCount+1}</button>
                 <button onClick={()=>commitSave(false)}>Just this one</button>
               </div>
             </div>

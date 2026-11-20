@@ -136,6 +136,14 @@ export default function App() {
     }
   }, [bookings]);
   useEffect(() => {
+    // The previous import is what a re-import carries colour, salesperson
+    // and other edits from, so it must track the board, not just the last
+    // publish: colour-coding a booking after publishing, then re-importing
+    // the exact same file, lost every colour because the snapshot was
+    // stale. An empty board never wipes it.
+    if (bookings.length) savePreviousImport(bookings);
+  }, [bookings]);
+  useEffect(() => {
     localStorage.setItem(REVISION_KEY, String(revision));
   }, [revision]);
   useEffect(() => {

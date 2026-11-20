@@ -28,6 +28,21 @@ export function likeBookings(bookings: Booking[], title: string, excludeId: stri
   return bookings.filter(b => b.id !== excludeId && b.title === title && b.salespersonId !== salespersonId);
 }
 
+// How many blocks a set of bookings renders as. Bookings that merge
+// into one block (a Setup, a Dinner and a Crew Meals for one event, or
+// the same event in rooms next to each other) count as one, because
+// that is what the board shows. Used by the apply-to-all prompt, so it
+// counts the blocks the user sees, not the rows behind them. A booking
+// that is not in any block (hidden, board locked) counts as itself.
+export function blockCountForBookings(blocks: Block[], bookings: Booking[]): number {
+  const seen = new Set<string>();
+  for (const booking of bookings) {
+    const block = blocks.find(b => b.ids.includes(booking.id));
+    seen.add(block ? `${block.date}|${block.title}|${block.rooms.join(',')}|${block.ids.join(',')}` : `booking:${booking.id}`);
+  }
+  return seen.size;
+}
+
 // Groups bookings into the blocks the grid renders. Bookings with the
 // same title in the same room merge into one tall block spanning their
 // combined times (a height merge); the same event in adjacent rooms at
