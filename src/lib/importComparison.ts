@@ -1,5 +1,5 @@
 import { Booking } from '../types';
-import { identityKey, normalizeIdentity as normalizeText, normalizeJobNumber } from './bookingIdentity';
+import { identityKey, normalizeIdentity as normalizeText, matchJobNumber } from './bookingIdentity';
 
 export type ImportChangeType = 'unchanged' | 'changed' | 'new' | 'disappeared';
 export type MatchClassification = 'strong' | 'possible' | 'unmatched';
@@ -147,8 +147,8 @@ export function compareImports(previous: Booking[] | null, current: Booking[], v
     if (JSON.stringify([...current.roomIds].sort()) !== JSON.stringify([...candidate.roomIds].sort())) diffs.push('rooms');
     if (diffs.length !== 1) return null;
     if (
-      current.jobNumber && candidate.jobNumber &&
-      normalizeJobNumber(current.jobNumber) !== normalizeJobNumber(candidate.jobNumber)
+      matchJobNumber(current) && matchJobNumber(candidate) &&
+      matchJobNumber(current) !== matchJobNumber(candidate)
     ) return null;
     return diffs[0];
   };
@@ -179,7 +179,7 @@ export function compareImports(previous: Booking[] | null, current: Booking[], v
     // it is the closest thing to an id in the data.
     const candidates = unmatchedPrevious
       .filter(candidate => !linkedPreviousIds.has(candidate.id))
-      .filter(candidate => !(booking.jobNumber && candidate.jobNumber && normalizeJobNumber(booking.jobNumber) !== normalizeJobNumber(candidate.jobNumber)))
+      .filter(candidate => !(matchJobNumber(booking) && matchJobNumber(candidate) && matchJobNumber(booking) !== matchJobNumber(candidate)))
       .map(candidate => ({ candidate, score: matchScore(booking, candidate) }))
       .sort((a, b) => b.score - a.score);
     const best = candidates[0];

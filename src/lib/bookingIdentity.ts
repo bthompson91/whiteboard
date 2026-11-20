@@ -8,6 +8,21 @@ type Row = Booking & { activity?: string };
 export const normalizeIdentity = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
 export const normalizeJobNumber = (value?: string) => (value || '').trim().replace(/^0+(?=\d)/, '');
 
+// The job number matching uses: the booking's own number, else its
+// first per-room number (rooms sorted, so it is stable). Job numbers
+// are per room now, but a match only needs one number to tell two
+// bookings apart — a different number on both sides means a different
+// booking, and that veto must still fire when the numbers live per room.
+export const matchJobNumber = (booking: Booking): string => {
+  if (booking.jobNumber) return normalizeJobNumber(booking.jobNumber);
+  const rooms = Object.keys(booking.jobNumbers || {}).sort();
+  for (const room of rooms) {
+    const n = normalizeJobNumber(booking.jobNumbers![room]);
+    if (n) return n;
+  }
+  return '';
+};
+
 const stableHash = (value: string) => {
   let hash = 5381;
   for (let i = 0; i < value.length; i++) hash = ((hash << 5) + hash + value.charCodeAt(i)) >>> 0;

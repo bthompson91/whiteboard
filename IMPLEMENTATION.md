@@ -176,16 +176,23 @@ otherwise skipped.
 - **Job number per room.** A booking in several rooms can carry a
   different number in each room (`jobNumbers`, room id to number, on the
   booking; the booking's own `jobNumber` is the number for every room
-  without an entry). The inspector edits the number for the block clicked,
-  with a "Same job number in all N rooms" tickbox (off by default — jobs
-  differ per room, only the colour is shared across the whole event) that
-  edits the booking's one number instead, and a per-room list (with a NO AV
-  tickbox per room) when the tickbox is off — so 30 of 61 rooms can be NO AV
-  while the rest share a number. A wide block spanning several rooms is one big room with
-  one event and one job number, so it shows the booking's number (and its
-  grey/NO AV rendering follows that number). The per-room numbers carry
-  over on re-import like the booking's number. The event identity
-  (`identityKey`) deliberately excludes the job number: including it made
+  without an entry). The inspector edits the number for the block clicked
+  — the booking's own number when the booking is in one room, a per-room
+  number when it is in several — and a per-room list (with a NO AV tickbox
+  per room) sits under the field, so 30 of 61 rooms can be NO AV while the
+  rest share a number. There is no one-shot for one number in every room:
+  jobs differ per room, only the colour is shared across the whole event.
+  A collapsed "Related bookings" list in the inspector shows the same
+  event on other days, or in other rooms as its own booking, in a
+  scrollable frame, each with a job number field and a NO AV tickbox, so
+  their numbers can be set without opening each one (bookings in the
+  block being edited are left out — they share its number already).
+  A wide block spanning several rooms is one big room with one event and
+  one job number, so it shows the booking's number (and its grey/NO AV
+  rendering follows that number). The per-room numbers carry over on
+  re-import like the booking's number. The match veto still fires when
+  the numbers live per room (`matchJobNumber`: the booking's number,
+  else its first per-room number). The event identity (`identityKey`) deliberately excludes the job number: including it made
   a booking unfindable the moment a number was set, so the carry-over
   missed, the review called it unchanged, and the number was lost on the
   next re-import. The job number stays in the per-row id.
@@ -647,7 +654,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-208 checks covering matching tiers and weights, booking identity, height and
+215 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

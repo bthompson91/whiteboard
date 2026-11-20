@@ -38,13 +38,13 @@ try {
     logLevel: 'silent'
   });
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
-  const { applyReview, changeKey, mergeMatchedBooking } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
+  const { applyReview, changeKey, mergeMatchedBooking, applyJobNumberEdits } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, blockJobNumber, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
-  const { bookingId, identityKey } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
+  const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
@@ -418,6 +418,42 @@ try {
     const merged = mergeMatchedBooking(previous, next);
     return merged.jobNumber === '1022948' && JSON.stringify(merged.jobNumbers) === JSON.stringify({ 'Palladium B': 'NO AV' });
   })());
+
+  // --- Related bookings list + per-room veto ---
+  check('related bookings are the same title, without the one being edited, in date order', (() => {
+    const list = relatedBookings([
+      booking({ id: 'a', title: 'MCG Dinner', date: '2026-11-23', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }),
+      booking({ id: 'b', title: 'MCG Dinner', date: '2026-11-21', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }),
+      booking({ id: 'c', title: 'Charity Gala', date: '2026-11-21', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })
+    ], 'MCG Dinner', 'b');
+    return list.length === 1 && list[0].id === 'a';
+  })());
+  check('related bookings sort by date', (() => {
+    const list = relatedBookings([
+      booking({ id: 'a', title: 'MCG Dinner', date: '2026-11-23', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }),
+      booking({ id: 'b', title: 'MCG Dinner', date: '2026-11-21', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })
+    ], 'MCG Dinner', 'none');
+    return list.length === 2 && list[0].id === 'b' && list[1].id === 'a';
+  })());
+  check('a related job-number edit sets the number and clears per-room numbers', (() => {
+    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium A': 'NO AV' } })], { r: '001022948' });
+    return edited[0].jobNumber === '1022948' && edited[0].jobNumbers === undefined;
+  })());
+  check('a related edit never touches the block being edited', (() => {
+    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })], { r: '1022948' }, new Set(['r']));
+    return edited[0].jobNumber === undefined;
+  })());
+  check('an empty related edit clears the number', (() => {
+    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948' })], { r: '' });
+    return edited[0].jobNumber === undefined;
+  })());
+  check('the match number is the booking number, else the first per-room number', matchJobNumber(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948', jobNumbers: { 'Palladium A': '111' } })) === '1022948' && matchJobNumber(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium B': '222', 'Palladium A': '111' } })) === '111' && matchJobNumber(booking({ id: 'c', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })) === '');
+  result = compareImports(
+    [booking({ jobNumbers: { 'Palladium A': '111' } })],
+    [booking({ id: 'booking-9', title: 'Charity Dinner', jobNumbers: { 'Palladium A': '222' } })],
+    'Venue'
+  );
+  check('differing per-room job numbers veto the match too', !result.changes.find(c => c.type === 'new')?.match);
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);

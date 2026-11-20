@@ -1,5 +1,6 @@
 import { Booking } from '../types';
 import { BookingChange } from './importComparison';
+import { normalizeJobNumber } from './bookingIdentity';
 
 // A review change is identified by what it is, not where it sits in the
 // list, so ticking a box still refers to the same booking after the list is
@@ -28,6 +29,20 @@ export function mergeMatchedBooking(previous: Booking, booking: Booking): Bookin
     jobNumbers: booking.jobNumbers ?? previous.jobNumbers,
     timeline: booking.timeline ?? previous.timeline
   };
+}
+
+// Apply staged job-number edits (from the inspector's related list) to
+// the bookings they name: the number replaces the booking's own number
+// and clears its per-room numbers, so the booking shows the number that
+// was typed; an empty edit clears the number. Bookings in the edited
+// block are untouched — they share the block's number already.
+export function applyJobNumberEdits(bookings: Booking[], edits: Record<string, string>, blockIds: Set<string> = new Set()): Booking[] {
+  return bookings.map(booking => {
+    const edit = edits[booking.id];
+    if (edit === undefined || blockIds.has(booking.id)) return booking;
+    const n = normalizeJobNumber(edit);
+    return { ...booking, jobNumber: n || undefined, jobNumbers: undefined };
+  });
 }
 
 // Turn a reviewed import into the bookings to publish. `selected` maps a

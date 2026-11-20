@@ -63,6 +63,14 @@ export function likeBookings(bookings: Booking[], title: string, excludeId: stri
   return bookings.filter(b => b.id !== excludeId && b.title === title && b.salespersonId !== salespersonId);
 }
 
+// Bookings with the same title as the one being edited, for the
+// inspector's related list: the same event on other days, or in other
+// rooms as its own booking. The booking being edited is excluded.
+// Sorted by date, so the list reads in the order the events happen.
+export function relatedBookings(bookings: Booking[], title: string, excludeId: string): Booking[] {
+  return bookings.filter(b => b.id !== excludeId && b.title === title).sort((a, c) => a.date.localeCompare(c.date) || a.startTime.localeCompare(c.startTime));
+}
+
 // How many blocks a set of bookings renders as. Bookings that merge
 // into one block (a Setup, a Dinner and a Crew Meals for one event, or
 // the same event in rooms next to each other) count as one, because
