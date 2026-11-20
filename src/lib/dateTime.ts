@@ -9,6 +9,13 @@ const excelSerialToDate = (serial: number, date1904: boolean): Date => {
   return new Date(epoch + Math.floor(serial) * 86400000);
 };
 
+// Past, today or future, for the date bar: past days are grey, today is
+// yellow with red text, future days are green, like the Encore sheet.
+// Dates are yyyy-MM-dd, so a plain string comparison is the date order.
+export function dayKind(date: string, today: string): 'past' | 'today' | 'future' {
+  return date < today ? 'past' : date > today ? 'future' : 'today';
+}
+
 export function dateValue(v: unknown, date1904: boolean, format = 'DD/MM/YYYY'): string {
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
   if (typeof v === 'number' || /^\d{5}(\.\d+)?$/.test(text(v))) {

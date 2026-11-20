@@ -83,6 +83,7 @@ export type MarkupItem =
       x: number;
       y: number;
       text: string;
+      highlight?: boolean;
       bookingId?: string;
     }
   | {

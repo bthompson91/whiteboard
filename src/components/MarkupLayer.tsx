@@ -110,7 +110,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
       if (text) {
         onChange([
           ...markup,
-          { id: crypto.randomUUID(), type: 'text', ...position, text, bookingId: selectedBookingId || undefined }
+          { id: crypto.randomUUID(), type: 'text', ...position, text, highlight: true, bookingId: selectedBookingId || undefined }
         ]);
       }
     }
@@ -167,7 +167,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
 
   const active = markup.find((item) => item.id === selected);
   const arrowActionX = active && active.type === 'arrow' ? (active.x1 + active.x2) / 2 : 0;
-  const arrowActionY = active && active.type === 'arrow' ? (active.x1 + active.x2) / 2 : 0;
+  const arrowActionY = active && active.type === 'arrow' ? (active.y1 + active.y2) / 2 : 0;
 
   return (
     <div ref={root} className={`markup-layer ${mode}`} style={size}>
@@ -182,14 +182,14 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
         }}
       >
         <defs>
-          <marker id="markup-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0 0L8 4L0 8Z" fill="#6a3fb5" />
+          <marker id="markup-arrow" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+            <path d="M0 0L18 9L0 18Z" fill="#6a3fb5" />
           </marker>
         </defs>
         {markup.map((item) =>
           item.type === 'arrow' ? (
             <g key={item.id}>
-              <line x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="#6a3fb5" strokeWidth={3} markerEnd="url(#markup-arrow)" />
+              <line x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="#6a3fb5" strokeWidth={7} markerEnd="url(#markup-arrow)" />
               <line className="markup-hit" x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} stroke="transparent" strokeWidth={16} onPointerDown={(event) => begin(event, item)} />
               {selected === item.id && (
                 <>
@@ -200,7 +200,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
             </g>
           ) : null
         )}
-        {draft && <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#6a3fb5" strokeWidth={3} />}
+        {draft && <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#6a3fb5" strokeWidth={7} />}
         {active && active.type === 'arrow' && (
           <foreignObject x={arrowActionX} y={arrowActionY} width={180} height={26}>
             <div className="markup-actions" onPointerDown={(event) => event.stopPropagation()}>
@@ -214,7 +214,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
         item.type === 'text' ? (
           <div
             key={item.id}
-            className={`markup-note ${selected === item.id ? 'selected' : ''}`}
+            className={`markup-note ${selected === item.id ? 'selected' : ''} ${item.highlight ? 'highlight' : ''}`}
             style={{ left: item.x, top: item.y }}
             onPointerDown={(event) => begin(event, item)}
             onDoubleClick={(event) => {
@@ -226,6 +226,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, onChange,
             {selected === item.id && (
               <div className="markup-actions" onPointerDown={(event) => event.stopPropagation()}>
                 <button onClick={() => edit(item)}>Edit</button>
+                <button onClick={() => onChange(markup.map((item2) => (item2.type === 'text' && item2.id === item.id ? { ...item2, highlight: !item2.highlight } : item2)))}>{item.highlight ? 'Unhighlight' : 'Highlight'}</button>
                 <button onClick={remove}>Delete</button>
                 <button onClick={() => setSelected(null)}>Done</button>
               </div>

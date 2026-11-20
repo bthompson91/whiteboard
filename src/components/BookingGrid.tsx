@@ -4,6 +4,7 @@ import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
 import { Block, blocksFor, clock, strongBorders } from '../lib/blocks';
+import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
 interface Props {
@@ -55,8 +56,8 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   return <div className="booking-grid" ref={root} style={style}>
     <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id}>{r.name}</div>)}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
-    {dates.map(date=><div className={`grid-row${date===today?' today':''}`} key={date} style={{gridTemplateColumns:columns}}>
-      <div className={`date-cell${date===today?' today':''} group-edge day-edge`}><div className="date-label">{format(parseISO(date),'EEE dd MMM')}</div>{Array.from({length:24/hourStep},(_,i)=>i*hourStep).map(h=><span className="hour-label" key={h} style={{top:h/24*size.day,fontSize:9,lineHeight:'10px'}}>{String(h).padStart(2,'0')}:00</span>)}</div>
+    {dates.map(date=><div className="grid-row" key={date} style={{gridTemplateColumns:columns}}>
+      <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label">{format(parseISO(date),'EEE dd MMM')}</div>{Array.from({length:24/hourStep},(_,i)=>i*hourStep).map(h=><span className="hour-label" key={h} style={{top:h/24*size.day,fontSize:9,lineHeight:'10px'}}>{String(h).padStart(2,'0')}:00</span>)}</div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
       {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,top:start/1440*size.day,height:Math.max(1,(end-start)/1440*size.day),backgroundColor:b.unavailable?undefined:(b.colour||undefined),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}}}>
         <div className="booking-facts" style={{backgroundColor:b.unavailable?(b.colour||undefined):undefined}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}<div>{clock(b.mainStart)}</div><div>{clock(b.mainEnd)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{t}</div>)}</div>

@@ -27,7 +27,7 @@ try {
   });
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
-  const { dateValue, timeValue } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
+  const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { blocksFor, strongBorders } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
 
@@ -208,6 +208,11 @@ try {
   check('short block snaps to one full frame', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 14 * 60, JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:50', endTime: '20:10' })], venue, [], false);
   check('block that would collapse keeps one full frame', blocks.length === 1 && blocks[0].start === 20 * 60 && blocks[0].end === 22 * 60, JSON.stringify(blocks));
+
+  // --- date bar: past days grey, today yellow with red text, future green ---
+  check('dayKind calls a past day past', dayKind('2026-11-19', '2026-11-20') === 'past');
+  check('dayKind calls today today', dayKind('2026-11-20', '2026-11-20') === 'today');
+  check('dayKind calls a future day future', dayKind('2026-11-21', '2026-11-20') === 'future');
 
   // --- Strong borders: placed after named rooms, not around groups ---
   const borders = strongBorders(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1', 'River Room 2'], ['Palladium C1', 'River Room 2']);
