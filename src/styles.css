@@ -7,9 +7,11 @@
 /* Files unlinked: lowlight the whole board so it is obvious at a
    glance that the board is not reading and writing its files. The
    dim is a fixed overlay above the board (grid header 2000, markup
-   1000) but below the inspector (3000/3002) and the toolbar, so the
-   board looks dimmed while the toolbar — with the red Link files
-   button — and any open inspector stay bright and usable. It never
-   blocks clicks (pointer-events: none). */
+   1000) but below the toolbar and every dialog, so the board reads
+   as lowlit while the toolbar — with the red Link files button —
+   and any open dialog stay bright and usable. It never blocks
+   clicks (pointer-events: none). Z-order, lowest to highest: board
+   1–2000, lowlight 2500, toolbar 2600, inspector 3000/3002,
+   dialogs (review overlay, configuration page) 4000. */
 .app.files-unlinked::after{content:'';position:fixed;inset:0;background:rgba(0,0,0,0.25);pointer-events:none;z-index:2500}
 .app.files-unlinked .toolbar{position:relative;z-index:2600}
