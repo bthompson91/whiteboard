@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from 'react';
+import { ChangeEvent, useEffect, useState } from 'react';
 import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
 import '../configuration.css';
 interface Props { yamlText:string; hasBookings:boolean; onSave:(text:string)=>void; onClose:()=>void }
@@ -16,9 +16,14 @@ const FIELD_KEYS: Array<{ key:string; label:string; optional?:boolean }> = [
 const DATE_FORMATS = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
 // A width field that commits as you type, so clicking "Apply and save"
 // while the field still has focus can never lose the value (the old
-// defaultValue + onBlur field only committed when it lost focus).
+// defaultValue + onBlur field only committed when it lost focus). The
+// key is the type only: keying it on the value remounted the input on
+// every commit, which dropped focus mid-typing and made the Large and
+// Small fields look as if they never took. The text syncs from the
+// value when it changes from outside (another edit, Apply and save).
 function WidthInput({type,value,onCommit,onInvalid}:{type:RoomType;value:number;onCommit:(n:number)=>void;onInvalid:()=>void}){
   const [text,setText]=useState(String(value));
+  useEffect(()=>{setText(String(value));},[value]);
   const label=type==='other'?'Medium':type==='small'?'Small':'Large';
   return <label>{label} width (px) <input type="number" min={125} max={600} value={text} onChange={e=>{
     const next=e.target.value;setText(next);
@@ -65,7 +70,7 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
   const move=(i:number,delta:number)=>change(d=>{const list=d.rooms.order as string[];const j=i+delta;if(j<0||j>=list.length)return;[list[i],list[j]]=[list[j],list[i]];});
   const addRoom=()=>{const name=newRoom.trim();if(!name)return;change(d=>{const list=d.rooms.order as string[];if(!list.some(r=>r.toLowerCase()===name.toLowerCase()))list.push(name);});setNewRoom('');};
   const removeRoom=(room:string)=>change(d=>{d.rooms.order=(d.rooms.order as string[]).filter(r=>r!==room);updateSettingsInPlace(d,room);});
-  function updateSettingsInPlace(d:ConfigDocument,room:string){const s=boardSettings(d);delete s.room_types[room];d.whiteboard={...(d.whiteboard||{}),...s};}
+  function updateSettingsInPlace(d:ConfigDocument,room:string){const s=boardSettings(d);delete s.room_types[room.trim()];d.whiteboard={...(d.whiteboard||{}),...s};}
   const fields:Record<string,string>=(doc?.fields as Record<string,string>)||{};
   const timeSlots:TimeSlot[]=Array.isArray(doc?.time_slots)?(doc.time_slots as TimeSlot[]):[];
   return <section className="configuration-page" aria-label="Venue configuration">
@@ -93,8 +98,8 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <StringList label="Allowed status" values={Array.isArray(doc.display?.allowed_statuses)?(doc.display.allowed_statuses as string[]):[]} onChange={next=>change(d=>{d.display={...(d.display||{}),allowed_statuses:next};})} />
         </section>
         <section><h2>Room configuration</h2><p>Large rooms use wider columns; small rooms use narrower columns. Base widths are minimums; columns expand proportionally if the screen has spare space. Tick “Border after” to draw a strong border after a room, so a block of rooms reads as one section — Palladium C3, for example, puts a strong border between Palladium and River Room. Days are separated by the same strong border.</p>
-          <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><WidthInput key={`${type}-${settings.room_widths[type]}`} type={type} value={settings.room_widths[type]} onCommit={n=>updateSettings(s=>{s.room_widths[type]=n;})} onInvalid={()=>setMessage('Use a width from 125 to 600 pixels.')} />)}</div>
-          <table><thead><tr><th>Order</th><th>Room</th><th>Type</th><th>Border after</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{(doc.rooms.order as string[]).map((room,i)=>{const type=settings.room_types[room]||'other';return <tr key={room}><td>{i+1}</td><td>{room}</td><td><select aria-label={`${room} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[room]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td><td><input type="checkbox" aria-label={`Strong border after ${room}`} checked={settings.room_borders.includes(room)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,room]:s.room_borders.filter(r=>r!==room);});}} /></td><td><button disabled={i===0} onClick={()=>move(i,-1)} aria-label={`Move ${room} up`}>Up</button><button disabled={i===doc!.rooms.order.length-1} onClick={()=>move(i,1)} aria-label={`Move ${room} down`}>Down</button></td><td><button onClick={()=>removeRoom(room)} aria-label={`Remove ${room}`}>Remove</button></td></tr>;})}</tbody></table>
+          <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><WidthInput key={type} type={type} value={settings.room_widths[type]} onCommit={n=>updateSettings(s=>{s.room_widths[type]=n;})} onInvalid={()=>setMessage('Use a width from 125 to 600 pixels.')} />)}</div>
+          <table><thead><tr><th>Order</th><th>Room</th><th>Type</th><th>Border after</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{(doc.rooms.order as string[]).map((room,i)=>{const name=room.trim();const type=settings.room_types[name]||'other';return <tr key={room}><td>{i+1}</td><td>{name}</td><td><select aria-label={`${name} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[name]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td><td><input type="checkbox" aria-label={`Strong border after ${name}`} checked={settings.room_borders.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,name]:s.room_borders.filter(r=>r!==name);});}} /></td><td><button disabled={i===0} onClick={()=>move(i,-1)} aria-label={`Move ${room} up`}>Up</button><button disabled={i===doc!.rooms.order.length-1} onClick={()=>move(i,1)} aria-label={`Move ${room} down`}>Down</button></td><td><button onClick={()=>removeRoom(room)} aria-label={`Remove ${room}`}>Remove</button></td></tr>;})}</tbody></table>
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
         </section>

@@ -223,6 +223,14 @@ try {
   // silently falling back to Medium.
   const widthSettings = boardSettings({ whiteboard: { room_types: { 'Palladium A ': 'large', 'River Room 1': 'small' }, room_widths: { large: 400, small: 125, other: 150 } } });
   check('room type keys are trimmed so the width applies', widthSettings.room_types['Palladium A'] === 'large' && widthSettings.room_types['River Room 1'] === 'small' && widthSettings.room_widths.large === 400, JSON.stringify(widthSettings.room_types));
+  // Every type obeys its width, not just Medium: a large room gets the
+  // large width, a small room the small width, a medium room the medium
+  // width. (This is the lookup the board does per room.)
+  const widthFor = (settings, room) => settings.room_widths[settings.room_types[room.trim()] || 'other'] || 175;
+  check('large rooms obey the large width', widthFor(widthSettings, 'Palladium A') === 400);
+  check('small rooms obey the small width', widthFor(widthSettings, 'River Room 1') === 125);
+  check('medium rooms obey the medium width', widthFor(widthSettings, 'Garden Room 1') === 150);
+  check('a room with no type falls back to the medium width', widthFor(boardSettings({ whiteboard: { room_widths: { large: 400, small: 125, other: 150 } } }), 'Unknown Room') === 150);
 
   // --- changes.json: the one shared list of changes ---
   // Everyone writes to the same file; the master imports it and yes/no's
