@@ -235,8 +235,9 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   // Snap to today: scroll so today's row (or the next date after it,
   // when today is not on the board) sits just below the sticky header.
   // This is what the Today button calls, and what the board does on
-  // load.
-  const scrollToToday=()=>{
+  // load. The Today button scrolls smoothly; the initial load jumps
+  // straight there, so the board does not animate down on every load.
+  const scrollToToday=(smooth=true)=>{
     const target=dates.find(d=>d>=today)??dates[dates.length-1];
     if(!target)return;
     const container=root.current?.parentElement;
@@ -244,9 +245,11 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     const row=root.current?.querySelector(`[data-date="${target}"]`) as HTMLElement|null;
     if(!row)return;
     const headerHeight=header.current?.offsetHeight||0;
-    container.scrollTop=row.offsetTop-headerHeight;
+    const top=row.offsetTop-headerHeight;
+    if(smooth)container.scrollTo({top,behavior:'smooth'});
+    else container.scrollTop=top;
   };
-  useLayoutEffect(()=>{ if(scrollToTodayRef)scrollToTodayRef.current=scrollToToday; });
+  useLayoutEffect(()=>{ if(scrollToTodayRef)scrollToTodayRef.current=()=>scrollToToday(true); });
   // The board opens scrolled to the current day: on load, and whenever
   // a new import changes the date range. It only runs when the range
   // changes, so resizing or editing a booking never yanks the scroll
@@ -257,7 +260,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     const rangeKey=`${dates[0]}|${dates[dates.length-1]}`;
     if(scrolledRangeRef.current===rangeKey)return;
     scrolledRangeRef.current=rangeKey;
-    scrollToToday();
+    scrollToToday(false);
   },[dates[0],dates[dates.length-1],today]);
   return <div className="booking-grid" ref={root} style={style}>
     <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{fontSize:roomFontSize}}>{r.name}</div>)}</div>
