@@ -66,15 +66,19 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       previous.hidden=previous.hidden&&b.hidden;
     } else spans.push(b);
   }
-  // Blocks render snapped to 3-hour frames: a block starting at 18:37
-  // renders from 18:00 and one ending at 22:12 renders to 00:00, so
-  // blocks line up in general time frames instead of ragged exact times.
-  // The exact times are kept in mainStart/mainEnd and shown in the facts
-  // column and the tooltip, so the snap is visual only.
-  const SNAP_MINUTES = 180;
+  // Blocks render snapped to the nearest 2-hour frame: 18:30-22:12 renders
+  // as 18:00-22:00, so blocks line up in general time frames instead of
+  // ragged exact times. A tie rounds outward so the block still covers
+  // its real span, and a block that would collapse to nothing gets one
+  // full frame. The exact times are kept in mainStart/mainEnd and shown
+  // in the facts column and the tooltip, so the snap is visual only.
+  const SNAP_MINUTES = 120;
   for (const b of spans) {
-    b.start = Math.floor(b.start / SNAP_MINUTES) * SNAP_MINUTES;
-    b.end = Math.ceil(b.end / SNAP_MINUTES) * SNAP_MINUTES;
+    const startRemainder = b.start % SNAP_MINUTES;
+    b.start = startRemainder <= SNAP_MINUTES / 2 ? b.start - startRemainder : b.start + (SNAP_MINUTES - startRemainder);
+    const endRemainder = b.end % SNAP_MINUTES;
+    b.end = endRemainder < SNAP_MINUTES / 2 ? b.end - endRemainder : b.end + (SNAP_MINUTES - endRemainder);
+    if (b.end <= b.start) b.end = b.start + SNAP_MINUTES;
   }
   return spans;
 }
