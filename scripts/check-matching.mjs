@@ -33,7 +33,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { parseChangesFile, serializeChangesFile, createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction, fitFontSize } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
 
@@ -134,6 +134,14 @@ try {
   check('midnight is the top of the day', timeFraction(0) === 0);
   check('06:00 is 4.5/22.5 of the day height', Math.abs(timeFraction(360) - 4.5 / 22.5) < 1e-9, String(timeFraction(360)));
   check('midnight next day is the bottom', timeFraction(1440) === 1);
+  // Room names are normalised: the largest size that fits every name
+  // in its own column, decided by the tightest room. A name measured
+  // 100 wide at 13px in a 100-wide column fits at 13; the same name
+  // in a 50-wide column fits at 6, which floors to the 8 minimum.
+  check('room name size fits every name in its column', fitFontSize([100, 100], [100, 100]) === 13);
+  check('the tightest room decides the size for all', fitFontSize([100, 200], [100, 100]) === 8, String(fitFontSize([100, 200], [100, 100])));
+  check('room name size never exceeds the maximum', fitFontSize([10], [1000]) === 24);
+  check('room name size never drops below the minimum', fitFontSize([1000], [10]) === 8);
   check('a night hour is 75% of a day hour', Math.abs((timeFraction(60) - timeFraction(0)) - 0.75 * (timeFraction(780) - timeFraction(720))) < 1e-9);
   check('a 3-hour night booking is 75% of a 3-hour daytime booking', Math.abs((timeFraction(180) - timeFraction(0)) - 0.75 * (timeFraction(720) - timeFraction(540))) < 1e-9);
 

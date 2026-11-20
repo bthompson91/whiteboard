@@ -9,6 +9,20 @@ function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Numb
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
 
+// The largest font size that fits every text in its own width. Each
+// text is measured at a reference size and scaled to its available
+// width; the smallest fitting size across all of them wins, so the
+// tightest one decides the size for all of them (the room names are
+// normalised this way, so the shortest/narrowest room sets the size).
+export function fitFontSize(textWidths: number[], availableWidths: number[], refSize = 13, maxSize = 24, minSize = 8): number {
+  let size = maxSize;
+  for (let i = 0; i < textWidths.length; i++) {
+    if (textWidths[i] <= 0) continue;
+    size = Math.min(size, refSize * (Math.max(1, availableWidths[i]) / textWidths[i]));
+  }
+  return Math.max(minSize, Math.min(maxSize, Math.floor(size)));
+}
+
 // Fraction of the day's height for a minute of the day. 00:00–06:00 is
 // compressed to 75% height per hour so daytime bookings read bigger:
 // the 6 night hours take 4.5 units, the 18 day hours take 18 units,

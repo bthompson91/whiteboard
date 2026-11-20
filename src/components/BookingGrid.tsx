@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, clock, likeBookings, blockCountForBookings, strongBorders, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, clock, fitFontSize, likeBookings, blockCountForBookings, strongBorders, timeFraction } from '../lib/blocks';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
@@ -18,6 +18,23 @@ interface Props {
   onSelectedBookingChange: (bookingId: string | null) => void;
   roomBaseWidths?: number[];
   roomWidthMin?: number;
+}
+// Room names share one font size, normalised to the largest size that
+// fits every name in its own column. Each name is measured at a
+// reference size and scaled to its column width, and the smallest
+// fitting size across all rooms wins, so the tightest room decides
+// the size for all of them. The header does not wrap, so a name that
+// fits at the computed size stays on one line.
+function roomNameFontSize(names: string[], widths: number[]): number {
+  if (typeof document === 'undefined') return 13;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 13;
+  const ref = 13;
+  ctx.font = `700 ${ref}px Calibri, 'Segoe UI', sans-serif`;
+  const textWidths = names.map(name => ctx.measureText(name).width);
+  const availableWidths = widths.map(width => Math.max(1, (width || 150) - 20));
+  return fitFontSize(textWidths, availableWidths, ref);
 }
 function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed)return '';return /^\d+$/.test(trimmed)?trimmed.replace(/^0+(?=\d)/,''):trimmed;}
 // The times strip shows only the first time of each entry: a setup that
@@ -183,6 +200,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
   const columns=`160px ${widths.map(width=>`${width}px`).join(' ')}`;
   const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+widths.reduce((sum,width)=>sum+width,0)} as CSSProperties;
+  const roomFontSize=roomNameFontSize(venue.rooms.map(r=>r.name),widths);
   const today=format(new Date(),'yyyy-MM-dd');
   const jobNumberInvalid=!!draft?.jobNumber&&!/^\d+$/.test(draft.jobNumber.trim())&&!isNoAv(draft.jobNumber);
   // Merge left / Merge right are greyed out when the room beside this
@@ -212,7 +230,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     container.scrollTop=row.offsetTop-headerHeight;
   },[dates[0],dates[dates.length-1],today]);
   return <div className="booking-grid" ref={root} style={style}>
-    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id}>{r.name}</div>)}</div>
+    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{fontSize:roomFontSize}}>{r.name}</div>)}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
     {dates.map(date=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label">{format(parseISO(date),'EEE dd MMM')}</div></div>
