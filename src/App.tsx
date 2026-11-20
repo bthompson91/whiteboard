@@ -9,6 +9,7 @@ import ConfigurationPage from './components/ConfigurationPage';
 import { BoardRole, Booking, ContributorSubmission, ImportHistoryEntry, MarkupItem } from './types';
 import {
   ImportResult,
+  parseBookingWorkbook,
   readImportHistory,
   revertToImport,
   saveImportHistory,
@@ -462,6 +463,28 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+  // Import the bookings export (.xls): from the linked file when one is
+  // linked, otherwise pick a file first. This is the import that used
+  // to live on the top bar; it now lives in the Link files panel.
+  const importEventsFile = async () => {
+    if (!venue) return;
+    try {
+      let handle = bookingsHandleRef.current;
+      if (!handle) {
+        if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
+        const picked = await pickLinkedFile({ types: [{ description: 'Events file', accept: { 'application/vnd.ms-excel': ['.xls', '.xlsx'] } }] });
+        if (!picked) return;
+        handle = picked;
+        bookingsHandleRef.current = handle;
+        const name = handle.name;
+        setLinkedFiles(current => ({ ...current, bookings: name }));
+      }
+      handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
   // The master triggers an import of changes.json: read the shared list
   // and merge its pending changes into the review, skipping anything
   // already accepted or rejected.
@@ -530,25 +553,15 @@ export default function App() {
         editingEnabled={editingEnabled}
         markupMode={markupMode}
         error={error}
-        submissionCount={submissions.length}
         revision={revision}
-        canRevert={importHistory.length > 1}
         onToggleEditing={() => setEditingEnabled(value => !value)}
         onSetMarkupMode={setMarkupMode}
         onOpenConfiguration={() => {
           setMarkupMode('none');
           setConfigurationOpen(true);
         }}
-        onBookingsLoaded={handleBookingsLoaded}
-        onError={setError}
         onRoleChange={requestRoleChange}
         onContributorNameChange={setContributorName}
-        onOpenSubmissions={() => { importChanges(); setSubmissionsOpen(true); }}
-        onOpenHistory={() => setHistoryOpen(true)}
-        onExportPublishedBoard={exportPublishedBoard}
-        onImportPublishedBoard={importPublishedBoard}
-        onExportVenueConfig={exportVenueConfig}
-        onRevertLastImport={revertLastImport}
         onSaveAndRefresh={saveAndRefresh}
         saving={saving}
         linkedFiles={linkedFiles}
@@ -624,12 +637,13 @@ export default function App() {
               <p>The board works from three files in one folder — the bookings export, the venue YAML and changes.json — plus the board file the master publishes. Link them here and the app writes changes back to the same files instead of downloading new copies. Everyone writes their changes to the one changes.json; the master imports it and yes/no&apos;s each change.</p>
             </header>
             <table><thead><tr><th>File</th><th>Linked</th><th></th></tr></thead><tbody>
-              <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile}>Link</button></td></tr>
-              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile}>Link</button></td></tr>
-              <tr><td>Changes (changes.json)</td><td>{linkedFiles.changes || 'Not linked'}</td><td><button onClick={linkChangesFile}>Link</button></td></tr>
-              <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile}>Open</button> <button onClick={linkBoardFileAsNew}>Save as</button></td></tr>
+              <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile}>Link</button> <button onClick={importEventsFile} disabled={!venue}>Import</button></td></tr>
+              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Download</button></td></tr>
+              <tr><td>Changes (changes.json)</td><td>{linkedFiles.changes || 'Not linked'}</td><td><button onClick={linkChangesFile}>Link</button> {role !== 'viewer' && <button onClick={() => { importChanges(); setSubmissionsOpen(true); setLinkFilesOpen(false); }}>Review submissions{submissions.length ? ` (${submissions.length})` : ''}</button>}</td></tr>
+              <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile}>Open</button> <button onClick={linkBoardFileAsNew}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
             </tbody></table>
             <p>Linking the bookings export lets Refresh re-read it. Linking changes.json lets the master import everyone&apos;s changes from the Submissions panel. The board file is written automatically whenever the master changes the board.</p>
+            {role === 'master' && <p><button onClick={() => { setHistoryOpen(true); setLinkFilesOpen(false); }}>Import history</button> <button onClick={revertLastImport} disabled={importHistory.length <= 1}>Revert last import</button></p>}
             <footer>
               <button onClick={() => setLinkFilesOpen(false)}>Done</button>
             </footer>

@@ -1,6 +1,4 @@
-import { ChangeEvent, useState } from 'react';
 import { BoardRole } from '../types';
-import { ImportResult } from '../lib/bookingImport';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 interface Props {
   venue: ParsedVenueConfig | null;
@@ -10,55 +8,24 @@ interface Props {
   editingEnabled: boolean;
   markupMode: 'none' | 'text' | 'arrow';
   error: string | null;
-  submissionCount: number;
   revision: number;
-  canRevert: boolean;
   saving: boolean;
   linkedFiles: { board: string | null; yaml: string | null; changes: string | null; bookings: string | null };
   canLinkFiles: boolean;
   onToggleEditing: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
-  onBookingsLoaded: (result: ImportResult) => void;
-  onError: (message: string) => void;
   onRoleChange: (role: BoardRole) => void;
   onContributorNameChange: (name: string) => void;
-  onOpenSubmissions: () => void;
-  onOpenHistory: () => void;
-  onExportPublishedBoard: () => void;
-  onImportPublishedBoard: (file: File) => void;
-  onExportVenueConfig: () => void;
-  onRevertLastImport: () => void;
   onSaveAndRefresh: () => void;
   onOpenLinkFiles: () => void;
 }
 export default function Toolbar({
-  venue, bookingCount, role, contributorName, editingEnabled, markupMode, error, submissionCount, revision, canRevert,
+  venue, bookingCount, role, contributorName, editingEnabled, markupMode, error, revision,
   saving, linkedFiles, canLinkFiles,
-  onToggleEditing, onSetMarkupMode, onOpenConfiguration, onBookingsLoaded, onError,
-  onRoleChange, onContributorNameChange, onOpenSubmissions, onOpenHistory, onExportPublishedBoard, onImportPublishedBoard,
-  onExportVenueConfig, onRevertLastImport, onSaveAndRefresh, onOpenLinkFiles
+  onToggleEditing, onSetMarkupMode, onOpenConfiguration,
+  onRoleChange, onContributorNameChange, onSaveAndRefresh, onOpenLinkFiles
 }: Props) {
-  const [loading, setLoading] = useState(false);
-  const handleBookingFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
-    if (!file || !venue) return;
-    setLoading(true);
-    try {
-      const { parseBookingWorkbook } = await import('../lib/bookingImport');
-      onBookingsLoaded(await parseBookingWorkbook(file, venue));
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-  const handlePublishedBoard = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
-    if (file) onImportPublishedBoard(file);
-  };
   return (
     <header className="toolbar">
       <strong>{venue?.name || 'Venue Booking Whiteboard'}</strong>
@@ -76,41 +43,7 @@ export default function Toolbar({
         />
       )}
       {role === 'master' && (
-        <>
-          <button onClick={onOpenConfiguration} title="Configuration">⚙️</button>
-          <label title="Open events">
-            📂
-            <input type="file" accept=".xls,.xlsx" onChange={handleBookingFile} disabled={!venue || loading} />
-          </label>
-          <label title="Open published board">
-            📖
-            <input type="file" accept=".json" onChange={handlePublishedBoard} />
-          </label>
-          <button onClick={onExportPublishedBoard} title="Export published board">📤</button>
-          <button onClick={onExportVenueConfig} disabled={!venue} title="Export venue config">💾</button>
-          <button onClick={onOpenSubmissions} title="Review submissions">
-            📬{submissionCount ? ` (${submissionCount})` : ''}
-          </button>
-          <button onClick={onOpenHistory} title="Import history">🕘</button>
-          <button onClick={onRevertLastImport} disabled={!canRevert} title="Revert last import">↩️</button>
-        </>
-      )}
-      {role === 'contributor' && (
-        <>
-          <label title="Open published board">
-            📖
-            <input type="file" accept=".json" onChange={handlePublishedBoard} />
-          </label>
-          <button onClick={onOpenSubmissions} title="My changes awaiting review">
-            📬{submissionCount ? ` (${submissionCount})` : ''}
-          </button>
-        </>
-      )}
-      {role === 'viewer' && (
-        <label title="Open published board">
-          📖
-          <input type="file" accept=".json" onChange={handlePublishedBoard} />
-        </label>
+        <button onClick={onOpenConfiguration} title="Configuration">⚙️</button>
       )}
       <button onClick={onSaveAndRefresh} disabled={saving} title={role === 'viewer' ? 'Refresh the board from the linked files' : 'Save changes to the linked files, then refresh the board'}>
         {saving ? 'Saving…' : role === 'viewer' ? '🔄 Refresh' : '💾 Save and refresh'}
@@ -120,7 +53,7 @@ export default function Toolbar({
           🔗 Link files{linkedFiles.changes ? ` (${linkedFiles.changes})` : ''}
         </button>
       )}
-      <span>{loading ? 'Importing…' : `${bookingCount} bookings · rev ${revision}`}</span>
+      <span>{`${bookingCount} bookings · rev ${revision}`}</span>
       {role !== 'viewer' && (
         <button onClick={onToggleEditing} title={editingEnabled ? 'Lock bookings' : 'Unlock bookings'}>
           {editingEnabled ? '🔓' : '🔒'}
