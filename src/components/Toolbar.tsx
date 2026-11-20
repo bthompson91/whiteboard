@@ -1,5 +1,6 @@
 import { BoardRole } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
+import { readableText, Salesperson } from '../lib/configuration';
 interface Props {
   venue: ParsedVenueConfig | null;
   bookingCount: number;
@@ -8,6 +9,13 @@ interface Props {
   editingEnabled: boolean;
   markupMode: 'none' | 'text' | 'arrow';
   showHidden: boolean;
+  // Paint mode: the editor picks a salesperson, then clicks blocks to
+  // paint them in that colour. paintApplyAll also paints the same job
+  // in other rooms (the inspector's "Apply to all").
+  paintMode: boolean;
+  paintSalespersonId: string;
+  paintApplyAll: boolean;
+  salespeople: Salesperson[];
   error: string | null;
   revision: number;
   saving: boolean;
@@ -16,6 +24,9 @@ interface Props {
   editorLockName: string | null;
   onToggleEditing: () => void;
   onToggleShowHidden: () => void;
+  onTogglePaintMode: () => void;
+  onPaintSalespersonChange: (salespersonId: string) => void;
+  onPaintApplyAllChange: (applyAll: boolean) => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
   onRoleChange: (role: BoardRole) => void;
@@ -25,9 +36,9 @@ interface Props {
   onOpenLinkFiles: () => void;
 }
 export default function Toolbar({
-  venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, error, revision,
+  venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, error, revision,
   saving, linkedFiles, canLinkFiles, editorLockName,
-  onToggleEditing, onToggleShowHidden, onSetMarkupMode, onOpenConfiguration,
+  onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onSetMarkupMode, onOpenConfiguration,
   onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles
 }: Props) {
   return (
@@ -75,6 +86,20 @@ export default function Toolbar({
         <button className={showHidden ? 'active' : ''} onClick={onToggleShowHidden} title="Show hidden bookings on the board (faded, dashed) so they can be found and restored">
           {showHidden ? '👁️ Show hidden' : '🙈 Hidden off'}
         </button>
+      )}
+      {role !== 'viewer' && (
+        <button className={paintMode ? 'active' : ''} onClick={onTogglePaintMode} title="Paint blocks in a salesperson's colour — pick a salesperson, then click a block">
+          🎨
+        </button>
+      )}
+      {role !== 'viewer' && paintMode && (
+        <>
+          <select value={paintSalespersonId} onChange={event => onPaintSalespersonChange(event.target.value)} title="Salesperson to paint with">
+            <option value="">No salesperson</option>
+            {salespeople.map(person => <option key={person.id} value={person.id} style={{ backgroundColor: person.colour, color: readableText(person.colour) }}>{person.name}</option>)}
+          </select>
+          <label className="checkbox" title="Also paint the same job in other rooms"><input type="checkbox" checked={paintApplyAll} onChange={event => onPaintApplyAllChange(event.target.checked)} />Apply to all</label>
+        </>
       )}
       {role !== 'viewer' && (
         <>

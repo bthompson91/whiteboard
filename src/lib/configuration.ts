@@ -25,6 +25,14 @@ export function resolveSalesperson(salespeople: Salesperson[], salespersonId?: s
   if (salespersonId === UNAVAILABLE_SALESPERSON.id) return UNAVAILABLE_SALESPERSON;
   return salespeople.find(person => person.id === salespersonId);
 }
+// Readable text on a coloured background (white on dark colours, dark
+// on light ones). Used for the coloured options in the salesperson
+// dropdowns, in the inspector and in the top-bar paint picker.
+export function readableText(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  return lum < 140 ? '#ffffff' : '#18202a';
+}
 // The colour a booking block shows: its salesperson's current palette
 // colour when one is assigned (so recolouring the palette recolours the
 // block), otherwise the colour stored on the booking itself.

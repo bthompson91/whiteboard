@@ -465,6 +465,26 @@ try {
   ], 'Gala', 'a', 'sp-1').map(b => b.id).join(',') === 'b');
   check('like bookings need the exact title, not just a loose match', likeBookings([booking({ id: 'b', title: 'gala' })], 'Gala', 'a', 'sp-1').length === 0);
 
+  // --- Paint mode: the same rule, composed the way paintBlock does it ---
+  // Painting a block paints its own rows; with "Apply to all" it also
+  // paints the same job in other rooms (the like bookings), and a
+  // booking with a different title is never touched.
+  const paintList = [
+    booking({ id: 'p1', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'] }),
+    booking({ id: 'p2', title: 'Gala', roomId: 'Palladium B', roomIds: ['Palladium B'] }),
+    booking({ id: 'p3', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'] })
+  ];
+  const paintOne = (applyAll) => {
+    const blockIds = new Set(['p1']);
+    const like = applyAll ? likeBookings(paintList, 'Gala', 'p1', 'sp-1').filter(l => !blockIds.has(l.id)) : [];
+    const ids = new Set([...blockIds, ...like.map(l => l.id)]);
+    return paintList.map(b => ids.has(b.id) ? { ...b, salespersonId: 'sp-1', colour: '#ff0000' } : b);
+  };
+  const paintedAll = paintOne(true);
+  check('painting with Apply to all paints the same job in other rooms', paintedAll[0].salespersonId === 'sp-1' && paintedAll[1].salespersonId === 'sp-1' && paintedAll[2].salespersonId === undefined);
+  const paintedOne = paintOne(false);
+  check('painting without Apply to all paints only the clicked block', paintedOne[0].salespersonId === 'sp-1' && paintedOne[1].salespersonId === undefined && paintedOne[2].salespersonId === undefined);
+
   // --- Markup anchors: a note is stored against its day and room ---
   const anchorLayout = {
     dates: ['2026-11-19', '2026-11-20'],

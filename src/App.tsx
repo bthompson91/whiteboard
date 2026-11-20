@@ -125,6 +125,18 @@ export default function App() {
   // restored from the inspector. Hidden bookings already show while
   // unlocked; this is the explicit toggle issue #2 asks for.
   const [showHidden, setShowHidden] = useState(false);
+  // Paint mode: the editor picks a salesperson in the top bar, then
+  // clicks blocks to paint them in that colour. Turning it on picks
+  // the first salesperson so it is ready to paint straight away.
+  const [paintMode, setPaintMode] = useState(false);
+  const [paintSalespersonId, setPaintSalespersonId] = useState('');
+  const [paintApplyAll, setPaintApplyAll] = useState(false);
+  const togglePaintMode = () => {
+    if (!paintMode && !paintSalespersonId && settings?.salespeople?.length) {
+      setPaintSalespersonId(settings.salespeople[0].id);
+    }
+    setPaintMode(!paintMode);
+  };
   const [error, setError] = useState<string | null>(initial.error);
   const [configurationOpen, setConfigurationOpen] = useState(false);
   // The linked files. The board works from two files that sit in one
@@ -596,10 +608,17 @@ export default function App() {
         editingEnabled={editingEnabled}
         markupMode={markupMode}
         showHidden={showHidden}
+        paintMode={paintMode}
+        paintSalespersonId={paintSalespersonId}
+        paintApplyAll={paintApplyAll}
+        salespeople={settings?.salespeople || []}
         error={error}
         revision={revision}
         onToggleEditing={() => setEditingEnabled(value => !value)}
         onToggleShowHidden={() => setShowHidden(value => !value)}
+        onTogglePaintMode={togglePaintMode}
+        onPaintSalespersonChange={setPaintSalespersonId}
+        onPaintApplyAllChange={setPaintApplyAll}
         onSetMarkupMode={setMarkupMode}
         onOpenConfiguration={() => {
           setMarkupMode('none');
@@ -623,6 +642,9 @@ export default function App() {
           roomBorders={settings?.room_borders || []}
           editingEnabled={editingEnabled && role !== 'viewer'}
           showHidden={showHidden}
+          paintMode={paintMode && role !== 'viewer'}
+          paintSalespersonId={paintSalespersonId}
+          paintApplyAll={paintApplyAll}
           selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}
           onSelectedBookingChange={setSelectedBookingId}
