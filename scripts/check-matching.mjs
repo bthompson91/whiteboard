@@ -384,7 +384,7 @@ try {
     booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
     booking({ id: 'b', title: 'Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
   ], venue, [], false, ['Palladium A']);
-  check('a manual merge crosses a strong border', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
+  check('a manual merge does not cross a strong border', blocks.length === 2, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
     booking({ id: 'b', title: 'Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })

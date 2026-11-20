@@ -107,6 +107,10 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
     if(!indices.length)return null;
     const targetIndex=direction==='right'?Math.max(...indices)+1:Math.min(...indices)-1;
     if(targetIndex<0||targetIndex>=venue.rooms.length)return null;
+    // A strong border is a hard separator: a manual merge never crosses
+    // one, and the Merge buttons are greyed out next to one.
+    if(direction==='right'&&strongAfter[Math.max(...indices)])return null;
+    if(direction==='left'&&strongAfter[targetIndex])return null;
     const targetRoom=venue.rooms[targetIndex].id;
     const start=toMinutes(draft.startTime),end=toMinutes(draft.endTime);
     const overlap=(b:Booking)=>{const s=toMinutes(b.startTime),e=toMinutes(b.endTime);return Math.max(0,Math.min(end,e)-Math.max(start,s));};
@@ -157,6 +161,13 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+widths.reduce((sum,width)=>sum+width,0)} as CSSProperties;
   const today=format(new Date(),'yyyy-MM-dd');
   const jobNumberInvalid=!!draft?.jobNumber&&!/^\d+$/.test(draft.jobNumber.trim())&&!isNoAv(draft.jobNumber);
+  // Merge left / Merge right are greyed out when the room beside this
+  // booking is across a strong border (or there is no room that way):
+  // a strong border is a hard separator, so a manual merge cannot
+  // cross it.
+  const draftRoomIndices=draft?((draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId]).map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0)):[];
+  const mergeLeftBlocked=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0||!!strongAfter[Math.min(...draftRoomIndices)-1];
+  const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)];
   return <div className="booking-grid" ref={root} style={style}>
     <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id}>{r.name}</div>)}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
@@ -200,8 +211,8 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
           <label className="checkbox"><input type="checkbox" checked={draft.mergeRoom!==false} onChange={event=>setDraft({...draft,mergeRoom:event.target.checked})}/>Merge with the same booking in other rooms</label>
           <div style={{margin:'0 20px 10px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
             <span style={{fontSize:13}}>Merge with the next room:</span>
-            <button onClick={()=>mergeNeighbour('left')}>Merge left</button>
-            <button onClick={()=>mergeNeighbour('right')}>Merge right</button>
+            <button onClick={()=>mergeNeighbour('left')} disabled={mergeLeftBlocked} title={mergeLeftBlocked?'A strong border separates this room from the one to the left.':undefined}>Merge left</button>
+            <button onClick={()=>mergeNeighbour('right')} disabled={mergeRightBlocked} title={mergeRightBlocked?'A strong border separates this room from the one to the right.':undefined}>Merge right</button>
             {draft.mergeGroup&&<button onClick={unmergeGroup}>Unmerge</button>}
           </div>
           {mergeMessage&&<p style={{margin:'0 20px 10px',fontSize:13}}>{mergeMessage}</p>}

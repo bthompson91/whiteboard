@@ -84,14 +84,15 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
   // setup and teardown: a setup in one room must not stop the event
   // joining across rooms, and the joined block covers both rooms' spans.
   // A manual merge (the same merge group on both bookings) joins
-  // regardless of title, times or a strong border: the user asked for
-  // those two bookings to be one block.
+  // regardless of title or times, but never across a strong border:
+  // the border is a hard separator, and Merge left / Merge right are
+  // greyed out next to one.
   const borderAfter=strongBorders(venue.rooms.map(r=>r.id),borders);
   const spans:Block[]=[];
   for(const b of [...groups.values()].sort((a,c)=>a.rooms[0]-c.rooms[0])) {
     b.ids=[...new Set(b.ids)].sort();b.facts=[...new Set(b.facts)];
     const manualMerge=!!(b.mergeGroup&&b.mergeGroup.length);
-    const previous=spans.find(p=>p.date===b.date&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&((manualMerge&&!!p.mergeGroup&&p.mergeGroup===b.mergeGroup)||(mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&!borderAfter[p.rooms[p.rooms.length-1]]&&p.mergeRoom&&b.mergeRoom)));
+    const previous=spans.find(p=>p.date===b.date&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]&&((manualMerge&&!!p.mergeGroup&&p.mergeGroup===b.mergeGroup)||(mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.mergeRoom&&b.mergeRoom)));
     if(previous){
       previous.rooms.push(b.rooms[0]);
       previous.ids=[...new Set([...previous.ids,...b.ids])].sort();
