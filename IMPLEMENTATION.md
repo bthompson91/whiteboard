@@ -96,7 +96,11 @@ Sections, all editable on the Configuration page (see below):
   column names sit on — some exports put a title row first, or group
   rows above the headers), and `room_separator` (how one cell can name
   several rooms, e.g. `';'` for "Room A;  Room B"). `date_format` is
-  threaded into date parsing; the other two into the reader.
+  threaded into date parsing; the other two into the reader. All three
+  are editable on the Configuration page (Event file section) as well as
+  in the setup wizard: a booking whose cell names several rooms lands on
+  the grid in every room it names — one block per room, joined into a
+  single wide block only where the walls between them are operable.
 - **`time_slots` and `output`** — the original planner's named day blocks
   and output settings (filename/title/worksheet). Neither is read, and
   both are stripped out of the YAML when a config is read or saved; the
@@ -610,7 +614,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-181 checks covering matching tiers and weights, booking identity, height and
+182 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

@@ -446,6 +446,12 @@ try {
   check('a multi-room cell resolves to every room', JSON.stringify(resolveRooms('Chadwick Room;  Long Room', mcgVenue)) === JSON.stringify(['Chadwick Room', 'Long Room']));
   check('an empty room resolves to the unassigned room', JSON.stringify(resolveRooms('', mcgVenue)) === JSON.stringify(['Unassigned']));
   check('a header row of 0 is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nfile_input:\n  header_row: 0\n`, false); return false; } catch { return true; } })());
+  check('a header row and room separator survive a config round-trip', (() => {
+    const back = readConfiguration(`rooms:\n  order: [Room 1]\nfile_input:\n  header_row: 2\n  room_separator: ';'\n`, false);
+    const yaml = writeConfiguration(normalizeConfigDoc(JSON.parse(JSON.stringify(back))));
+    const again = readConfiguration(yaml);
+    return back.file_input?.header_row === 2 && back.file_input?.room_separator === ';' && again.file_input?.header_row === 2 && again.file_input?.room_separator === ';';
+  })());
   check('a non-text room separator is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nfile_input:\n  room_separator: 5\n`, false); return false; } catch { return true; } })());
   const mcgWorkbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(mcgWorkbook, XLSX.utils.aoa_to_sheet(mcgAoa), 'Sheet1');
