@@ -3,6 +3,20 @@ import { parseVenueConfig } from './venueConfig';
 
 export type RoomType = 'large' | 'small' | 'other';
 export interface Salesperson { id:string; name:string; colour:string }
+// Built-in grey option for the booking inspector: a booking that is not
+// available to sell, shown in grey rather than a salesperson's colour.
+export const UNAVAILABLE_SALESPERSON: Salesperson = { id: 'unavailable', name: 'Unavai', colour: '#9aa0a6' };
+export function resolveSalesperson(salespeople: Salesperson[], salespersonId?: string): Salesperson | undefined {
+  if (!salespersonId) return undefined;
+  if (salespersonId === UNAVAILABLE_SALESPERSON.id) return UNAVAILABLE_SALESPERSON;
+  return salespeople.find(person => person.id === salespersonId);
+}
+// The colour a booking block shows: its salesperson's current palette
+// colour when one is assigned (so recolouring the palette recolours the
+// block), otherwise the colour stored on the booking itself.
+export function bookingColour(booking: { colour?: string; salespersonId?: string }, salespeople: Salesperson[]): string | undefined {
+  return resolveSalesperson(salespeople, booking.salespersonId)?.colour ?? booking.colour;
+}
 export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; salespeople:Salesperson[] }
 export type ConfigDocument = Record<string, any>;
 const object = (v:any):boolean => !!v && typeof v === 'object' && !Array.isArray(v);

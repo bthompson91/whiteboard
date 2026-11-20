@@ -3,11 +3,13 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { BoardBooking } from '../lib/bookingImport';
 import { ParsedVenueConfig } from '../lib/venueConfig';
+import { bookingColour, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
 import '../board.css';
 import './bookingInspector.css';
 interface Props {
   venue: ParsedVenueConfig | null;
   bookings: Booking[];
+  salespeople: Salesperson[];
   editingEnabled: boolean;
   selectedBookingId: string | null;
   onBookingsChange: (bookings: Booking[]) => void;
@@ -19,7 +21,7 @@ function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Numb
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
 function normalizeJobNumber(value:string){const trimmed=value.trim();if(!trimmed)return '';return /^\d+$/.test(trimmed)?trimmed.replace(/^0+(?=\d)/,''):trimmed;}
-function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
+function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[]):Block[] {
   const groups=new Map<string,Block>();
   for(const b of bookings as BoardBooking[]) {
     if(b.hidden)continue;
@@ -34,7 +36,7 @@ function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
       const key=JSON.stringify([b.date,b.title,room]);
       const old=groups.get(key);
       if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);}
-      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:b.colour});
+      else groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople)});
     }
   }
   const spans:Block[]=[];
@@ -45,7 +47,7 @@ function blocksFor(bookings:Booking[],venue:ParsedVenueConfig):Block[] {
   }
   return spans;
 }
-export default function BookingGrid({venue,bookings,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths}:Props) {
+export default function BookingGrid({venue,bookings,salespeople,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
@@ -67,7 +69,7 @@ export default function BookingGrid({venue,bookings,editingEnabled,selectedBooki
   const total=baseWidths.reduce((sum,width)=>sum+width,0);
   const scale=Math.max(1,size.availableWidth/Math.max(1,total));
   const widths=baseWidths.map(width=>width*scale);
-  const blocks=blocksFor(bookings,venue);
+  const blocks=blocksFor(bookings,venue,salespeople);
   const segments=blocks.flatMap(b=>{const result:{block:Block;date:string;start:number;end:number;continuation:boolean}[]=[];for(let offset=0;offset<=Math.floor(Math.max(b.start,b.end-1)/1440);offset++){const start=Math.max(0,b.start-offset*1440),end=Math.min(1440,b.end-offset*1440);if(end>=start)result.push({block:b,date:format(addDays(parseISO(b.date),offset),'yyyy-MM-dd'),start,end,continuation:offset>0});}return result;});
   const sourceDates=[...new Set(segments.map(s=>s.date))].sort();
   const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
@@ -96,7 +98,21 @@ export default function BookingGrid({venue,bookings,editingEnabled,selectedBooki
           <label>Job number<input value={draft.jobNumber||''} onChange={event=>setDraft({...draft,jobNumber:event.target.value})}/></label>
           {jobNumberInvalid&&<p className="field-warning">Job number must be numeric. It will be retained unchanged until corrected.</p>}
           <label>Notes<textarea value={draft.notes||''} onChange={event=>setDraft({...draft,notes:event.target.value})}/></label>
-          <label>Colour<input type="color" value={draft.colour||'#4a90d9'} onChange={event=>setDraft({...draft,colour:event.target.value})}/></label>
+          <label>Salesperson
+            <span style={{display:'flex',gap:8,alignItems:'center'}}>
+              <select aria-label="Salesperson" value={draft.salespersonId||''} onChange={event=>{
+                const salespersonId=event.target.value;
+                if(!salespersonId){setDraft({...draft,salespersonId:undefined,colour:undefined});return;}
+                const person=resolveSalesperson(salespeople,salespersonId);
+                setDraft({...draft,salespersonId,colour:person?.colour});
+              }}>
+                <option value="">No salesperson</option>
+                {salespeople.map(person=><option key={person.id} value={person.id}>{person.name}</option>)}
+                <option value={UNAVAILABLE_SALESPERSON.id}>{UNAVAILABLE_SALESPERSON.name}</option>
+              </select>
+              <span style={{display:'inline-block',width:60,height:24,border:'1px solid #18202a',background:bookingColour(draft,salespeople)||'#e7e1d8'}} aria-label={bookingColour(draft,salespeople)||'no colour'} />
+            </span>
+          </label>
           <label className="checkbox"><input type="checkbox" checked={!!draft.hidden} onChange={event=>setDraft({...draft,hidden:event.target.checked})}/>Hide from board</label>
           <footer><button onClick={closeInspector}>Cancel</button><button className="primary" onClick={saveInspector} disabled={jobNumberInvalid}>Save booking</button></footer>
         </section>

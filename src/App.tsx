@@ -207,6 +207,7 @@ export default function App() {
         ...booking,
         id: previous.id,
         colour: booking.colour || previous.colour,
+        salespersonId: booking.salespersonId || previous.salespersonId,
         hidden: booking.hidden ?? previous.hidden,
         jobNumber: booking.jobNumber || previous.jobNumber
       };
@@ -357,6 +358,7 @@ export default function App() {
         <BookingGrid
           venue={venue}
           bookings={bookings}
+          salespeople={settings?.salespeople || []}
           editingEnabled={editingEnabled && role !== 'viewer'}
           selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}

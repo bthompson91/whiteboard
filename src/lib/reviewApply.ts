@@ -15,7 +15,7 @@ export const changeKey = (change: BookingChange) =>
 //   previous booking instead of dropping both;
 // - accepting a matched new booking merges it onto the previous booking:
 //   the new values win, but the booking keeps its previous id and its
-//   colour, hidden status and job number carry over;
+//   colour, salesperson, hidden status and job number carry over;
 // - rejecting a changed booking keeps the previous version;
 // - a disappeared booking is only removed when its change is applied;
 //   unticking it keeps it on the board.
@@ -43,6 +43,7 @@ export function applyReview(changes: BookingChange[], selected: Record<string, b
           ...change.booking,
           id: previous.id,
           colour: change.booking.colour ?? previous.colour,
+          salespersonId: change.booking.salespersonId ?? previous.salespersonId,
           hidden: change.booking.hidden ?? previous.hidden,
           jobNumber: change.booking.jobNumber || previous.jobNumber
         });

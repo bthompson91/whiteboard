@@ -15,7 +15,8 @@ try {
     entryPoints: [
       join(root, 'src/lib/importComparison.ts'),
       join(root, 'src/lib/reviewApply.ts'),
-      join(root, 'src/lib/dateTime.ts')
+      join(root, 'src/lib/dateTime.ts'),
+      join(root, 'src/lib/configuration.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -26,6 +27,7 @@ try {
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
+  const { resolveSalesperson, bookingColour, UNAVAILABLE_SALESPERSON } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -87,7 +89,7 @@ try {
 
   // --- Review application ---
   const previous = [
-    booking({ id: 'booking-1', title: 'Charity Gala', colour: '#ff0000', hidden: true, jobNumber: '123' }),
+    booking({ id: 'booking-1', title: 'Charity Gala', colour: '#ff0000', salespersonId: 'sp-1', hidden: true, jobNumber: '123' }),
     booking({ id: 'booking-2', title: 'Old Event' })
   ];
   const current = [booking({ id: 'booking-9', title: 'Charity Dinner' })];
@@ -96,6 +98,7 @@ try {
   let published = applyReview(result.changes, selectAll);
   const merged = published.find(b => b.id === 'booking-1');
   check('accepting a match merges onto the previous booking', !!merged && merged.title === 'Charity Dinner' && merged.colour === '#ff0000' && merged.hidden === true && merged.jobNumber === '123', JSON.stringify(merged));
+  check('accepting a match keeps the salesperson', merged?.salespersonId === 'sp-1');
   check('accepting a match removes the disappeared booking', !published.some(b => b.id === 'booking-2'));
   const keepDisappeared = { ...selectAll, [changeKey(result.changes.find(c => c.type === 'disappeared'))]: false };
   published = applyReview(result.changes, keepDisappeared);
@@ -124,6 +127,15 @@ try {
   check('6:30 PM parses to 18:30', timeValue('6:30 PM') === '18:30');
   check('Excel fraction 0.5 parses to 12:00', timeValue(0.5) === '12:00');
   throws('25:99 throws', () => timeValue('25:99'));
+
+  // --- Salesperson colours ---
+  const palette = [{ id: 'sp-1', name: 'Alex', colour: '#3366cc' }];
+  check('Unavai is the grey built-in option', UNAVAILABLE_SALESPERSON.name === 'Unavai' && UNAVAILABLE_SALESPERSON.colour === '#9aa0a6');
+  check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
+  check('Unavai resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
+  check('unknown salesperson falls back to the stored colour', bookingColour({ salespersonId: 'sp-gone', colour: '#ff0000' }, palette) === '#ff0000');
+  check('no salesperson keeps the stored colour', bookingColour({ colour: '#ff0000' }, palette) === '#ff0000');
+  check('resolveSalesperson finds Unavai by id', resolveSalesperson(palette, 'unavailable')?.name === 'Unavai');
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

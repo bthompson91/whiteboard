@@ -23,6 +23,7 @@ export interface Booking {
   status?: string;
   notes?: string;
   colour?: string;
+  salespersonId?: string;
   hidden?: boolean;
 }
 

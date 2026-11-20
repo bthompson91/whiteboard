@@ -37,6 +37,9 @@ export function conflictingFields(submission: ContributorSubmission, current: Bo
     ['end time', booking => booking.endTime],
     ['rooms', booking => [...booking.roomIds].sort()],
     ['status', booking => booking.status || ''],
+    ['salesperson', booking => booking.salespersonId || ''],
+    ['colour', booking => booking.colour || ''],
+    ['hidden', booking => booking.hidden ? 'hidden' : 'visible'],
     ['notes', booking => booking.notes || '']
   ];
   return fields
@@ -53,6 +56,9 @@ export function submissionChanges(submission: ContributorSubmission): string[] {
     ['end time', booking => booking.endTime],
     ['rooms', booking => [...booking.roomIds].sort()],
     ['status', booking => booking.status || ''],
+    ['salesperson', booking => booking.salespersonId || ''],
+    ['colour', booking => booking.colour || ''],
+    ['hidden', booking => booking.hidden ? 'hidden' : 'visible'],
     ['notes', booking => booking.notes || '']
   ];
   return fields

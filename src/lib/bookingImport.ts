@@ -133,6 +133,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
       if (existing) {
         if (existing.id) booking.id = existing.id;
         if (existing.colour) booking.colour = existing.colour;
+        if (existing.salespersonId) booking.salespersonId = existing.salespersonId;
         if (existing.hidden !== undefined) booking.hidden = existing.hidden;
         const existingBoard = existing as BoardBooking;
         if (existingBoard.timeline?.length) booking.timeline = existingBoard.timeline;
