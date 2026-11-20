@@ -42,7 +42,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, strongBorders, operableWallAfter, likeBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
@@ -378,6 +378,25 @@ try {
     const merged = mergeMatchedBooking(previous, next);
     return JSON.stringify(merged.hiddenRooms) === JSON.stringify(['Palladium B']) && merged.id === 'p';
   })());
+
+  // --- Random colours per event ---
+  check('an event colour is stable and a hex colour', eventColour('MCG Dinner') === eventColour('MCG Dinner') && /^#[0-9a-f]{6}$/.test(eventColour('MCG Dinner')));
+  check('an event colour ignores case and spacing', eventColour('MCG  Dinner') === eventColour('mcg dinner'));
+  check('different events get different colours', eventColour('MCG Dinner') !== eventColour('Charity Gala') && eventColour('MCG Dinner') !== eventColour('River Dinner') && eventColour('Charity Gala') !== eventColour('River Dinner'));
+  const eventPair = [
+    booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', salespersonId: 'sp-1' }),
+    booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00' })
+  ];
+  const people = [{ id: 'sp-1', name: 'Alex Lee', colour: '#d32f2f' }];
+  blocks = blocksFor(eventPair, venue, people, false, [], [], true);
+  check('random colours give every block of one event the same colour', blocks.length === 2 && blocks[0].colour === blocks[1].colour && blocks[0].colour === eventColour('MCG Dinner'), JSON.stringify(blocks.map(b => b.colour)));
+  check('random colours set the salesperson colour aside but keep the assignment', blocks[0].salespersonColour === undefined && blocks[0].salespersonId === 'sp-1' && blocks[0].initials === 'AL', JSON.stringify(blocks[0]));
+  blocks = blocksFor(eventPair, venue, people, false);
+  check('with random colours off the salesperson colour applies', blocks[0].colour === '#d32f2f', JSON.stringify(blocks.map(b => b.colour)));
+  blocks = blocksFor([booking({ id: 'u', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', unavailable: true })], venue, [], false, [], [], true);
+  check('an unavailable booking stays grey with random colours on', blocks.length === 1 && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks.map(b => b.colour)));
+  check('random event colours are read from the venue settings', boardSettings(readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  random_event_colours: true\n`, false)).random_event_colours === true);
+  check('a non-boolean random event colours is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  random_event_colours: 5\n`, false); return false; } catch { return true; } })());
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);

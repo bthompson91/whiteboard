@@ -752,6 +752,7 @@ export default function App() {
           paintSalespersonId={paintSalespersonId}
           paintApplyAll={paintApplyAll}
           filterSalespersonId={filterSalespersonId}
+          randomEventColours={settings?.random_event_colours ?? false}
           selectedBookingId={selectedBookingId}
           onBookingsChange={handleBookingsChange}
           onSelectedBookingChange={setSelectedBookingId}
@@ -896,6 +897,7 @@ export default function App() {
           salespeople={settings?.salespeople || []}
           roomBorders={settings?.room_borders || []}
           operableWalls={settings?.operable_walls || []}
+          randomEventColours={settings?.random_event_colours ?? false}
           markup={markup}
           startDate={printRange.start}
           endDate={printRange.end}

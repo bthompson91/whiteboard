@@ -331,6 +331,16 @@ shortName?`). Bookings store `salespersonId`; the block colour is resolved
 from the palette at render (`bookingColour` in `configuration.ts`), so
 renaming or recolouring a salesperson repaints their blocks.
 
+- **Random colours per event.** A tickbox in the palette section
+  (`whiteboard.random_event_colours`) colours blocks by event instead of
+  by salesperson: `eventColour` hashes the normalised title to a pastel
+  hue, so every block with the same name matches — the same event in
+  several rooms, or the same title on other days — and the colour is
+  stable across reloads and re-imports, with nothing stored. Salespeople
+  can still be assigned (initials and the filter still work), but their
+  colours do not show while it is on; unavailable stays grey. The
+  printout matches the board.
+
 - **Initials.** `salespersonInitials` uses `shortName` when set (edited in
   the palette table next to the name), else derives initials from the name.
   This is how two people who would derive the same initials (M Carrasco
@@ -621,7 +631,7 @@ be built.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-189 checks covering matching tiers and weights, booking identity, height and
+198 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

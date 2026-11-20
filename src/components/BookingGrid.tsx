@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, clock, fitFontSize, isBlockHidden, likeBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
@@ -34,6 +34,9 @@ interface Props {
   // 25% opacity so that salesperson's blocks stand out. Available in
   // viewer and editor mode alike.
   filterSalespersonId?: string;
+  // Random colours per event: every block with the same name gets the
+  // same colour, and the salesperson's colour does not apply.
+  randomEventColours?: boolean;
   // The Today button lives in the Toolbar (in App), but the scroll
   // itself lives here, where the rows are. App holds this ref and
   // BookingGrid assigns the scroll function to it.
@@ -137,7 +140,7 @@ function FitTitle({ text }: { text: string }) {
   }, [fit, text]);
   return <div ref={ref} className="booking-title" style={{ fontSize }}>{text}</div>;
 }
-export default function BookingGrid({venue,bookings,salespeople,roomBorders,operableWalls,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false,filterSalespersonId=''}:Props) {
+export default function BookingGrid({venue,bookings,salespeople,roomBorders,operableWalls,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false,filterSalespersonId='',randomEventColours=false}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
@@ -265,7 +268,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
   const total=baseWidths.reduce((sum,width)=>sum+width,0);
   const scale=Math.max(1,size.availableWidth/Math.max(1,total));
   const widths=baseWidths.map(width=>width*scale);
-  const blocks=blocksFor(bookings,venue,salespeople,editingEnabled||showHidden,roomBorders,operableWalls);
+  const blocks=blocksFor(bookings,venue,salespeople,editingEnabled||showHidden,roomBorders,operableWalls,randomEventColours);
   const strongAfter=strongBorders(venue.rooms.map(r=>r.id),roomBorders);
   const wallOperable=operableWallAfter(venue.rooms.map(r=>r.id),operableWalls);
   const segments=blocks.flatMap(b=>{const result:{block:Block;date:string;start:number;end:number;continuation:boolean}[]=[];for(let offset=0;offset<=Math.floor(Math.max(b.start,b.end-1)/1440);offset++){const start=Math.max(0,b.start-offset*1440),end=Math.min(1440,b.end-offset*1440);if(end>=start)result.push({block:b,date:format(addDays(parseISO(b.date),offset),'yyyy-MM-dd'),start,end,continuation:offset>0});}return result;});
@@ -280,6 +283,9 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
   // full; older blocks dim too, even when they are that person's.
   const yesterday=format(addDays(parseISO(today),-1),'yyyy-MM-dd');
   const jobNumberInvalid=!!draft?.jobNumber&&!/^\d+$/.test(draft.jobNumber.trim())&&!isNoAv(draft.jobNumber);
+  // The colour swatch beside the salesperson dropdown shows what the
+  // block will look like: the event colour while random colours are on.
+  const draftColour=draft?(draft.unavailable||isNoAv(draft.jobNumber)?bookingColour(draft,salespeople):randomEventColours?eventColour(draft.title):bookingColour(draft,salespeople)):undefined;
   // Merge left / Merge right are greyed out when the room beside this
   // booking is across a strong border or a fixed wall (or there is no
   // room that way): a strong border is a hard separator, and merging
@@ -365,7 +371,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
                 <option value="">No salesperson</option>
                 {salespeople.map(person=><option key={person.id} value={person.id} style={{backgroundColor:person.colour,color:readableText(person.colour)}}>{person.name}</option>)}
               </select>
-              <span style={{display:'inline-block',width:60,height:24,border:'1px solid #18202a',background:bookingColour(draft,salespeople)||'#e7e1d8'}} aria-label={bookingColour(draft,salespeople)||'no colour'} />
+              <span style={{display:'inline-block',width:60,height:24,border:'1px solid #18202a',background:draftColour||'#e7e1d8'}} aria-label={draftColour||'no colour'} />
             </span>
           </label>
           <label className="checkbox"><input type="checkbox" checked={draft.unavailable===true||draft.salespersonId===UNAVAILABLE_SALESPERSON.id} onChange={event=>{const on=event.target.checked;setDraft({...draft,unavailable:on,salespersonId:draft.salespersonId===UNAVAILABLE_SALESPERSON.id?'':draft.salespersonId});}}/>Unavailable</label>

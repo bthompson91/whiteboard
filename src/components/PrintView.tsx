@@ -27,6 +27,8 @@ interface Props {
   salespeople: Salesperson[];
   roomBorders: string[];
   operableWalls: string[];
+  // Random colours per event: the printout matches the board.
+  randomEventColours?: boolean;
   markup: MarkupItem[];
   startDate: string;
   endDate: string;
@@ -72,7 +74,7 @@ function laneInsets(rooms: number[], lane: number | undefined, laneCount: number
   return { left: `${leftPct}%`, right };
 }
 
-export default function PrintView({ venue, bookings, salespeople, roomBorders, operableWalls, markup, startDate, endDate, roomBaseWidths, roomWidthMin = 125, onClose }: Props) {
+export default function PrintView({ venue, bookings, salespeople, roomBorders, operableWalls, randomEventColours = false, markup, startDate, endDate, roomBaseWidths, roomWidthMin = 125, onClose }: Props) {
   const dates = useMemo(() => {
     try {
       return eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) }).map(d => format(d, 'yyyy-MM-dd'));
@@ -88,8 +90,8 @@ export default function PrintView({ venue, bookings, salespeople, roomBorders, o
   const blocks = useMemo(() => {
     if (!venue) return [];
     const inRange = bookings.filter(b => b.date >= startDate && b.date <= endDate);
-    return blocksFor(inRange, venue, salespeople, true, roomBorders, operableWalls);
-  }, [bookings, venue, salespeople, roomBorders, operableWalls, startDate, endDate]);
+    return blocksFor(inRange, venue, salespeople, true, roomBorders, operableWalls, randomEventColours);
+  }, [bookings, venue, salespeople, roomBorders, operableWalls, randomEventColours, startDate, endDate]);
 
   // A block that runs past midnight is split into one segment per day,
   // exactly as the board does, so the part after midnight prints on

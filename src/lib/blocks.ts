@@ -101,6 +101,25 @@ export function setBlockHidden(b: Booking, blockRooms: string[], hide: boolean):
   return { ...b, hidden: false, hiddenRooms: remaining };
 }
 
+// A stable colour for an event name, so all blocks with the same name
+// match — the same event in several rooms, or the same title on other
+// days. The hash keeps it stable across reloads and re-imports, and the
+// pastel lightness keeps the dark block text readable.
+function hslToHex(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  const to = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+export function eventColour(title: string): string {
+  const key = mergeTitle(title);
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return hslToHex((h >>> 0) % 360, 0.65, 0.8);
+}
+
 // Groups bookings into the blocks the grid renders. Bookings with the
 // same title in the same room merge into one tall block spanning their
 // combined times (a height merge); the same event in adjacent rooms at
@@ -120,7 +139,7 @@ export function setBlockHidden(b: Booking, blockRooms: string[], hide: boolean):
 function mergeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
 }
-export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[],showHidden:boolean,borders:string[]=[],operableWalls:string[]=[]):Block[] {
+export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople:Salesperson[],showHidden:boolean,borders:string[]=[],operableWalls:string[]=[],randomEventColours=false):Block[] {
   const groups=new Map<string,Block>();
   for(const b of bookings as BoardBooking[]) {
     const [mainStart,mainEnd]=range(b.startTime,b.endTime);
@@ -156,7 +175,13 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         const noAv=isNoAv(b.jobNumber);
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonId:b.salespersonId,salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
+        // Random colours per event: every block with the same name gets
+        // the same colour, and the salesperson's colour does not apply —
+        // the person is still assigned (initials and filter still work),
+        // only their colour is set aside. Unavailable stays grey.
+        const colour=unavailable?bookingColour(b,salespeople):randomEventColours?eventColour(b.title):bookingColour(b,salespeople);
+        const salespersonColour=randomEventColours?undefined:(person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined);
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour,salespersonId:b.salespersonId,salespersonColour,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
       }
     }
   }

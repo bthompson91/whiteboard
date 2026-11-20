@@ -51,7 +51,7 @@ export function bookingColour(booking: { colour?: string; salespersonId?: string
   if (booking.unavailable || isNoAv(booking.jobNumber)) return UNAVAILABLE_SALESPERSON.colour;
   return resolveSalesperson(salespeople, booking.salespersonId)?.colour ?? booking.colour;
 }
-export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; room_width_min:number; room_width_max:number; salespeople:Salesperson[]; room_borders:string[]; operable_walls:string[] }
+export interface BoardSettings { room_types:Record<string,RoomType>; room_widths:Record<RoomType,number>; room_width_min:number; room_width_max:number; salespeople:Salesperson[]; room_borders:string[]; operable_walls:string[]; random_event_colours:boolean }
 export type ConfigDocument = Record<string, any>;
 const object = (v:any):boolean => !!v && typeof v === 'object' && !Array.isArray(v);
 const strings = (v:any):boolean => Array.isArray(v) && v.every(x=>typeof x==='string');
@@ -96,6 +96,7 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   const w=d.whiteboard||{};
   if(w.room_types!==undefined&&(!object(w.room_types)||!Object.values(w.room_types).every(t=>['large','small','other'].includes(String(t)))))throw new Error('Room types must be large, small or other.');
   if(w.room_widths!==undefined&&!object(w.room_widths))throw new Error('Room widths must be a mapping.');
+  if(w.random_event_colours!==undefined&&typeof w.random_event_colours!=='boolean')throw new Error('Random event colours must be true or false.');
   // The width limits are settable, not hard-coded: a venue can have a
   // room narrower than 125px or wider than 600px. The limits themselves
   // live in the same whiteboard section, defaulting to 125 and 600.
@@ -133,7 +134,7 @@ export function boardSettings(d:ConfigDocument):BoardSettings {
     const key=k.trim();
     if(key)room_types[key]=v;
   }
-  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},room_width_min:typeof w.room_width_min==='number'?w.room_width_min:125,room_width_max:typeof w.room_width_max==='number'?w.room_width_max:600,salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])],operable_walls:[...(w.operable_walls||[])]};
+  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},room_width_min:typeof w.room_width_min==='number'?w.room_width_min:125,room_width_max:typeof w.room_width_max==='number'?w.room_width_max:600,salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])],operable_walls:[...(w.operable_walls||[])],random_event_colours:w.random_event_colours===true};
 }
 export function writeConfiguration(d:ConfigDocument):string { return yaml.dump(d,{noRefs:true,lineWidth:120,sortKeys:false}); }
 // Tidy a configuration document before saving: trim stray whitespace
