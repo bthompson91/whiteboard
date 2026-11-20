@@ -26,6 +26,7 @@ export interface Booking {
   salespersonId?: string;
   unavailable?: boolean;
   hidden?: boolean;
+  timeline?: { label: string; start: string; end: string }[];
 }
 
 export interface BookingSnapshot {

@@ -7,6 +7,27 @@ import { BookingChange } from './importComparison';
 export const changeKey = (change: BookingChange) =>
   `${change.type}:${change.booking.id}:${change.match?.previous.id ?? change.previous?.id ?? ''}`;
 
+// Merge a matched new booking onto its previous booking: the new values
+// win, but the booking keeps its previous id and its colour, salesperson,
+// unavailable flag, hidden status, job number and timeline carry over
+// when the new booking does not bring its own. A new import whose
+// setup/teardown rows did not attach must not erase the previous
+// booking's setup and teardown times. Used both when a review change is
+// accepted and when a match is linked in the review.
+export function mergeMatchedBooking(previous: Booking, booking: Booking): Booking {
+  return {
+    ...previous,
+    ...booking,
+    id: previous.id,
+    colour: booking.colour ?? previous.colour,
+    salespersonId: booking.salespersonId ?? previous.salespersonId,
+    unavailable: booking.unavailable ?? previous.unavailable,
+    hidden: booking.hidden ?? previous.hidden,
+    jobNumber: booking.jobNumber || previous.jobNumber,
+    timeline: booking.timeline ?? previous.timeline
+  };
+}
+
 // Turn a reviewed import into the bookings to publish. `selected` maps a
 // change key to whether that change is applied; anything absent counts as
 // applied, so a fresh review publishes everything. The rules that stop
@@ -15,7 +36,7 @@ export const changeKey = (change: BookingChange) =>
 //   previous booking instead of dropping both;
 // - accepting a matched new booking merges it onto the previous booking:
 //   the new values win, but the booking keeps its previous id and its
-//   colour, salesperson, hidden status and job number carry over;
+//   colour, salesperson, hidden status, job number and timeline carry over;
 // - rejecting a changed booking keeps the previous version;
 // - a disappeared booking is only removed when its change is applied;
 //   unticking it keeps it on the board.
@@ -37,17 +58,7 @@ export function applyReview(changes: BookingChange[], selected: Record<string, b
         continue;
       }
       if (change.match) {
-        const previous = change.match.previous;
-        bookings.push({
-          ...previous,
-          ...change.booking,
-          id: previous.id,
-          colour: change.booking.colour ?? previous.colour,
-          salespersonId: change.booking.salespersonId ?? previous.salespersonId,
-          unavailable: change.booking.unavailable ?? previous.unavailable,
-          hidden: change.booking.hidden ?? previous.hidden,
-          jobNumber: change.booking.jobNumber || previous.jobNumber
-        });
+        bookings.push(mergeMatchedBooking(change.match.previous, change.booking));
       } else {
         bookings.push(change.booking);
       }

@@ -15,6 +15,7 @@ import {
   savePreviousImport
 } from './lib/bookingImport';
 import { BookingChange, compareImports } from './lib/importComparison';
+import { mergeMatchedBooking } from './lib/reviewApply';
 import {
   createContributorFile,
   createSharedFile,
@@ -202,16 +203,7 @@ export default function App() {
     setLinkHistory(current => [...current, pendingReview]);
     const linked = pendingReview.bookings.map(booking => {
       if (booking.id !== change.booking.id) return booking;
-      const previous = match.previous;
-      return {
-        ...booking,
-        id: previous.id,
-        colour: booking.colour || previous.colour,
-        salespersonId: booking.salespersonId || previous.salespersonId,
-        unavailable: booking.unavailable ?? previous.unavailable,
-        hidden: booking.hidden ?? previous.hidden,
-        jobNumber: booking.jobNumber || previous.jobNumber
-      };
+      return mergeMatchedBooking(match.previous, booking);
     });
     const comparison = compareImports(
       pendingReview.comparison.changes

@@ -91,7 +91,7 @@ try {
 
   // --- Review application ---
   const previous = [
-    booking({ id: 'booking-1', title: 'Charity Gala', colour: '#ff0000', salespersonId: 'sp-1', unavailable: true, hidden: true, jobNumber: '123' }),
+    booking({ id: 'booking-1', title: 'Charity Gala', colour: '#ff0000', salespersonId: 'sp-1', unavailable: true, hidden: true, jobNumber: '123', timeline: [{ label: 'Setup', start: '15:00', end: '18:00' }, { label: 'Teardown', start: '23:00', end: '00:00' }] }),
     booking({ id: 'booking-2', title: 'Old Event' })
   ];
   const current = [booking({ id: 'booking-9', title: 'Charity Dinner' })];
@@ -102,6 +102,12 @@ try {
   check('accepting a match merges onto the previous booking', !!merged && merged.title === 'Charity Dinner' && merged.colour === '#ff0000' && merged.hidden === true && merged.jobNumber === '123', JSON.stringify(merged));
   check('accepting a match keeps the salesperson', merged?.salespersonId === 'sp-1');
   check('accepting a match keeps the unavailable flag', merged?.unavailable === true);
+  check('accepting a match keeps the setup and teardown times', JSON.stringify(merged?.timeline) === JSON.stringify(previous[0].timeline), JSON.stringify(merged?.timeline));
+  // When the new import brings its own setup/teardown, those win.
+  const current2 = [booking({ id: 'booking-10', title: 'Charity Dinner', timeline: [{ label: 'Setup', start: '16:00', end: '18:00' }] })];
+  const comparison2 = compareImports(previous, current2, 'Crown Melbourne');
+  const merged2 = applyReview(comparison2.changes, {})[0];
+  check('a new import with its own setup time replaces the old one', JSON.stringify(merged2?.timeline) === JSON.stringify(current2[0].timeline), JSON.stringify(merged2?.timeline));
   check('accepting a match removes the disappeared booking', !published.some(b => b.id === 'booking-2'));
   const keepDisappeared = { ...selectAll, [changeKey(result.changes.find(c => c.type === 'disappeared'))]: false };
   published = applyReview(result.changes, keepDisappeared);

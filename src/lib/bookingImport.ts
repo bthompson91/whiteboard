@@ -4,7 +4,7 @@ import { Booking, BookingSnapshot, ImportHistoryEntry, ImportSource } from '../t
 import { ImportComparison, compareImports } from './importComparison';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 import { dateValue, timeValue } from './dateTime';
-export type BoardBooking = Booking & { activity?: string; timeline?: { label: string; start: string; end: string }[] };
+export type BoardBooking = Booking & { activity?: string };
 export interface ImportResult {
   bookings: Booking[];
   comparison: ImportComparison;
@@ -136,8 +136,7 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
         if (existing.salespersonId) booking.salespersonId = existing.salespersonId;
         if (existing.unavailable !== undefined) booking.unavailable = existing.unavailable;
         if (existing.hidden !== undefined) booking.hidden = existing.hidden;
-        const existingBoard = existing as BoardBooking;
-        if (existingBoard.timeline?.length) booking.timeline = existingBoard.timeline;
+        if (existing.timeline?.length) booking.timeline = existing.timeline;
       }
       rows.push(booking);
     });
