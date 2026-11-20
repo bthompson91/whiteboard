@@ -16,42 +16,6 @@ export function dayKind(date: string, today: string): 'past' | 'today' | 'future
   return date < today ? 'past' : date > today ? 'future' : 'today';
 }
 
-// Weeks (Monday-Sunday) for the collapsible week rows. Dates are
-// yyyy-MM-dd, so the weekday is computed from the UTC date.
-function parseDate(date: string): Date {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
-}
-function formatDate(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
-// The Monday of the week containing the date (weeks start Monday).
-export function weekMonday(date: string): string {
-  const d = parseDate(date);
-  // getUTCDay: 0 = Sunday, 1 = Monday, ... 6 = Saturday.
-  const offset = (d.getUTCDay() + 6) % 7; // days since Monday
-  return formatDate(new Date(d.getTime() - offset * 86400000));
-}
-// Group sorted dates into Monday-Sunday weeks, in order.
-export function groupWeeks(dates: string[]): { monday: string; dates: string[] }[] {
-  const weeks: { monday: string; dates: string[] }[] = [];
-  for (const d of dates) {
-    const m = weekMonday(d);
-    const last = weeks[weeks.length - 1];
-    if (last && last.monday === m) last.dates.push(d);
-    else weeks.push({ monday: m, dates: [d] });
-  }
-  return weeks;
-}
-// Whether a week starts collapsed: a week whose Monday is before the
-// Monday of last week (the week containing today - 7 days) starts
-// collapsed. So with today in the current week, last week and the
-// current week start expanded, and everything before that collapses.
-export function defaultCollapsedWeek(monday: string, today: string): boolean {
-  const lastWeekMonday = weekMonday(formatDate(new Date(parseDate(today).getTime() - 7 * 86400000)));
-  return monday < lastWeekMonday;
-}
-
 export function dateValue(v: unknown, date1904: boolean, format = 'DD/MM/YYYY'): string {
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
   if (typeof v === 'number' || /^\d{5}(\.\d+)?$/.test(text(v))) {

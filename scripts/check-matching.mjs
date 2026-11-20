@@ -30,7 +30,7 @@ try {
   });
   const { compareImports } = await import(pathToFileURL(join(dir, 'importComparison.js')).href);
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
-  const { dateValue, timeValue, dayKind, weekMonday, groupWeeks, defaultCollapsedWeek } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
+  const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
   const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction, fitFontSize } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
@@ -400,16 +400,6 @@ try {
   check('dayKind calls a past day past', dayKind('2026-11-19', '2026-11-20') === 'past');
   check('dayKind calls today today', dayKind('2026-11-20', '2026-11-20') === 'today');
   check('dayKind calls a future day future', dayKind('2026-11-21', '2026-11-20') === 'future');
-  // --- Weeks collapse: weeks before last week start collapsed ---
-  // With today Friday 2026-11-20, the current week is Mon 16 Nov,
-  // last week is Mon 9 Nov, so weeks starting Mon 2 Nov and earlier
-  // collapse and Mon 9 Nov and Mon 16 Nov start expanded.
-  check('weekMonday finds the Monday of the week', weekMonday('2026-11-20') === '2026-11-16' && weekMonday('2026-11-16') === '2026-11-16' && weekMonday('2026-11-22') === '2026-11-16' && weekMonday('2026-11-23') === '2026-11-23');
-  check('groupWeeks groups dates into Monday-Sunday weeks', (() => { const w = groupWeeks(['2026-11-16','2026-11-17','2026-11-22','2026-11-23']); return w.length === 2 && w[0].monday === '2026-11-16' && w[0].dates.length === 3 && w[1].monday === '2026-11-23' && w[1].dates.length === 1; })());
-  check('a week before last week starts collapsed', defaultCollapsedWeek('2026-11-02', '2026-11-20') === true);
-  check('last week starts expanded', defaultCollapsedWeek('2026-11-09', '2026-11-20') === false);
-  check('the current week starts expanded', defaultCollapsedWeek('2026-11-16', '2026-11-20') === false);
-  check('a future week starts expanded', defaultCollapsedWeek('2026-11-23', '2026-11-20') === false);
 
   // --- Strong borders: placed after named rooms, not around groups ---
   const borders = strongBorders(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1', 'River Room 2'], ['Palladium C1', 'River Room 2']);

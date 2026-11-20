@@ -4,7 +4,7 @@ import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
 import { Block, blocksFor, clock, fitFontSize, likeBookings, blockCountForBookings, strongBorders, timeFraction } from '../lib/blocks';
-import { dayKind, defaultCollapsedWeek, groupWeeks, weekMonday } from '../lib/dateTime';
+import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
 interface Props {
@@ -111,12 +111,6 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
   const [draft,setDraft]=useState<Booking|null>(null);
-  // Weeks the user has explicitly expanded or collapsed. A choice
-  // survives re-renders and range changes: expanding a week removes
-  // it from the collapsed set and adds it to the expanded set, and
-  // collapsing does the reverse.
-  const [manuallyExpanded,setManuallyExpanded]=useState<Set<string>>(new Set());
-  const [manuallyCollapsed,setManuallyCollapsed]=useState<Set<string>>(new Set());
   const [applyAllPrompt,setApplyAllPrompt]=useState<{salespersonId:string;colour?:string;name:string;like:Booking[];likeBlockCount:number}|null>(null);
   const [mergeMessage,setMergeMessage]=useState<string|null>(null);
   const openInspector=(booking:Booking)=>{onSelectedBookingChange(booking.id);setDraft({...booking});setMergeMessage(null);};
@@ -235,40 +229,22 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const draftRoomIndices=draft?((draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId]).map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0)):[];
   const mergeLeftBlocked=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0||!!strongAfter[Math.min(...draftRoomIndices)-1];
   const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)];
-  // Weeks (Monday-Sunday). A week is collapsed by default when it ends
-  // before last week (see defaultCollapsedWeek): with today in the
-  // current week, last week and the current week start expanded, and
-  // everything before that collapses. A collapsed week renders as one
-  // summary row with a [+] to expand it; an expanded week renders its
-  // day rows, with a [-] on the first day to collapse it again. The
-  // user's expand/collapse choice survives re-renders.
-  const weeks = groupWeeks(dates);
-  const isCollapsed=(monday:string)=>(defaultCollapsedWeek(monday,today)&&!manuallyExpanded.has(monday))||manuallyCollapsed.has(monday);
-  const expandWeek=(monday:string)=>{setManuallyExpanded(s=>new Set(s).add(monday));setManuallyCollapsed(s=>{const n=new Set(s);n.delete(monday);return n;});};
-  const collapseWeek=(monday:string)=>{setManuallyCollapsed(s=>new Set(s).add(monday));setManuallyExpanded(s=>{const n=new Set(s);n.delete(monday);return n;});};
-  // The date labels (and the week-range labels) share one fitted size
-  // that fills the 160px date column, the same way the room names fill
-  // their columns.
-  const dateFontSizeValue=dateFontSize([...dates.map(d=>format(parseISO(d),'EEE dd MMM')),...weeks.map(w=>`${format(parseISO(w.dates[0]),'EEE dd MMM')} – ${format(parseISO(w.dates[w.dates.length-1]),'EEE dd MMM')}`)],160);
-  // Snap to today: expand today's week if it was collapsed, then
-  // scroll so today's row (or the next date after it, when today is
-  // not on the board) sits just below the sticky header. This is what
-  // the Today button calls, and what the board does on load. The row
-  // may not exist until the week expands and re-renders, so the scroll
-  // waits a tick.
+  // The date labels share one fitted size that fills the 160px date
+  // column, the same way the room names fill theirs.
+  const dateFontSizeValue=dateFontSize(dates.map(d=>format(parseISO(d),'EEE dd MMM')),160);
+  // Snap to today: scroll so today's row (or the next date after it,
+  // when today is not on the board) sits just below the sticky header.
+  // This is what the Today button calls, and what the board does on
+  // load.
   const scrollToToday=()=>{
     const target=dates.find(d=>d>=today)??dates[dates.length-1];
     if(!target)return;
-    const monday=weekMonday(target);
-    if(isCollapsed(monday))expandWeek(monday);
-    window.setTimeout(()=>{
-      const container=root.current?.parentElement;
-      if(!container)return;
-      const row=root.current?.querySelector(`[data-date="${target}"]`) as HTMLElement|null;
-      if(!row)return;
-      const headerHeight=header.current?.offsetHeight||0;
-      container.scrollTop=row.offsetTop-headerHeight;
-    },0);
+    const container=root.current?.parentElement;
+    if(!container)return;
+    const row=root.current?.querySelector(`[data-date="${target}"]`) as HTMLElement|null;
+    if(!row)return;
+    const headerHeight=header.current?.offsetHeight||0;
+    container.scrollTop=row.offsetTop-headerHeight;
   };
   useLayoutEffect(()=>{ if(scrollToTodayRef)scrollToTodayRef.current=scrollToToday; });
   // The board opens scrolled to the current day: on load, and whenever
@@ -286,20 +262,15 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   return <div className="booking-grid" ref={root} style={style}>
     <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{fontSize:roomFontSize}}>{r.name}</div>)}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
-    {weeks.map(week=>isCollapsed(week.monday)?(
-      <div className="grid-row" key={week.monday} style={{gridTemplateColumns:columns}}>
-        <div className="date-cell group-edge day-edge"><button onClick={()=>expandWeek(week.monday)} aria-label={`Expand week of ${week.monday}`} title="Expand this week" style={{fontSize:18,padding:'2px 8px',marginRight:4}}>[+]</button><div className="date-label" style={{fontSize:dateFontSizeValue}}>{format(parseISO(week.dates[0]),'EEE dd MMM')} – {format(parseISO(week.dates[week.dates.length-1]),'EEE dd MMM')}</div></div>
-        {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
-      </div>
-    ):week.dates.map((date,dayIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
-      <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}>{dayIndex===0&&<button onClick={()=>collapseWeek(week.monday)} aria-label="Collapse this week" title="Collapse this week" style={{fontSize:14,padding:'0 4px',marginRight:4}}>[-]</button>}<div className="date-label" style={{fontSize:dateFontSizeValue}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
+    {dates.map(date=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
+      <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizeValue}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
       {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,right:strongAfter[b.rooms[b.rooms.length-1]]?3:0,top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:b.hidden?0.45:undefined,borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{if(editingEnabled&&!draft){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking);}}}>
         <div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined)}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}<div>{clock(b.mainStart).slice(0,5)}</div><div>{clock(b.mainEnd).slice(0,5)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}</div>
         <FitTitle text={[b.title,[b.initials,b.jobNumber].filter(Boolean).join(' ')].filter(Boolean).join(' | ') + (b.hidden ? ' — hidden' : '')} />
         {continuation&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
       </div>)}
-    </div>))}
+    </div>)}
     {draft&&(
       <>
         <div className="inspector-overlay" onClick={closeInspector} />
