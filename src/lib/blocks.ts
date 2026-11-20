@@ -102,7 +102,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         const noAv=isNoAv(b.jobNumber);
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
       }
     }
   }
@@ -132,19 +132,14 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       previous.mergeRoom=previous.mergeRoom&&b.mergeRoom;
     } else spans.push(b);
   }
-  // Blocks render snapped to the nearest 2-hour frame: 18:30-22:12 renders
-  // as 18:00-22:00, so blocks line up in general time frames instead of
-  // ragged exact times. A tie rounds outward so the block still covers
-  // its real span, and a block that would collapse to nothing gets one
-  // full frame. The exact times are kept in mainStart/mainEnd and shown
-  // in the facts column and the tooltip, so the snap is visual only.
-  const SNAP_MINUTES = 120;
-  for (const b of spans) {
-    const startRemainder = b.start % SNAP_MINUTES;
-    b.start = startRemainder <= SNAP_MINUTES / 2 ? b.start - startRemainder : b.start + (SNAP_MINUTES - startRemainder);
-    const endRemainder = b.end % SNAP_MINUTES;
-    b.end = endRemainder < SNAP_MINUTES / 2 ? b.end - endRemainder : b.end + (SNAP_MINUTES - endRemainder);
-    if (b.end <= b.start) b.end = b.start + SNAP_MINUTES;
-  }
+  // Blocks render at their exact times: start_time and end_time are
+  // hard times on the board. The 2-hour snap used to round them to the
+  // nearest frame, which expanded back-to-back blocks into each other
+  // — on 1 Dec the AICC (span 10:30-15:00) and the Gala (span
+  // 15:00-21:00) share Garden Room 2 and meet at 15:00, exactly
+  // halfway between two frames, so the snap rounded the AICC's end up
+  // to 16:00 and the Gala's start down to 14:00 and they overlapped
+  // 14:00-16:00. The exact times are kept in mainStart/mainEnd and
+  // shown in the facts column and the tooltip.
   return spans;
 }

@@ -2,15 +2,20 @@ import yaml from 'js-yaml';
 import { parseVenueConfig } from './venueConfig';
 
 export type RoomType = 'large' | 'small' | 'other';
-export interface Salesperson { id:string; name:string; colour:string }
+export interface Salesperson { id:string; name:string; colour:string; shortName?:string }
 // Built-in grey option for the booking inspector: a booking that is not
 // available to sell, shown in grey rather than a salesperson's colour.
 export const UNAVAILABLE_SALESPERSON: Salesperson = { id: 'unavailable', name: 'Unavailable', colour: '#9aa0a6' };
-// The two-letter tag shown on a block next to the job number: the first
-// letters of the first and last names ("Alex Lee" -> "AL"), or the first
-// two letters when there is only one name ("Alex" -> "AL").
-export function salespersonInitials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
+// The two-letter tag shown on a block next to the job number. It is the
+// salesperson's short name when one is set (so two people who would
+// otherwise derive the same initials can be told apart — M Carrasco
+// and Cara Coughey would both be "CC"), and otherwise the first
+// letters of the first and last names ("Alex Lee" -> "AL"), or the
+// first two letters when there is only one name ("Alex" -> "AL").
+export function salespersonInitials(person: Salesperson): string {
+  const short = person.shortName?.trim();
+  if (short) return short.toUpperCase();
+  const words = person.name.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return '';
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
@@ -75,7 +80,7 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if(w.salespeople!==undefined){
     if(!Array.isArray(w.salespeople))throw new Error('Salespeople must be a list.');
     const ids=new Set<string>();
-    for(const p of w.salespeople){if(!object(p)||typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||(strict&&!p.name.trim())||typeof p.colour!=='string'||!/^#[0-9a-f]{6}$/i.test(p.colour))throw new Error('Each salesperson needs a unique ID, a name and a six-digit hex colour.');ids.add(p.id);}
+    for(const p of w.salespeople){if(!object(p)||typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||(strict&&!p.name.trim())||typeof p.colour!=='string'||!/^#[0-9a-f]{6}$/i.test(p.colour)||(p.shortName!==undefined&&typeof p.shortName!=='string'))throw new Error('Each salesperson needs a unique ID, a name and a six-digit hex colour.');ids.add(p.id);}
   }
   if(w.room_borders!==undefined){
     if(!Array.isArray(w.room_borders)||!w.room_borders.every((r:unknown)=>typeof r==='string'))throw new Error('Room borders must be a list of room names.');

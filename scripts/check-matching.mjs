@@ -269,10 +269,15 @@ try {
   check('unknown salesperson falls back to the stored colour', bookingColour({ salespersonId: 'sp-gone', colour: '#ff0000' }, palette) === '#ff0000');
   check('no salesperson keeps the stored colour', bookingColour({ colour: '#ff0000' }, palette) === '#ff0000');
   check('resolveSalesperson finds Unavailable by id', resolveSalesperson(palette, 'unavailable')?.name === 'Unavailable');
-  check('initials take first and last names', salespersonInitials('Alex Lee') === 'AL');
-  check('initials take the first two letters of one name', salespersonInitials('Alex') === 'AL');
-  check('initials use the last word for three names', salespersonInitials('Mary Jane Smith') === 'MS');
-  check('initials are empty for a blank name', salespersonInitials('  ') === '');
+  check('initials take first and last names', salespersonInitials({ id: 'a', name: 'Alex Lee', colour: '#000000' }) === 'AL');
+  check('initials take the first two letters of one name', salespersonInitials({ id: 'a', name: 'Alex', colour: '#000000' }) === 'AL');
+  check('initials use the last word for three names', salespersonInitials({ id: 'a', name: 'Mary Jane Smith', colour: '#000000' }) === 'MS');
+  check('initials are empty for a blank name', salespersonInitials({ id: 'a', name: '  ', colour: '#000000' }) === '');
+  // A short name set in the palette wins over the derived initials, so
+  // two people who would otherwise collide can be told apart: M
+  // Carrasco and Cara Coughey would both derive "CC".
+  check('a set short name is used as the tag', salespersonInitials({ id: 'a', name: 'M Carrasco', colour: '#000000', shortName: 'MC' }) === 'MC');
+  check('the derived initials are used when no short name is set', salespersonInitials({ id: 'a', name: 'Cara Coughey', colour: '#000000' }) === 'CC');
 
   // --- Block merging: height merges and width merges ---
   const venue = { rooms: [
@@ -311,7 +316,7 @@ try {
     booking({ id: 'a', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
     booking({ id: 'b', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' })
   ], venue, [], false);
-  check('same title in one room at different times merges into one tall block', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 24 * 60, JSON.stringify(blocks));
+  check('same title in one room at different times merges into one tall block', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 23 * 60, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Charity Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
     booking({ id: 'b', title: 'charity  gala ', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' })
@@ -321,7 +326,7 @@ try {
     booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '15:00', end: '18:00' }] }),
     booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
   ], venue, [], false);
-  check('a setup in one room does not stop the wide merge', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].start === 14 * 60 && blocks[0].facts.some(f => f.startsWith('Setup')), JSON.stringify(blocks));
+  check('a setup in one room does not stop the wide merge', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].start === 15 * 60 && blocks[0].facts.some(f => f.startsWith('Setup')), JSON.stringify(blocks));
   blocks = blocksFor(riverPair, venue, [], false, ['River Room 1']);
   check('a merge never crosses a strong border', blocks.length === 2, JSON.stringify(blocks));
   blocks = blocksFor(riverPair, venue, [], false, ['River Room 2']);
@@ -361,16 +366,29 @@ try {
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], jobNumber: 'NO AV' })], venue, palette, false);
   check('NO AV without a salesperson is unavailable with no strip colour', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].salespersonColour === undefined && blocks[0].initials === undefined, JSON.stringify(blocks));
 
-  // --- 2-hour snap: blocks line up in general time frames ---
+  // --- Hard times: blocks render at their exact times, no snap ---
+  // Start and end times are hard on the board. The 2-hour snap used to
+  // round them, which expanded back-to-back blocks into each other.
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:30', endTime: '22:12' })], venue, [], false);
-  check('block snaps to the nearest 2-hour frames', blocks.length === 1 && blocks[0].start === 18 * 60 && blocks[0].end === 22 * 60, JSON.stringify(blocks));
+  check('block renders at its exact times, not snapped', blocks.length === 1 && blocks[0].start === 18 * 60 + 30 && blocks[0].end === 22 * 60 + 12, JSON.stringify(blocks));
   check('exact times are kept for display', blocks[0].mainStart === 18 * 60 + 30 && blocks[0].mainEnd === 22 * 60 + 12, JSON.stringify(blocks));
-  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00' })], venue, [], false);
-  check('block already on the grid is unchanged', blocks.length === 1 && blocks[0].start === 18 * 60 && blocks[0].end === 22 * 60, JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:30', endTime: '13:00' })], venue, [], false);
-  check('short block snaps to one full frame', blocks.length === 1 && blocks[0].start === 12 * 60 && blocks[0].end === 14 * 60, JSON.stringify(blocks));
-  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:50', endTime: '20:10' })], venue, [], false);
-  check('block that would collapse keeps one full frame', blocks.length === 1 && blocks[0].start === 20 * 60 && blocks[0].end === 22 * 60, JSON.stringify(blocks));
+  check('a short block keeps its exact short span', blocks.length === 1 && blocks[0].start === 12 * 60 + 30 && blocks[0].end === 13 * 60, JSON.stringify(blocks));
+  // 1 Dec, Garden Rooms: the AICC (span 10:30-15:00, rooms Garden 2+3)
+  // and the Gala (span 15:00-21:00, rooms Garden 1+2) meet at 15:00 in
+  // Garden Room 2. They must not overlap: the AICC ends where the
+  // Gala starts.
+  const gardenVenue = { rooms: [
+    { id: 'Garden Room 1', name: 'Garden Room 1', order: 0 },
+    { id: 'Garden Room 2', name: 'Garden Room 2', order: 1 },
+    { id: 'Garden Room 3', name: 'Garden Room 3', order: 2 }
+  ] };
+  const aicc = booking({ id: 'aicc-lunch', title: 'AICC Boardroom Lunch with Anthony Miller, CEO of Westpac', roomId: 'Garden Room 2', roomIds: ['Garden Room 2', 'Garden Room 3'], startTime: '12:15', endTime: '14:00', timeline: [{ label: 'Setup', start: '10:30', end: '12:15' }, { label: 'Teardown', start: '14:00', end: '15:00' }] });
+  const gala = booking({ id: 'gala-vip', title: '2026 Crown Australian Open Welcome Gala', roomId: 'Garden Room 1', roomIds: ['Garden Room 1', 'Garden Room 2'], startTime: '18:00', endTime: '19:00', timeline: [{ label: 'Setup', start: '15:00', end: '18:00' }, { label: 'Teardown', start: '19:00', end: '21:00' }] });
+  blocks = blocksFor([aicc, gala], gardenVenue, [], false);
+  const aiccBlock = blocks.find(b => b.title.includes('AICC'));
+  const galaBlock = blocks.find(b => b.title.includes('Gala'));
+  check('back-to-back blocks in a shared room do not overlap', !!aiccBlock && !!galaBlock && aiccBlock.end <= galaBlock.start && aiccBlock.end === 15 * 60 && galaBlock.start === 15 * 60, JSON.stringify(blocks.map(b => [b.title.slice(0, 10), b.start, b.end])));
 
   // --- date bar: past days grey, today yellow with red text, future green ---
   check('dayKind calls a past day past', dayKind('2026-11-19', '2026-11-20') === 'past');
@@ -397,13 +415,13 @@ try {
     booking({ id: 'a', title: 'Lunch', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '15:00', timeline: [{ label: 'Teardown', start: '15:00', end: '17:00' }] }),
     booking({ id: 'b', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', timeline: [{ label: 'Setup', start: '15:30', end: '18:00' }] })
   ], venue, [], false);
-  check('a 15:30 setup no longer cuts a 17:00 teardown', blocks.find(b => b.title === 'Lunch')?.end === 18 * 60 && blocks.find(b => b.title === 'Dinner')?.start === 16 * 60, JSON.stringify(blocks));
+  check('a 15:30 setup no longer cuts a 17:00 teardown', blocks.find(b => b.title === 'Lunch')?.end === 17 * 60 && blocks.find(b => b.title === 'Dinner')?.start === 15 * 60 + 30, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '12:00', endTime: '16:00' }),
     booking({ id: 'b', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '23:00' }),
     booking({ id: 'c', title: 'Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '15:00', endTime: '17:00' })
   ], venue, [], false);
-  check('a merged block keeps its full height with a booking in the gap', blocks.find(b => b.title === 'Gala')?.start === 12 * 60 && blocks.find(b => b.title === 'Gala')?.end === 24 * 60 && blocks.find(b => b.title === 'Gala')?.ids.length === 2, JSON.stringify(blocks));
+  check('a merged block keeps its full height with a booking in the gap', blocks.find(b => b.title === 'Gala')?.start === 12 * 60 && blocks.find(b => b.title === 'Gala')?.end === 23 * 60 && blocks.find(b => b.title === 'Gala')?.ids.length === 2, JSON.stringify(blocks));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Late Night', roomId: 'Palladium A', roomIds: ['Palladium A'], date: '2026-11-19', startTime: '22:00', endTime: '02:00' }),
     booking({ id: 'b', title: 'Early Morning', roomId: 'Palladium A', roomIds: ['Palladium A'], date: '2026-11-20', startTime: '00:00', endTime: '04:00' })
