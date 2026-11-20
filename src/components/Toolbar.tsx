@@ -45,8 +45,8 @@ export default function Toolbar({
       {role === 'master' && (
         <button onClick={onOpenConfiguration} title="Configuration">⚙️</button>
       )}
-      <button onClick={onSaveAndRefresh} disabled={saving} title={role === 'viewer' ? 'Refresh the board from the linked files' : 'Save changes to the linked files, then refresh the board'}>
-        {saving ? 'Saving…' : role === 'viewer' ? '🔄 Refresh' : '💾 Save and refresh'}
+      <button onClick={onSaveAndRefresh} disabled={saving} title="Re-read the linked files, so the board shows what everyone else has saved. Any edit made in the last moment is written out first, so the refresh cannot lose it.">
+        {saving ? 'Refreshing…' : '🔄 Refresh'}
       </button>
       {canLinkFiles && (
         <button onClick={onOpenLinkFiles} title="Link the bookings export, venue YAML, changes.json and board file">

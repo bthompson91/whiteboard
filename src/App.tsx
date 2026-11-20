@@ -130,6 +130,11 @@ export default function App() {
   const [linkFilesOpen, setLinkFilesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const writingChangesRef = useRef(false);
+  // The auto-refresh interval reads this, so it always sees the latest
+  // processed ids even though the interval itself is only re-created
+  // when the role or the saving state changes.
+  const processedIdsRef = useRef<string[]>(processedSubmissionIds);
+  processedIdsRef.current = processedSubmissionIds;
   useEffect(() => {
     try {
       localStorage.setItem(MARKUP_KEY, JSON.stringify(markup));
@@ -508,10 +513,28 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
-  // Save and refresh. Everyone gets the button; for a viewer it only
-  // refreshes. An editor saves first — the board file (master), the
-  // changes list and the YAML — then re-reads the linked files, so the
-  // board shows what everyone else has saved since.
+  // Refresh only: re-read the linked board file and import any new
+  // changes from changes.json. This is what a viewer does, and what the
+  // board does automatically every 30 seconds in viewer mode.
+  const refreshBoard = async () => {
+    if (boardHandleRef.current) {
+      const shared = await readSharedFileFromHandle(boardHandleRef.current);
+      setBookings(shared.bookings);
+      setSubmissions(shared.submissions.filter(s => !processedIdsRef.current.includes(s.id)));
+      setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
+      setRevision(shared.revision);
+      setImportHistory(shared.history);
+    }
+    await importChanges();
+    setError(null);
+  };
+  // Refresh. Saving is automatic — the board writes itself back to
+  // its linked file half a second after the master changes it, and
+  // changes.json writes itself back half a second after anyone's
+  // changes change — so this button does not need to save. It re-reads
+  // the linked files, so the board shows what everyone else has saved
+  // since. It still writes out any edit made in the last moment first,
+  // so the re-read cannot overwrite a just-made change.
   const saveAndRefresh = async () => {
     if (saving) return;
     setSaving(true);
@@ -527,22 +550,22 @@ export default function App() {
           await writeChangesFileToHandle(changesHandleRef.current, submissions);
         }
       }
-      if (boardHandleRef.current) {
-        const shared = await readSharedFileFromHandle(boardHandleRef.current);
-        setBookings(shared.bookings);
-        setSubmissions(shared.submissions.filter(s => !processedSubmissionIds.includes(s.id)));
-        setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
-        setRevision(shared.revision);
-        setImportHistory(shared.history);
-      }
-      await importChanges();
-      setError(null);
+      await refreshBoard();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   };
+  // In viewer mode the board refreshes itself every 30 seconds, so a
+  // wall display (or any viewer) stays current without anyone touching
+  // it. It only runs while the role is viewer, and it skips a tick
+  // while a save is in progress.
+  useEffect(() => {
+    if (role !== 'viewer') return;
+    const timer = setInterval(() => { if (!saving) refreshBoard().catch(e => setError(e instanceof Error ? e.message : String(e))); }, 30000);
+    return () => clearInterval(timer);
+  }, [role, saving]);
   return (
     <div className="app">
       <Toolbar
