@@ -15,3 +15,9 @@
    dialogs (review overlay, configuration page) 4000. */
 .app.files-unlinked::after{content:'';position:fixed;inset:0;background:rgba(0,0,0,0.25);pointer-events:none;z-index:2500}
 .app.files-unlinked .toolbar{position:relative;z-index:2600}
+/* Editor mode: the white field behind the bookings turns pale pink,
+   so it is obvious at a glance that the board is unlocked for
+   editing. Today's row keeps its pale canary highlight. */
+.app.editing .board-container{background:#fde8e8}
+.app.editing .room-cell{background:#fde8e8}
+.app.editing .grid-row.today .room-cell{background:#fff9c4}
