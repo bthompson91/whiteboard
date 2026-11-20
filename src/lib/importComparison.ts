@@ -1,4 +1,5 @@
 import { Booking } from '../types';
+import { identityKey, normalizeIdentity as normalizeText, normalizeJobNumber } from './bookingIdentity';
 
 export type ImportChangeType = 'unchanged' | 'changed' | 'new' | 'disappeared';
 export type MatchClassification = 'strong' | 'possible' | 'unmatched';
@@ -22,17 +23,6 @@ export interface ImportComparison {
   changes: BookingChange[];
   summary: Record<ImportChangeType, number>;
 }
-
-const normalizeText = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-const normalizeJobNumber = (value?: string) => (value || '').trim().replace(/^0+(?=\d)/, '');
-
-const identityKey = (booking: Booking, venueName: string) => JSON.stringify([
-  normalizeText(venueName),
-  booking.date,
-  normalizeJobNumber(booking.jobNumber),
-  normalizeText(booking.title),
-  [...booking.roomIds].sort()
-]);
 
 const comparableFields: Array<{ field: string; read: (booking: Booking) => unknown }> = [
   { field: 'date', read: booking => booking.date },

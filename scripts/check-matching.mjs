@@ -18,7 +18,8 @@ try {
       join(root, 'src/lib/dateTime.ts'),
       join(root, 'src/lib/configuration.ts'),
       join(root, 'src/lib/blocks.ts'),
-      join(root, 'src/lib/markupAnchor.ts')
+      join(root, 'src/lib/markupAnchor.ts'),
+      join(root, 'src/lib/bookingIdentity.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -32,6 +33,7 @@ try {
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { blocksFor, strongBorders, likeBookings } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
+  const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -348,6 +350,46 @@ try {
   check('a point past the last row has no anchor', anchorFromPoint(anchorLayout, 200, 300) === null);
   check('an anchor for a day that is not shown resolves to nothing', pointFromAnchor(anchorLayout, { date: '2026-11-21', roomId: 'A', fx: 0.5, fy: 0.5 }) === null);
   check('an anchor for a room that is not shown resolves to nothing', pointFromAnchor(anchorLayout, { date: '2026-11-19', roomId: 'C', fx: 0.5, fy: 0.5 }) === null);
+
+  // --- Booking ids are unique per row, not per event ---
+  // A Setup, a Dinner and a Crew Meals for one event in the same rooms
+  // share the event identity, but they are different bookings: if they
+  // share one id, saving one in the inspector replaces all of them and
+  // the setup vanishes from the block.
+  const enchanted = (overrides) => ({ id: 'x', date: '2026-11-20', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'Palladium C3'], startTime: '18:00', endTime: '22:00', title: 'The 2026 Enchanted Ball', activity: 'Dinner', ...overrides });
+  check('rows for one event get different ids', new Set([
+    bookingId(enchanted({ activity: 'Setup', startTime: '09:00', endTime: '18:45' }), 'Crown Melbourne'),
+    bookingId(enchanted({ activity: 'Dinner', startTime: '18:45', endTime: '00:00' }), 'Crown Melbourne'),
+    bookingId(enchanted({ activity: 'Crew Meals - Encore AV Desk', startTime: '20:45', endTime: '21:15' }), 'Crown Melbourne')
+  ]).size === 3);
+  check('the same row gets the same id', bookingId(enchanted({ activity: 'Dinner', startTime: '18:45', endTime: '00:00' }), 'Crown Melbourne') === bookingId(enchanted({ activity: 'Dinner', startTime: '18:45', endTime: '00:00' }), 'Crown Melbourne'));
+
+  // --- Manual merge (merge group) joins across rooms ---
+  // Two bookings in rooms next to each other that share a merge group
+  // render as one wide block even when their titles, times or a strong
+  // border would stop the automatic merge. Without the group they stay
+  // separate, and a group never joins rooms that are not next to each
+  // other.
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
+  ], venue, [], false);
+  check('bookings sharing a merge group render as one wide block', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00' }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00' })
+  ], venue, [], false);
+  check('without a merge group, different titles and times stay separate', blocks.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
+  ], venue, [], false, ['Palladium A']);
+  check('a manual merge crosses a strong border', blocks.length === 1 && blocks[0].rooms.length === 2, JSON.stringify(blocks));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:00', endTime: '22:00', mergeGroup: 'g1' }),
+    booking({ id: 'b', title: 'Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '19:00', endTime: '23:00', mergeGroup: 'g1' })
+  ], venue, [], false);
+  check('a merge group does not join rooms that are not next to each other', blocks.length === 2, JSON.stringify(blocks));
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

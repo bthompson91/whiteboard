@@ -4,7 +4,7 @@ import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
 import { bookingColour, isNoAv, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -63,7 +63,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       // (its id in the key), so it never height-merges with like bookings.
       const key=b.mergeTime===false?JSON.stringify([b.date,mergeTitle(b.title),room,b.id]):JSON.stringify([b.date,mergeTitle(b.title),room]);
       const old=groups.get(key);
-      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&!!b.hidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;}
+      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&!!b.hidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;}
       else {
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
@@ -76,18 +76,22 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         const noAv=isNoAv(b.jobNumber);
         const unavailable=!!b.unavailable||b.salespersonId===UNAVAILABLE_SALESPERSON.id||noAv;
         const person=resolveSalesperson(salespeople,b.salespersonId);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:b.jobNumber,colour:bookingColour(b,salespeople),salespersonColour:person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person.name),unavailable,hidden:!!b.hidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
       }
     }
   }
   // A width merge joins on the event times, not on the span including
   // setup and teardown: a setup in one room must not stop the event
   // joining across rooms, and the joined block covers both rooms' spans.
+  // A manual merge (the same merge group on both bookings) joins
+  // regardless of title, times or a strong border: the user asked for
+  // those two bookings to be one block.
   const borderAfter=strongBorders(venue.rooms.map(r=>r.id),borders);
   const spans:Block[]=[];
   for(const b of [...groups.values()].sort((a,c)=>a.rooms[0]-c.rooms[0])) {
     b.ids=[...new Set(b.ids)].sort();b.facts=[...new Set(b.facts)];
-    const previous=spans.find(p=>p.date===b.date&&mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]&&p.mergeRoom&&b.mergeRoom);
+    const manualMerge=!!(b.mergeGroup&&b.mergeGroup.length);
+    const previous=spans.find(p=>p.date===b.date&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&((manualMerge&&!!p.mergeGroup&&p.mergeGroup===b.mergeGroup)||(mergeTitle(p.title)===mergeTitle(b.title)&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&!borderAfter[p.rooms[p.rooms.length-1]]&&p.mergeRoom&&b.mergeRoom)));
     if(previous){
       previous.rooms.push(b.rooms[0]);
       previous.ids=[...new Set([...previous.ids,...b.ids])].sort();

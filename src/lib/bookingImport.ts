@@ -10,31 +10,15 @@ export interface ImportResult {
   comparison: ImportComparison;
   source: ImportSource;
 }
+import { identityKey, bookingId } from './bookingIdentity';
 const text = (v: unknown) => v == null ? '' : String(v).trim();
 const PREVIOUS_IMPORT_KEY = 'whiteboard-previous-import';
 const IMPORT_HISTORY_KEY = 'whiteboard-import-history';
-const normalizeIdentity = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-const normalizeJobNumber = (value: string) => {
-  const trimmed = value.trim();
-  return trimmed ? trimmed.replace(/^0+(?=\d)/, '') : '';
-};
 const hashBytes = (bytes: Uint8Array) => {
   let hash = 5381;
   for (let i = 0; i < bytes.length; i++) hash = ((hash << 5) + hash + bytes[i]) >>> 0;
   return hash.toString(36);
 };
-const stableHash = (value: string) => {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i++) hash = ((hash << 5) + hash + value.charCodeAt(i)) >>> 0;
-  return hash.toString(36).padStart(7, '0');
-};
-const identityKey = (booking: BoardBooking, venueName: string) => JSON.stringify([
-  normalizeIdentity(venueName),
-  booking.date,
-  normalizeJobNumber(booking.jobNumber || ''),
-  normalizeIdentity(booking.title),
-  [...booking.roomIds].sort()
-]);
 export function readPreviousImport(): BookingSnapshot | null {
   try {
     const parsed = JSON.parse(localStorage.getItem(PREVIOUS_IMPORT_KEY) || 'null');
@@ -128,10 +112,13 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig)
         roomIds
       };
       if (jobNumber) booking.jobNumber = jobNumber;
-      booking.id = `booking-${stableHash(identityKey(booking, venue.name))}`;
+      booking.id = bookingId(booking, venue.name);
       const existing = previousByIdentity.get(identityKey(booking, venue.name));
       if (existing) {
-        if (existing.id) booking.id = existing.id;
+        // The id is not carried over: it is derived from the booking's
+        // own time and activity, so it stays unique per row. Carrying
+        // over the previous id would reintroduce the shared id that
+        // let one save replace several bookings.
         if (existing.colour) booking.colour = existing.colour;
         if (existing.salespersonId) booking.salespersonId = existing.salespersonId;
         if (existing.unavailable !== undefined) booking.unavailable = existing.unavailable;

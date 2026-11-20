@@ -32,6 +32,11 @@ export interface Booking {
   // corresponding flag is false. Undefined means merge, as before.
   mergeTime?: boolean;
   mergeRoom?: boolean;
+  // An explicit manual merge: bookings sharing a merge group render as
+  // one block (across rooms), even when their titles, times or a strong
+  // border would stop the automatic merge. Set by Merge left / Merge
+  // right in the inspector; cleared by Unmerge.
+  mergeGroup?: string;
   timeline?: { label: string; start: string; end: string }[];
 }
 

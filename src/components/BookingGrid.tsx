@@ -66,8 +66,9 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
   const [draft,setDraft]=useState<Booking|null>(null);
   const [applyAllPrompt,setApplyAllPrompt]=useState<{salespersonId:string;colour?:string;name:string;like:Booking[]}|null>(null);
-  const openInspector=(booking:Booking)=>{onSelectedBookingChange(booking.id);setDraft({...booking});};
-  const closeInspector=()=>{setDraft(null);setApplyAllPrompt(null);};
+  const [mergeMessage,setMergeMessage]=useState<string|null>(null);
+  const openInspector=(booking:Booking)=>{onSelectedBookingChange(booking.id);setDraft({...booking});setMergeMessage(null);};
+  const closeInspector=()=>{setDraft(null);setApplyAllPrompt(null);setMergeMessage(null);};
   const commitSave=(applyAll:boolean)=>{
     if(!draft)return;
     const saved={...draft,jobNumber:draft.jobNumber?normalizeJobNumber(draft.jobNumber):undefined};
@@ -93,6 +94,49 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
       return;
     }
     commitSave(false);
+  };
+  // Find the booking in the room immediately beside this one, on the
+  // same day, whose time overlaps this booking's time. Prefer one with
+  // the same title; otherwise the greatest overlap. Null when there is
+  // no room that way or no booking in it to merge with.
+  const mergeTarget=(direction:'left'|'right'):Booking|null=>{
+    if(!venue||!draft)return null;
+    const toMinutes=(t:string)=>{const m=/^(\d{1,2}):(\d{2})/.exec(t);return m?Number(m[1])*60+Number(m[2]):0;};
+    const roomIds=draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId];
+    const indices=roomIds.map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0);
+    if(!indices.length)return null;
+    const targetIndex=direction==='right'?Math.max(...indices)+1:Math.min(...indices)-1;
+    if(targetIndex<0||targetIndex>=venue.rooms.length)return null;
+    const targetRoom=venue.rooms[targetIndex].id;
+    const start=toMinutes(draft.startTime),end=toMinutes(draft.endTime);
+    const overlap=(b:Booking)=>{const s=toMinutes(b.startTime),e=toMinutes(b.endTime);return Math.max(0,Math.min(end,e)-Math.max(start,s));};
+    const sameTitle=(a:string,b:string)=>a.trim().replace(/\s+/g,' ').toLowerCase()===b.trim().replace(/\s+/g,' ').toLowerCase();
+    const candidates=bookings.filter(b=>b.id!==draft.id&&b.date===draft.date&&(b.roomIds||[b.roomId]).includes(targetRoom)&&overlap(b)>0);
+    if(!candidates.length)return null;
+    const titled=candidates.filter(b=>sameTitle(b.title,draft.title));
+    const pool=titled.length?titled:candidates;
+    return pool.sort((a,b)=>overlap(b)-overlap(a))[0]||null;
+  };
+  // Merge this booking with the one in the room immediately to the left
+  // or right, as one wide block, even when their titles, times or a
+  // strong border would stop the automatic merge. Applies at once: both
+  // bookings get the same merge group, and the draft is updated to match
+  // so saving does not undo it. Unmerge splits the whole group apart.
+  const mergeNeighbour=(direction:'left'|'right')=>{
+    if(!draft)return;
+    const target=mergeTarget(direction);
+    if(!target){setMergeMessage(`No booking in the room to the ${direction} to merge with.`);return;}
+    const group=draft.mergeGroup||crypto.randomUUID();
+    onBookingsChange(bookings.map(b=>b.id===draft.id||b.id===target.id?{...b,mergeGroup:group}:b));
+    setDraft({...draft,mergeGroup:group});
+    setMergeMessage(`Merged with “${target.title}”.`);
+  };
+  const unmergeGroup=()=>{
+    if(!draft||!draft.mergeGroup)return;
+    const group=draft.mergeGroup;
+    onBookingsChange(bookings.map(b=>b.mergeGroup===group?{...b,mergeGroup:undefined}:b));
+    setDraft({...draft,mergeGroup:undefined});
+    setMergeMessage('Unmerged.');
   };
   useLayoutEffect(()=>{
     const parent=root.current?.parentElement;if(!parent||!venue)return;
@@ -154,6 +198,13 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,edit
           <label className="checkbox"><input type="checkbox" checked={!!draft.hidden} onChange={event=>setDraft({...draft,hidden:event.target.checked})}/>Hide from board</label>
           <label className="checkbox"><input type="checkbox" checked={draft.mergeTime!==false} onChange={event=>setDraft({...draft,mergeTime:event.target.checked})}/>Merge with the same booking at other times</label>
           <label className="checkbox"><input type="checkbox" checked={draft.mergeRoom!==false} onChange={event=>setDraft({...draft,mergeRoom:event.target.checked})}/>Merge with the same booking in other rooms</label>
+          <div style={{margin:'0 20px 10px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <span style={{fontSize:13}}>Merge with the next room:</span>
+            <button onClick={()=>mergeNeighbour('left')}>Merge left</button>
+            <button onClick={()=>mergeNeighbour('right')}>Merge right</button>
+            {draft.mergeGroup&&<button onClick={unmergeGroup}>Unmerge</button>}
+          </div>
+          {mergeMessage&&<p style={{margin:'0 20px 10px',fontSize:13}}>{mergeMessage}</p>}
           {applyAllPrompt&&(
             <div style={{margin:'0 20px 10px',padding:'12px',border:'1px solid #1d4e89',borderRadius:7,background:'#eef4fb',fontSize:13}}>
               <p style={{margin:'0 0 10px'}}>{applyAllPrompt.name} is also on {applyAllPrompt.like.length} other booking{applyAllPrompt.like.length===1?'':'s'} titled “{draft.title}”. Apply {applyAllPrompt.name} to all of them?</p>
