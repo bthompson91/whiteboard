@@ -13,6 +13,9 @@ interface Props {
   submissionCount: number;
   revision: number;
   canRevert: boolean;
+  saving: boolean;
+  linkedFiles: { board: string | null; yaml: string | null; changes: string | null; bookings: string | null };
+  canLinkFiles: boolean;
   onToggleEditing: () => void;
   onSetMarkupMode: (mode: 'none' | 'text' | 'arrow') => void;
   onOpenConfiguration: () => void;
@@ -25,15 +28,16 @@ interface Props {
   onExportPublishedBoard: () => void;
   onImportPublishedBoard: (file: File) => void;
   onExportVenueConfig: () => void;
-  onExportContributorFile: () => void;
-  onImportContributorFile: (file: File) => void;
   onRevertLastImport: () => void;
+  onSaveAndRefresh: () => void;
+  onOpenLinkFiles: () => void;
 }
 export default function Toolbar({
   venue, bookingCount, role, contributorName, editingEnabled, markupMode, error, submissionCount, revision, canRevert,
+  saving, linkedFiles, canLinkFiles,
   onToggleEditing, onSetMarkupMode, onOpenConfiguration, onBookingsLoaded, onError,
   onRoleChange, onContributorNameChange, onOpenSubmissions, onOpenHistory, onExportPublishedBoard, onImportPublishedBoard,
-  onExportVenueConfig, onExportContributorFile, onImportContributorFile, onRevertLastImport
+  onExportVenueConfig, onRevertLastImport, onSaveAndRefresh, onOpenLinkFiles
 }: Props) {
   const [loading, setLoading] = useState(false);
   const handleBookingFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -54,11 +58,6 @@ export default function Toolbar({
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
     if (file) onImportPublishedBoard(file);
-  };
-  const handleContributorFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
-    if (file) onImportContributorFile(file);
   };
   return (
     <header className="toolbar">
@@ -87,10 +86,6 @@ export default function Toolbar({
             📖
             <input type="file" accept=".json" onChange={handlePublishedBoard} />
           </label>
-          <label title="Import contributor file">
-            📥
-            <input type="file" accept=".json" onChange={handleContributorFile} />
-          </label>
           <button onClick={onExportPublishedBoard} title="Export published board">📤</button>
           <button onClick={onExportVenueConfig} disabled={!venue} title="Export venue config">💾</button>
           <button onClick={onOpenSubmissions} title="Review submissions">
@@ -106,11 +101,9 @@ export default function Toolbar({
             📖
             <input type="file" accept=".json" onChange={handlePublishedBoard} />
           </label>
-          <button onClick={onExportContributorFile} title="Export my contributions">📤</button>
-          <label title="Import my contributions">
-            📥
-            <input type="file" accept=".json" onChange={handleContributorFile} />
-          </label>
+          <button onClick={onOpenSubmissions} title="My changes awaiting review">
+            📬{submissionCount ? ` (${submissionCount})` : ''}
+          </button>
         </>
       )}
       {role === 'viewer' && (
@@ -118,6 +111,14 @@ export default function Toolbar({
           📖
           <input type="file" accept=".json" onChange={handlePublishedBoard} />
         </label>
+      )}
+      <button onClick={onSaveAndRefresh} disabled={saving} title={role === 'viewer' ? 'Refresh the board from the linked files' : 'Save changes to the linked files, then refresh the board'}>
+        {saving ? 'Saving…' : role === 'viewer' ? '🔄 Refresh' : '💾 Save and refresh'}
+      </button>
+      {canLinkFiles && (
+        <button onClick={onOpenLinkFiles} title="Link the bookings export, venue YAML, changes.json and board file">
+          🔗 Link files{linkedFiles.changes ? ` (${linkedFiles.changes})` : ''}
+        </button>
       )}
       <span>{loading ? 'Importing…' : `${bookingCount} bookings · rev ${revision}`}</span>
       {role !== 'viewer' && (

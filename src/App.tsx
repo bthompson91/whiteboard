@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import BookingGrid from './components/BookingGrid';
 import ImportHistoryPanel from './components/ImportHistoryPanel';
 import ImportReviewPanel from './components/ImportReviewPanel';
@@ -17,13 +17,19 @@ import {
 import { BookingChange, compareImports } from './lib/importComparison';
 import { mergeMatchedBooking } from './lib/reviewApply';
 import {
-  createContributorFile,
   createSharedFile,
   createSubmission,
-  downloadContributorFile,
   downloadSharedFile,
-  parseContributorFile,
-  parseSharedFile
+  hasFileSystemAccess,
+  parseSharedFile,
+  pickLinkedFile,
+  pickLinkedFileToSave,
+  readChangesFileFromHandle,
+  readSharedFileFromHandle,
+  writeChangesFileToHandle,
+  writeLinkedFile,
+  writeSharedFileToHandle,
+  LinkedFileHandle
 } from './lib/sharedFile';
 import { parseVenueConfig } from './lib/venueConfig';
 import { boardSettings, readConfiguration } from './lib/configuration';
@@ -108,6 +114,21 @@ export default function App() {
   const [markupMode, setMarkupMode] = useState<'none' | 'text' | 'arrow'>('none');
   const [error, setError] = useState<string | null>(initial.error);
   const [configurationOpen, setConfigurationOpen] = useState(false);
+  // The linked files. The board works from three files that sit in one
+  // folder: the bookings export, the venue YAML and changes.json (the
+  // one shared list of changes). The board JSON itself is a fourth file
+  // the master publishes. Each is a File System Access handle, kept in a
+  // ref (handles are not serialisable), with the linked filename in
+  // state so the toolbar can show it. The handles last for this page
+  // load; linking again after a reload picks the same files.
+  const boardHandleRef = useRef<LinkedFileHandle | null>(null);
+  const yamlHandleRef = useRef<LinkedFileHandle | null>(null);
+  const changesHandleRef = useRef<LinkedFileHandle | null>(null);
+  const bookingsHandleRef = useRef<LinkedFileHandle | null>(null);
+  const [linkedFiles, setLinkedFiles] = useState<{ board: string | null; yaml: string | null; changes: string | null; bookings: string | null }>({ board: null, yaml: null, changes: null, bookings: null });
+  const [linkFilesOpen, setLinkFilesOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const writingChangesRef = useRef(false);
   useEffect(() => {
     try {
       localStorage.setItem(MARKUP_KEY, JSON.stringify(markup));
@@ -169,6 +190,49 @@ export default function App() {
       }
     }
   }, [importHistory]);
+  // Constantly write the board back to its linked file. The master owns
+  // the board file, so only the master auto-writes it (a contributor's
+  // changes live in changes.json instead). Debounced, so dragging a
+  // colour across several bookings does not write on every keystroke.
+  useEffect(() => {
+    const handle = boardHandleRef.current;
+    if (!handle || role !== 'master') return;
+    const timer = window.setTimeout(() => {
+      writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory)).catch(e => {
+        setError(e instanceof Error ? e.message : String(e));
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [bookings, submissions, revision, processedSubmissionIds, importHistory, role]);
+  // Constantly write the shared changes list back to changes.json.
+  // Everyone writes to the same file, so this is a read-modify-write:
+  // it reads the file, keeps changes from other contributors that are
+  // not in this browser and have not been processed, lets this
+  // browser's list win for ids it holds, and drops anything already
+  // processed (accepted or rejected by the master). A guard serialises
+  // writes so two rapid changes cannot interleave.
+  useEffect(() => {
+    const handle = changesHandleRef.current;
+    if (!handle) return;
+    const timer = window.setTimeout(async () => {
+      if (writingChangesRef.current) return;
+      writingChangesRef.current = true;
+      try {
+        let disk: ContributorSubmission[] = [];
+        try { disk = (await readChangesFileFromHandle(handle)).submissions; } catch { disk = []; }
+        const processed = new Set(processedSubmissionIds);
+        const byId = new Map<string, ContributorSubmission>();
+        for (const s of disk) if (!processed.has(s.id)) byId.set(s.id, s);
+        for (const s of submissions) byId.set(s.id, s);
+        await writeChangesFileToHandle(handle, [...byId.values()]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        writingChangesRef.current = false;
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [submissions, processedSubmissionIds]);
   const saveConfiguration = (text: string) => {
     readConfiguration(text);
     parseVenueConfig(text);
@@ -176,6 +240,13 @@ export default function App() {
     setYamlText(text);
     setError(null);
     setConfigurationOpen(false);
+    // Write the YAML back to its linked file, so the venue config on
+    // disk stays the one the board is using.
+    if (yamlHandleRef.current) {
+      writeLinkedFile(yamlHandleRef.current, text, 'text/yaml').catch(e => {
+        setError(e instanceof Error ? e.message : String(e));
+      });
+    }
   };
   const handleBookingsLoaded = (result: ImportResult) => {
     setPendingReview(result);
@@ -305,19 +376,101 @@ export default function App() {
     link.click();
     URL.revokeObjectURL(url);
   };
-  const exportContributorFile = () => downloadContributorFile(
-    createContributorFile(contributorName || 'Contributor', revision, submissions)
-  );
-  const importContributorFile = async (file: File) => {
+  // Link one of the files the board works from. The bookings export, the
+  // venue YAML and changes.json sit in one folder; linking them lets the
+  // app write changes back to the same files instead of downloading new
+  // copies. The board JSON is the file the master publishes. Linking a
+  // changes file that already holds changes imports them; linking a
+  // board file loads that board.
+  const linkBoardFile = async () => {
+    if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
     try {
-      const contributorFile = parseContributorFile(await file.text());
-      const incoming = contributorFile.submissions
-        .filter(submission => !processedSubmissionIds.includes(submission.id))
-        .map(submission => ({
-          ...submission,
-          author: contributorFile.contributor,
-          revisionBase: contributorFile.revisionBase
-        }));
+      const handle = await pickLinkedFile({ types: [{ description: 'Whiteboard board', accept: { 'application/json': ['.json'] } }] });
+      if (!handle) return;
+      const shared = await readSharedFileFromHandle(handle);
+      boardHandleRef.current = handle;
+      setLinkedFiles(current => ({ ...current, board: handle.name }));
+      setBookings(shared.bookings);
+      setSubmissions(shared.submissions.filter(s => !processedSubmissionIds.includes(s.id)));
+      setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
+      setRevision(shared.revision);
+      setImportHistory(shared.history);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const linkBoardFileAsNew = async () => {
+    if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
+    try {
+      const handle = await pickLinkedFileToSave(`whiteboard-published-rev${revision}-${new Date().toISOString().slice(0, 10)}.json`, 'Whiteboard board');
+      if (!handle) return;
+      boardHandleRef.current = handle;
+      setLinkedFiles(current => ({ ...current, board: handle.name }));
+      await writeSharedFileToHandle(handle, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const linkYamlFile = async () => {
+    if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
+    try {
+      const handle = await pickLinkedFile({ types: [{ description: 'Venue YAML', accept: { 'text/yaml': ['.yaml', '.yml'] } }] });
+      if (!handle) return;
+      const text = await (await handle.getFile()).text();
+      readConfiguration(text);
+      parseVenueConfig(text);
+      yamlHandleRef.current = handle;
+      setLinkedFiles(current => ({ ...current, yaml: handle.name }));
+      localStorage.setItem(VENUE_YAML_KEY, text);
+      setYamlText(text);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const linkChangesFile = async () => {
+    if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
+    try {
+      const handle = await pickLinkedFile({ types: [{ description: 'Whiteboard changes', accept: { 'application/json': ['.json'] } }] });
+      if (!handle) return;
+      const text = await (await handle.getFile()).text();
+      // An empty file is a fresh changes list; a non-empty one must
+      // already be a changes file, or linking it would overwrite it.
+      if (text.trim()) {
+        const parsed = JSON.parse(text);
+        if (parsed?.format !== 'whiteboard-changes' || parsed.version !== 1) throw new Error('This file is not a Whiteboard changes file. Pick changes.json, or an empty file to start one.');
+      }
+      changesHandleRef.current = handle;
+      setLinkedFiles(current => ({ ...current, changes: handle.name }));
+      await importChanges();
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const linkBookingsFile = async () => {
+    if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
+    try {
+      const handle = await pickLinkedFile({ types: [{ description: 'Events file', accept: { 'application/vnd.ms-excel': ['.xls', '.xlsx'] } }] });
+      if (!handle) return;
+      bookingsHandleRef.current = handle;
+      setLinkedFiles(current => ({ ...current, bookings: handle.name }));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  // The master triggers an import of changes.json: read the shared list
+  // and merge its pending changes into the review, skipping anything
+  // already accepted or rejected.
+  const importChanges = async () => {
+    const handle = changesHandleRef.current;
+    if (!handle) return;
+    try {
+      const incoming = (await readChangesFileFromHandle(handle)).submissions
+        .filter(submission => !processedSubmissionIds.includes(submission.id));
       setSubmissions(current => {
         const merged = [...current];
         for (const submission of incoming) {
@@ -330,6 +483,41 @@ export default function App() {
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  // Save and refresh. Everyone gets the button; for a viewer it only
+  // refreshes. An editor saves first — the board file (master), the
+  // changes list and the YAML — then re-reads the linked files, so the
+  // board shows what everyone else has saved since.
+  const saveAndRefresh = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      if (role !== 'viewer') {
+        if (boardHandleRef.current && role === 'master') {
+          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, submissions, revision, processedSubmissionIds, importHistory));
+        }
+        if (yamlHandleRef.current) {
+          await writeLinkedFile(yamlHandleRef.current, yamlText, 'text/yaml');
+        }
+        if (changesHandleRef.current) {
+          await writeChangesFileToHandle(changesHandleRef.current, submissions);
+        }
+      }
+      if (boardHandleRef.current) {
+        const shared = await readSharedFileFromHandle(boardHandleRef.current);
+        setBookings(shared.bookings);
+        setSubmissions(shared.submissions.filter(s => !processedSubmissionIds.includes(s.id)));
+        setProcessedSubmissionIds(current => [...new Set([...current, ...shared.processedSubmissionIds])]);
+        setRevision(shared.revision);
+        setImportHistory(shared.history);
+      }
+      await importChanges();
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
     }
   };
   return (
@@ -355,14 +543,17 @@ export default function App() {
         onError={setError}
         onRoleChange={requestRoleChange}
         onContributorNameChange={setContributorName}
-        onOpenSubmissions={() => setSubmissionsOpen(true)}
+        onOpenSubmissions={() => { importChanges(); setSubmissionsOpen(true); }}
         onOpenHistory={() => setHistoryOpen(true)}
         onExportPublishedBoard={exportPublishedBoard}
         onImportPublishedBoard={importPublishedBoard}
         onExportVenueConfig={exportVenueConfig}
-        onExportContributorFile={exportContributorFile}
-        onImportContributorFile={importContributorFile}
         onRevertLastImport={revertLastImport}
+        onSaveAndRefresh={saveAndRefresh}
+        saving={saving}
+        linkedFiles={linkedFiles}
+        canLinkFiles={hasFileSystemAccess()}
+        onOpenLinkFiles={() => setLinkFilesOpen(true)}
       />
       <main className="board-container">
         <BookingGrid
@@ -423,6 +614,26 @@ export default function App() {
           onRestore={restoreImport}
           onClose={() => setHistoryOpen(false)}
         />
+      )}
+      {linkFilesOpen && (
+        <div className="review-overlay">
+          <section className="review-panel" aria-label="Link files">
+            <header>
+              <h2>Link files</h2>
+              <p>The board works from three files in one folder — the bookings export, the venue YAML and changes.json — plus the board file the master publishes. Link them here and the app writes changes back to the same files instead of downloading new copies. Everyone writes their changes to the one changes.json; the master imports it and yes/no&apos;s each change.</p>
+            </header>
+            <table><thead><tr><th>File</th><th>Linked</th><th></th></tr></thead><tbody>
+              <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile}>Link</button></td></tr>
+              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile}>Link</button></td></tr>
+              <tr><td>Changes (changes.json)</td><td>{linkedFiles.changes || 'Not linked'}</td><td><button onClick={linkChangesFile}>Link</button></td></tr>
+              <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile}>Open</button> <button onClick={linkBoardFileAsNew}>Save as</button></td></tr>
+            </tbody></table>
+            <p>Linking the bookings export lets Refresh re-read it. Linking changes.json lets the master import everyone&apos;s changes from the Submissions panel. The board file is written automatically whenever the master changes the board.</p>
+            <footer>
+              <button onClick={() => setLinkFilesOpen(false)}>Done</button>
+            </footer>
+          </section>
+        </div>
       )}
       {pendingRole && (
         <div className="review-overlay">

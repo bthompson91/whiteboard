@@ -19,7 +19,8 @@ try {
       join(root, 'src/lib/configuration.ts'),
       join(root, 'src/lib/blocks.ts'),
       join(root, 'src/lib/markupAnchor.ts'),
-      join(root, 'src/lib/bookingIdentity.ts')
+      join(root, 'src/lib/bookingIdentity.ts'),
+      join(root, 'src/lib/sharedFile.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -31,6 +32,7 @@ try {
   const { applyReview, changeKey } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
+  const { parseChangesFile, serializeChangesFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
   const { blocksFor, strongBorders, likeBookings, blockCountForBookings, timeFraction } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
@@ -221,6 +223,16 @@ try {
   // silently falling back to Medium.
   const widthSettings = boardSettings({ whiteboard: { room_types: { 'Palladium A ': 'large', 'River Room 1': 'small' }, room_widths: { large: 400, small: 125, other: 150 } } });
   check('room type keys are trimmed so the width applies', widthSettings.room_types['Palladium A'] === 'large' && widthSettings.room_types['River Room 1'] === 'small' && widthSettings.room_widths.large === 400, JSON.stringify(widthSettings.room_types));
+
+  // --- changes.json: the one shared list of changes ---
+  // Everyone writes to the same file; the master imports it and yes/no's
+  // each change. No per-contributor files.
+  const sampleSubmission = { id: 'submission-1', bookingId: 'booking-1', author: 'Alex', revisionBase: 3, createdAt: '2026-11-20T00:00:00.000Z', updatedAt: '2026-11-20T00:00:00.000Z', base: { id: 'booking-1', title: 'Gala' }, proposed: { id: 'booking-1', title: 'Gala Dinner' } };
+  const changesText = serializeChangesFile([sampleSubmission]);
+  const parsedChanges = parseChangesFile(changesText);
+  check('changes.json round-trips the submissions list', parsedChanges.format === 'whiteboard-changes' && parsedChanges.version === 1 && parsedChanges.submissions.length === 1 && parsedChanges.submissions[0].author === 'Alex' && parsedChanges.submissions[0].proposed.title === 'Gala Dinner', changesText);
+  check('changes.json rejects a board file', (() => { try { parseChangesFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })); return false; } catch { return true; } })());
+  check('changes.json rejects a missing submissions list', (() => { try { parseChangesFile(JSON.stringify({ format: 'whiteboard-changes', version: 1 })); return false; } catch { return true; } })());
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
   check('Unavailable resolves to grey', bookingColour({ salespersonId: 'unavailable' }, palette) === '#9aa0a6');
   check('unavailable tick box renders grey', bookingColour({ unavailable: true, salespersonId: 'sp-1' }, palette) === '#9aa0a6');
