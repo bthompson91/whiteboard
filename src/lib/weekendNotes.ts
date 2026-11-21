@@ -168,8 +168,26 @@ function purpleNotes(markup: MarkupItem[]): PurpleNote[] {
   return notes;
 }
 
+// How a booking's rooms print in the heading. One event is one entry,
+// however many rooms it spans — a merged Palladium block is "Palladium",
+// not one line per room. A combined name from the venue's room mappings
+// wins when the rooms match one exactly; otherwise the rooms are joined,
+// and a long list is shortened to its first room.
+export function roomDisplayName(venue: ParsedVenueConfig, roomIds: string[]): string {
+  const nameOf = (roomId: string) => venue.rooms.find(r => r.id === roomId)?.name ?? roomId;
+  if (roomIds.length === 0) return '';
+  if (roomIds.length === 1) return nameOf(roomIds[0]);
+  const sorted = [...roomIds].sort();
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+  for (const [combined, rooms] of Object.entries(venue.mappings ?? {})) {
+    if (same([...rooms].sort(), sorted)) return combined;
+  }
+  if (roomIds.length <= 3) return roomIds.map(nameOf).join(', ');
+  return `${nameOf(roomIds[0])} + ${roomIds.length - 1} more`;
+}
+
 // The items in the order they print: by day, then by room in board
-// order, then chronologically within the room.
+// order (the event's first room), then chronologically within the room.
 export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, window: OvernightWindow): OvernightItem[] {
   const notes = purpleNotes(markup);
   const byBooking = new Map(bookings.map(b => [b.id, b]));
@@ -180,11 +198,13 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
   const usedNotes = new Set<string>();
   const inWindow = (startMs: number, endMs: number) => startMs <= window.end.getTime() && endMs >= window.start.getTime();
 
-  // A purple note belongs to the closest work entry of its booking in
-  // that room (or, when the note has no booking, the closest entry of
-  // any booking on that date and room). The note's time is the setup
-  // time the export shows; the timeline entry is the work it belongs to.
-  const noteFor = new Map<string, PurpleNote>();
+  // A purple note belongs to the closest work entry of its booking (or,
+  // when the note has no booking, the closest entry of any booking on
+  // that date in that room). Several notes can belong to one entry — a
+  // TimeTarget row per room of a merged block — and the earliest is the
+  // time the export shows. The note's time is the setup time; the
+  // timeline entry is the work it belongs to.
+  const notesForEntry = new Map<string, PurpleNote[]>();
   for (const note of notes) {
     const candidates: { booking: Booking; entryIndex: number; diff: number }[] = [];
     const consider = (b: Booking) => {
@@ -202,7 +222,10 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
     candidates.sort((a, b) => a.diff - b.diff);
     const best = candidates[0];
     usedNotes.add(note.id);
-    noteFor.set(`${best.booking.id}|${best.entryIndex}|${note.roomId}`, note);
+    const key = `${best.booking.id}|${best.entryIndex}`;
+    const list = notesForEntry.get(key) ?? [];
+    list.push(note);
+    notesForEntry.set(key, list);
   }
 
   for (const b of bookings) {
@@ -210,35 +233,50 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
       .map((entry, entryIndex) => ({ entry, entryIndex }))
       .filter(({ entry }) => isWorkLabel(entry.label));
     if (!entries.length) continue;
-    for (const roomId of allRooms(b)) {
-      for (const { entry, entryIndex } of entries) {
-        const start = parseHhmm(entry.start);
-        const end = parseHhmm(entry.end);
-        if (start === null || end === null) continue;
-        const note = noteFor.get(`${b.id}|${entryIndex}|${roomId}`);
-        const startMs = note ? note.startMs : toMs(b.date, start);
-        // The entry runs past midnight when its end is at or before its
-        // start. When the note's time is past the entry's end, the two
-        // disagree and the setup is a point at the note's time, not a
-        // range.
-        let endMs = toMs(b.date, end);
-        if (endMs <= toMs(b.date, start)) endMs += DAY_MS;
-        if (endMs <= startMs) endMs = startMs;
-        if (!inWindow(startMs, endMs)) continue;
-        const functionLabel = note ? note.functionLabel : entry.label;
-        items.push({ roomId, roomName: roomName(roomId), date: b.date, startMs, title: b.title, timeLine: note ? note.text : `${entry.label} ${entry.start}`, functionLabel, isPackDown: isTeardownLabel(functionLabel), bookingId: b.id });
-      }
+    const rooms = allRooms(b);
+    for (const { entry, entryIndex } of entries) {
+      const start = parseHhmm(entry.start);
+      const end = parseHhmm(entry.end);
+      if (start === null || end === null) continue;
+      const entryNotes = (notesForEntry.get(`${b.id}|${entryIndex}`) ?? []).sort((a, c) => a.startMs - c.startMs);
+      const note = entryNotes[0];
+      const startMs = note ? note.startMs : toMs(b.date, start);
+      // The entry runs past midnight when its end is at or before its
+      // start. When the note's time is past the entry's end, the two
+      // disagree and the setup is a point at the note's time, not a
+      // range.
+      let endMs = toMs(b.date, end);
+      if (endMs <= toMs(b.date, start)) endMs += DAY_MS;
+      if (endMs <= startMs) endMs = startMs;
+      if (!inWindow(startMs, endMs)) continue;
+      const functionLabel = note ? note.functionLabel : entry.label;
+      items.push({ roomId: rooms[0], roomName: roomDisplayName(venue, rooms), date: b.date, startMs, title: b.title, timeLine: note ? note.text : `${entry.label} ${entry.start}`, functionLabel, isPackDown: isTeardownLabel(functionLabel), bookingId: b.id });
     }
   }
 
   // A purple note with no timeline entry to belong to is a setup on its
-  // own: the TimeTarget file is the only record of it.
+  // own: the TimeTarget file is the only record of it. Notes for the
+  // same booking are one setup, not one per room.
+  const noteOnlyByBooking = new Map<string, PurpleNote[]>();
+  const standaloneNotes: PurpleNote[] = [];
   for (const note of notes) {
     if (usedNotes.has(note.id)) continue;
     if (note.startMs < window.start.getTime() || note.startMs > window.end.getTime()) continue;
-    const booking = note.bookingId ? byBooking.get(note.bookingId) : undefined;
-    items.push({ roomId: note.roomId, roomName: roomName(note.roomId), date: note.date, startMs: note.startMs, title: booking?.title ?? '', timeLine: note.text, functionLabel: note.functionLabel, isPackDown: isTeardownLabel(note.functionLabel), bookingId: note.bookingId });
+    if (note.bookingId) {
+      const list = noteOnlyByBooking.get(note.bookingId) ?? [];
+      list.push(note);
+      noteOnlyByBooking.set(note.bookingId, list);
+    } else standaloneNotes.push(note);
   }
+  const pushNoteOnly = (note: PurpleNote, booking?: Booking) => {
+    const rooms = booking ? allRooms(booking) : [note.roomId];
+    items.push({ roomId: rooms[0], roomName: booking ? roomDisplayName(venue, rooms) : roomName(note.roomId), date: note.date, startMs: note.startMs, title: booking?.title ?? '', timeLine: note.text, functionLabel: note.functionLabel, isPackDown: isTeardownLabel(note.functionLabel), bookingId: note.bookingId });
+  };
+  for (const [bookingId, list] of noteOnlyByBooking) {
+    const note = list.sort((a, b) => a.startMs - b.startMs)[0];
+    pushNoteOnly(note, byBooking.get(bookingId));
+  }
+  for (const note of standaloneNotes) pushNoteOnly(note);
 
   const orderOf = (roomId: string) => (roomOrder.has(roomId) ? roomOrder.get(roomId)! : Number.MAX_SAFE_INTEGER);
   items.sort((a, b) => a.date.localeCompare(b.date) || orderOf(a.roomId) - orderOf(b.roomId) || a.startMs - b.startMs || a.title.localeCompare(b.title));

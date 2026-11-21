@@ -682,7 +682,7 @@ against is `test-data/timetarget-sample.xlsx`, made by
 
 ## Weekend notes export
 
-Shipped 2026-11-21 (tests 245/245, live verified; reworked twice the
+Shipped 2026-11-21 (tests 246/246, live verified; reworked twice the
 same day — first to follow the samples' formatting, then to output a
 real Word document). The 📄 Weekend notes button on the top bar (all
 roles — it only reads) downloads a .docx file for the overnight crew:
@@ -733,9 +733,14 @@ the file out.
   them Setup/Teardown, MCG calls them Bump In/Bump Out) and any
   TimeTarget note in the window. A setup that starts before 5pm and
   runs past it is in; a pack-down past midnight is in (an end at or
-  before its start is read as the next day). A multi-room booking is
-  listed under every room it is in. Items print by day, then by room in
-  board order, then chronologically within the room.
+  before its start is read as the next day). **One event is one entry,
+  however many rooms it spans** — a merged Palladium block is
+  "Copeland/Palladium", not one line per room. The heading's room is
+  the combined name when the rooms match a room mapping exactly, the
+  rooms joined when they do not, and the first room plus a count when
+  the list is long ("Long Room + 60 more"). Items print by day, then by
+  room in board order (the event's first room), then chronologically
+  within the room.
 - **The setup time:** when a purple TimeTarget note belongs to a setup,
   its time is the one shown, on its own line under the heading
   ("Set Up 06:30"); otherwise the timeline entry's own start is shown
@@ -761,7 +766,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-245 checks covering matching tiers and weights, booking identity, height and
+246 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

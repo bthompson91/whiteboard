@@ -53,7 +53,7 @@ try {
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
   const { findTimetargetColumns, resolveTimetargetRoom, eventMatchesEvent, timetargetNoteKey, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
-  const { overnightWindow, headerRangeLabel, parseHhmm, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
+  const { overnightWindow, headerRangeLabel, parseHhmm, roomDisplayName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
   const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
 
   let failures = 0;
@@ -967,10 +967,12 @@ try {
     { id: 'n-2', type: 'text', x: 0, y: 0, text: 'Pack Down 05:00', time: '05:00', date: '2026-10-03', roomId: 'Room C', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-03|Room C|pack down||' },
     { id: 'n-3', type: 'text', x: 0, y: 0, text: 'Set Up 08:00', time: '08:00', date: '2026-10-05', roomId: 'Room A', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-05|Room A|set up||' }
   ];
+  const wnMapVenue = parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Room A', 'Room B', 'Room C', 'Room D']\n  room_mappings:\n    Palladium: ['Room A', 'Room B']\n`);
+  check('a merged block prints under its combined name, and a long list shortens', roomDisplayName(wnMapVenue, ['Room A', 'Room B']) === 'Palladium' && roomDisplayName(wnMapVenue, ['Room A']) === 'Room A' && roomDisplayName(wnMapVenue, ['Room B', 'Room C']) === 'Room B, Room C' && roomDisplayName(wnMapVenue, ['Room A', 'Room B', 'Room C', 'Room D']) === 'Room A + 3 more', JSON.stringify([roomDisplayName(wnMapVenue, ['Room A', 'Room B']), roomDisplayName(wnMapVenue, ['Room A', 'Room B', 'Room C', 'Room D'])]));
   const wnItems = collectOvernightItems(wnBookings, wnMarkup, wnVenue, wnFri);
-  check('the weekend window keeps only the setups overlapping it', wnItems.length === 8 && !wnItems.some(i => ['Setup Out', 'Mon Late'].includes(i.title)), JSON.stringify(wnItems.map(i => `${i.roomId} ${i.date} ${i.title}`)));
-  check('items print by day, then by room, then chronologically', JSON.stringify(wnItems.map(i => i.title)) === JSON.stringify(['Setup In', 'Noted Setup', 'Multi Room', 'Multi Room', 'Teardown', 'Sat Early', '', 'Sun Setup']), JSON.stringify(wnItems.map(i => `${i.date} ${i.roomId} ${i.title}`)));
-  check('a multi-room setup is listed under every room', wnItems.filter(i => i.title === 'Multi Room').length === 2, JSON.stringify(wnItems.filter(i => i.title === 'Multi Room')));
+  check('the weekend window keeps only the setups overlapping it', wnItems.length === 7 && !wnItems.some(i => ['Setup Out', 'Mon Late'].includes(i.title)), JSON.stringify(wnItems.map(i => `${i.roomId} ${i.date} ${i.title}`)));
+  check('items print by day, then by room, then chronologically', JSON.stringify(wnItems.map(i => i.title)) === JSON.stringify(['Setup In', 'Noted Setup', 'Multi Room', 'Teardown', 'Sat Early', '', 'Sun Setup']), JSON.stringify(wnItems.map(i => `${i.date} ${i.roomId} ${i.title}`)));
+  check('a multi-room setup is listed once, under its rooms', wnItems.filter(i => i.title === 'Multi Room').length === 1 && wnItems.find(i => i.title === 'Multi Room')?.roomName === 'Room A, Room B', JSON.stringify(wnItems.filter(i => i.title === 'Multi Room')));
   const wnNoted = wnItems.find(i => i.title === 'Noted Setup');
   check('the setup time comes from the purple note when there is one', wnNoted?.timeLine === 'Set Up 16:30' && wnNoted?.functionLabel === 'Set Up' && !wnNoted?.isPackDown, JSON.stringify(wnNoted));
   const wnTeardown = wnItems.find(i => i.title === 'Teardown');
@@ -1018,7 +1020,7 @@ try {
   const wnResult = buildWeekendNotesDocx(wnBookings, wnMarkup, wnVenue, new Date(2026, 9, 2, 10, 0));
   const wnText = new TextDecoder().decode(wnResult.bytes);
   const wnBullets = wnText.split('<w:t xml:space="preserve">- </w:t>').length - 1;
-  check('the DOCX follows the samples: Calibri, header title, header table, day sections, Event/Room headings, dash bullets', wnResult.items === 8 && wnResult.days === 3 && wnResult.filename.endsWith('.docx') && wnResult.bytes[0] === 0x50 && wnResult.bytes[1] === 0x4b && wnText.includes('Weekend Notes Fri, 2 Oct - Sun, 4 Oct') && wnText.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnText.includes('Duty Manager') && wnText.includes('0427 421 821') && wnText.includes('Saturday') && wnText.includes('Sunday') && wnText.lastIndexOf('>Saturday</w:t>') < wnText.lastIndexOf('>Sunday</w:t>') && wnText.includes('Setup In/Room A') && wnText.includes('Noted Setup/Room A') && wnText.includes('Teardown PD/Room B') && wnText.includes('Pack Down/Room C') && wnText.includes('Sun Setup/Room A') && wnText.includes('Set Up 16:30') && wnText.includes(' PAGE ') && wnText.includes(' NUMPAGES ') && wnBullets === 24, `bullets ${wnBullets}`);
+  check('the DOCX follows the samples: Calibri, header title, header table, day sections, Event/Room headings, dash bullets', wnResult.items === 7 && wnResult.days === 3 && wnResult.filename.endsWith('.docx') && wnResult.bytes[0] === 0x50 && wnResult.bytes[1] === 0x4b && wnText.includes('Weekend Notes Fri, 2 Oct - Sun, 4 Oct') && wnText.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnText.includes('Duty Manager') && wnText.includes('0427 421 821') && wnText.includes('Saturday') && wnText.includes('Sunday') && wnText.lastIndexOf('>Saturday</w:t>') < wnText.lastIndexOf('>Sunday</w:t>') && wnText.includes('Setup In/Room A') && wnText.includes('Noted Setup/Room A') && wnText.includes('Multi Room/Room A, Room B') && wnText.includes('Teardown PD/Room B') && wnText.includes('Pack Down/Room C') && wnText.includes('Sun Setup/Room A') && wnText.includes('Set Up 16:30') && wnText.includes(' PAGE ') && wnText.includes(' NUMPAGES ') && wnBullets === 21, `bullets ${wnBullets}`);
   const wnEmpty = buildWeekendNotesDocx([], [], wnVenue, new Date(2026, 9, 2, 10, 0));
   const wnEmptyText = new TextDecoder().decode(wnEmpty.bytes);
   check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmptyText.includes('No setups in this window.') && wnEmptyText.includes('Duty Manager'), '');
