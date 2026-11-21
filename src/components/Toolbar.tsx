@@ -75,7 +75,7 @@ export default function Toolbar({
       </button>
       <button onClick={onToday} title="Snap to today">📅 Today</button>
       <button onClick={onOpenPrint} title="Export the board for a date range as a printout (Save as PDF)">🖨️ Print</button>
-      <button onClick={onExportWeekendNotes} title="Download the overnight notes for this window as an RTF file: every setup and pack-down from 5pm today to 7am tomorrow, or 5pm Friday to 7am Monday on a weekend, by room then chronologically, with the setup time from the purple TimeTarget note when there is one">📄 Weekend notes</button>
+      <button onClick={onExportWeekendNotes} title="Download the overnight notes for this window as a Word document: every setup and pack-down from 5pm today to 7am tomorrow, or 5pm Friday to 7am Monday on a weekend, by room then chronologically, with the setup time from the purple TimeTarget note when there is one">📄 Weekend notes</button>
       <select value={filterSalespersonId} onChange={event => onFilterSalespersonChange(event.target.value)} aria-label="Filter by salesperson" title="Show one salesperson's blocks at full strength; everyone else's dims to 25%">
         <option value="">All salespeople</option>
         {salespeople.map(person => <option key={person.id} value={person.id} style={{ backgroundColor: person.colour, color: readableText(person.colour) }}>{person.name}</option>)}

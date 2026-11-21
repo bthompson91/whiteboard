@@ -20,7 +20,7 @@ import {
 import { BookingChange, compareImports } from './lib/importComparison';
 import { mergeMatchedBooking } from './lib/reviewApply';
 import { applyTimetargetRows, parseTimetargetWorkbook, TimetargetSkipped } from './lib/timetargetImport';
-import { buildWeekendNotesRtf } from './lib/weekendNotes';
+import { buildWeekendNotesDocx } from './lib/weekendNotes';
 import {
   createSharedFile,
   downloadSharedFile,
@@ -675,12 +675,12 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
-  // Weekend notes: a one-off RTF download for the overnight crew. No
+  // Weekend notes: a one-off Word download for the overnight crew. No
   // file picker, no linking — the button just spits the file out.
   const exportWeekendNotes = () => {
     if (!venue) return;
-    const result = buildWeekendNotesRtf(bookings, markup, venue);
-    const blob = new Blob([result.rtf], { type: 'application/rtf' });
+    const result = buildWeekendNotesDocx(bookings, markup, venue);
+    const blob = new Blob([result.bytes.slice()], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

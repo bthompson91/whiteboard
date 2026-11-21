@@ -31,6 +31,7 @@ try {
       join(root, 'src/lib/wizard.ts'),
       join(root, 'src/lib/bookingImport.ts'),
       join(root, 'src/lib/timetargetImport.ts'),
+      join(root, 'src/lib/docx.ts'),
       join(root, 'src/lib/weekendNotes.ts')
     ],
     outdir: dir,
@@ -52,7 +53,8 @@ try {
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
   const { findTimetargetColumns, resolveTimetargetRoom, eventMatchesEvent, timetargetNoteKey, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
-  const { overnightWindow, parseHhmm, collectOvernightItems, buildWeekendNotesRtf } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
+  const { overnightWindow, headerRangeLabel, parseHhmm, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
+  const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
 
   let failures = 0;
   const check = (name, cond, extra = '') => {
@@ -943,7 +945,7 @@ try {
   // --- Weekend / overnight notes ---
   const wnVenue = parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Room A', 'Room B', 'Room C']\n`);
   const wnFri = overnightWindow(new Date(2026, 9, 2, 10, 0));
-  check('a Friday opens the weekend window, 5pm Friday to 7am Monday', wnFri.kind === 'weekend' && wnFri.start.getDay() === 5 && wnFri.start.getDate() === 2 && wnFri.start.getHours() === 17 && wnFri.end.getDay() === 1 && wnFri.end.getDate() === 5 && wnFri.end.getHours() === 7 && wnFri.title === 'Weekend Notes' && wnFri.rangeLabel === 'Friday Oct 2 - Sunday Oct 4' && wnFri.filename.startsWith('Weekend Notes ') && wnFri.filename.endsWith('.rtf'), JSON.stringify(wnFri));
+  check('a Friday opens the weekend window, 5pm Friday to 7am Monday', wnFri.kind === 'weekend' && wnFri.start.getDay() === 5 && wnFri.start.getDate() === 2 && wnFri.start.getHours() === 17 && wnFri.end.getDay() === 1 && wnFri.end.getDate() === 5 && wnFri.end.getHours() === 7 && wnFri.title === 'Weekend Notes' && wnFri.rangeLabel === 'Friday Oct 2 - Sunday Oct 4' && wnFri.filename.startsWith('Weekend Notes ') && wnFri.filename.endsWith('.docx'), JSON.stringify(wnFri));
   const wnSat = overnightWindow(new Date(2026, 9, 3, 10, 0));
   const wnSun = overnightWindow(new Date(2026, 9, 4, 10, 0));
   check('Saturday and Sunday open the same weekend window', wnSat.start.getTime() === wnFri.start.getTime() && wnSat.end.getTime() === wnFri.end.getTime() && wnSun.start.getTime() === wnFri.start.getTime() && wnSun.end.getTime() === wnFri.end.getTime(), JSON.stringify([wnSat, wnSun]));
@@ -975,11 +977,51 @@ try {
   check('a teardown past midnight is in the window and marked a pack-down', wnTeardown?.timeLine === 'Teardown 23:00' && wnTeardown?.isPackDown, JSON.stringify(wnTeardown));
   const wnNoteOnly = wnItems.find(i => i.roomId === 'Room C');
   check('a purple note with no timeline entry is a setup on its own', wnNoteOnly?.title === '' && wnNoteOnly?.timeLine === 'Pack Down 05:00' && wnNoteOnly?.functionLabel === 'Pack Down' && wnNoteOnly?.isPackDown, JSON.stringify(wnNoteOnly));
-  const wnResult = buildWeekendNotesRtf(wnBookings, wnMarkup, wnVenue, new Date(2026, 9, 2, 10, 0));
-  const wnBullets = wnResult.rtf.split('- \\par').length - 1;
-  check('the RTF follows the samples: Tahoma, title, header table, day sections, Event/Room headings, dash bullets', wnResult.items === 8 && wnResult.days === 3 && wnResult.rtf.startsWith('{\\rtf1') && wnResult.rtf.includes('Tahoma') && wnResult.rtf.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnResult.rtf.includes('Duty Manager') && wnResult.rtf.includes('0427 421 821') && wnResult.rtf.includes('\\pard\\b\\fs28 Saturday\\par') && wnResult.rtf.includes('\\pard\\b\\fs28 Sunday\\par') && wnResult.rtf.indexOf('\\pard\\b\\fs28 Saturday\\par') < wnResult.rtf.indexOf('\\pard\\b\\fs28 Sunday\\par') && wnResult.rtf.includes('Setup In/Room A') && wnResult.rtf.includes('Noted Setup/Room A') && wnResult.rtf.includes('Teardown PD/Room B') && wnResult.rtf.includes('Pack Down/Room C') && wnResult.rtf.includes('Sun Setup/Room A') && wnResult.rtf.includes('Set Up 16:30') && wnBullets === 24, `bullets ${wnBullets}`);
-  const wnEmpty = buildWeekendNotesRtf([], [], wnVenue, new Date(2026, 9, 2, 10, 0));
-  check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmpty.rtf.includes('No setups in this window.') && wnEmpty.rtf.includes('Duty Manager'), wnEmpty.rtf);
+  // --- The .docx writer ---
+  const dx = buildDocx({
+    title: 'Test & <Doc>',
+    header: [{ runs: [{ text: 'Test & <Doc>' }], align: 'center', bold: true, size: 48 }],
+    footer: [{ runs: [{ text: 'Page ' }, { field: 'PAGE' }, { text: ' of ' }, { field: 'NUMPAGES' }], align: 'center', bold: true, size: 24 }],
+    body: [
+      { type: 'paragraph', paragraph: { runs: [{ text: 'A & B <C>' }], size: 28 } },
+      {
+        type: 'table',
+        table: {
+          widths: [4508, 4508],
+          rows: [[{ paragraphs: [{ runs: [{ text: 'One' }], align: 'center', bold: true, size: 28 }], width: 4508 }, { paragraphs: [{ runs: [{ text: 'Two' }], align: 'center', bold: true, size: 28 }], width: 4508 }]],
+        },
+      },
+    ],
+  });
+  const dxText = new TextDecoder().decode(dx);
+  check('the writer makes a zip of stored XML parts', dx[0] === 0x50 && dx[1] === 0x4b && dx[2] === 0x03 && dx[3] === 0x04 && dxText.includes('[Content_Types].xml') && dxText.includes('word/document.xml') && dxText.includes('word/styles.xml') && dxText.includes('word/header1.xml') && dxText.includes('word/footer1.xml') && dxText.includes('word/fontTable.xml'), dxText.slice(0, 200));
+  check('the writer escapes XML and keeps the Calibri/A4 shape', dxText.includes('A &amp; B &lt;C&gt;') && dxText.includes('Test &amp; &lt;Doc&gt;') && dxText.includes('w:ascii="Calibri"') && dxText.includes('w:pgSz w:w="11906" w:h="16838"') && dxText.includes('TableGrid') && dxText.includes(' PAGE ') && dxText.includes(' NUMPAGES '), dxText.slice(0, 400));
+  const zipNames = bytes => {
+    const names = [];
+    let offset = 0;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    while (offset + 4 <= bytes.length && view.getUint32(offset, true) === 0x04034b50) {
+      const nameLen = view.getUint16(offset + 26, true);
+      const extraLen = view.getUint16(offset + 28, true);
+      const size = view.getUint32(offset + 18, true);
+      names.push(new TextDecoder().decode(bytes.subarray(offset + 30, offset + 30 + nameLen)));
+      offset += 30 + nameLen + extraLen + size;
+    }
+    return { names, offset };
+  };
+  const dxParts = zipNames(dx);
+  check('the zip local headers list every part in order', JSON.stringify(dxParts.names) === JSON.stringify(['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/styles.xml', 'word/fontTable.xml', 'word/header1.xml', 'word/footer1.xml', 'docProps/core.xml', 'docProps/app.xml']), JSON.stringify(dxParts.names));
+  const dxEocd = dx.length - 22;
+  check('the end of central directory sits at the end and counts the parts', dx[dxEocd] === 0x50 && dx[dxEocd + 1] === 0x4b && dx[dxEocd + 2] === 0x05 && dx[dxEocd + 3] === 0x06 && new DataView(dx.buffer, dx.byteOffset + dxEocd, 22).getUint16(10, true) === 10, `eocd at ${dxEocd} of ${dx.length}`);
+
+  check('the header uses the compact range, as the samples do', headerRangeLabel(wnFri) === 'Fri, 2 Oct - Sun, 4 Oct' && headerRangeLabel(wnMon) === 'Mon, 5 Oct - Tue, 6 Oct', JSON.stringify([headerRangeLabel(wnFri), headerRangeLabel(wnMon)]));
+  const wnResult = buildWeekendNotesDocx(wnBookings, wnMarkup, wnVenue, new Date(2026, 9, 2, 10, 0));
+  const wnText = new TextDecoder().decode(wnResult.bytes);
+  const wnBullets = wnText.split('<w:t xml:space="preserve">- </w:t>').length - 1;
+  check('the DOCX follows the samples: Calibri, header title, header table, day sections, Event/Room headings, dash bullets', wnResult.items === 8 && wnResult.days === 3 && wnResult.filename.endsWith('.docx') && wnResult.bytes[0] === 0x50 && wnResult.bytes[1] === 0x4b && wnText.includes('Weekend Notes Fri, 2 Oct - Sun, 4 Oct') && wnText.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnText.includes('Duty Manager') && wnText.includes('0427 421 821') && wnText.includes('Saturday') && wnText.includes('Sunday') && wnText.lastIndexOf('>Saturday</w:t>') < wnText.lastIndexOf('>Sunday</w:t>') && wnText.includes('Setup In/Room A') && wnText.includes('Noted Setup/Room A') && wnText.includes('Teardown PD/Room B') && wnText.includes('Pack Down/Room C') && wnText.includes('Sun Setup/Room A') && wnText.includes('Set Up 16:30') && wnText.includes(' PAGE ') && wnText.includes(' NUMPAGES ') && wnBullets === 24, `bullets ${wnBullets}`);
+  const wnEmpty = buildWeekendNotesDocx([], [], wnVenue, new Date(2026, 9, 2, 10, 0));
+  const wnEmptyText = new TextDecoder().decode(wnEmpty.bytes);
+  check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmptyText.includes('No setups in this window.') && wnEmptyText.includes('Duty Manager'), '');
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

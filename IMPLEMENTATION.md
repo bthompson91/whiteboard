@@ -682,32 +682,52 @@ against is `test-data/timetarget-sample.xlsx`, made by
 
 ## Weekend notes export
 
-Shipped 2026-11-21 (tests 240/240, live verified; reworked the same day
-to follow the samples' formatting). The 📄 Weekend notes button on the
-top bar (all roles — it only reads) downloads an RTF file for the
-overnight crew: the template they work from, with an empty bullet list
-under each event to write in. No file picker, no linking — the button
-just spits the file out.
+Shipped 2026-11-21 (tests 245/245, live verified; reworked twice the
+same day — first to follow the samples' formatting, then to output a
+real Word document). The 📄 Weekend notes button on the top bar (all
+roles — it only reads) downloads a .docx file for the overnight crew:
+the template they work from, with an empty bullet list under each
+event to write in. No file picker, no linking — the button just spits
+the file out.
 
 - **The window** (`src/lib/weekendNotes.ts`, `overnightWindow`): on a
-  non-Friday weekday it is 5pm today to 7am tomorrow; on a weekend it is
-  5pm Friday to 7am Monday. The date decides the window, not the time of
-  day, so opening it on a Saturday still gives that weekend's window.
-  The file is titled "Weekend Notes Friday Oct 2 - Sunday Oct 4" for a
-  weekend window and "Overnight Notes Tuesday Oct 6 - Wednesday Oct 7"
-  for a weeknight one.
+  non-Friday weekday it is 5pm today to 7am tomorrow; on a weekend it
+  is 5pm Friday to 7am Monday. The date decides the window, not the
+  time of day, so opening it on a Saturday still gives that weekend's
+  window. The file is titled "Weekend Notes Friday Oct 2 - Sunday Oct
+  4" for a weekend window and "Overnight Notes Tuesday Oct 6 -
+  Wednesday Oct 7" for a weeknight one.
 - **The format follows Brendan's own weekend notes**
   (Weekend_Notes_Oct_24-25.docx, Dec_12_to_Dec_14_Weekend_Notes_V1.pdf),
-  read out of the .docx XML: Tahoma on A4, a title line, the
-  duty-manager header table, day sections, "Event/Room" headings, and
-  "- " bullets. The table is a 4-column TableGrid: "Duty Manager – ____"
+  read out of the .docx XML — including the parts the RTF version got
+  wrong. The body font is **Calibri**, not Tahoma: the samples' theme
+  minor font is Calibri, and the Tahoma in styles.xml is an 8pt
+  footnote style. The title lives in the **header** (24pt bold,
+  centred — "Weekend Notes Fri, 2 Oct - Sun, 4 Oct", the compact range
+  as the samples write it) and the body starts with the table. The
+  footer carries "Crown On Call Phone: 0427 421 821" and "Page N of M"
+  (real PAGE and NUMPAGES fields), bold 12pt, centred. The page is A4
+  with 1440-twip margins, as in the samples.
+- **The header table** is a 4-column TableGrid: "Duty Manager – ____"
   (blank — the board does not know the duty manager), the two days
   (Saturday and Sunday for a weekend, the two window days for a
   weeknight), blank start/end hours for each day, and "Out of hours
   (Crown On Call): 0427 421 821". Event headings are bold 18pt, day
-  headings bold 14pt, body 14pt, and the footer reads "Page N of M".
-  The one deliberate difference from his hand-written notes: every day
-  gets a heading, where his leave the first day unheaded.
+  headings bold 14pt, body 14pt, and the default paragraph spacing is
+  after 200, line 1.15, as in the samples. The one deliberate
+  difference from his hand-written notes: every day gets a heading,
+  where his leave the first day unheaded.
+- **The .docx writer** (`src/lib/docx.ts`) is hand-rolled, no new
+  dependency: a minimal zip writer (stored entries — the files are
+  tiny, and stored entries keep the XML readable in the bytes, which
+  is what the tests assert on) plus the XML parts a Word document
+  needs ([Content_Types].xml, package and document relationships,
+  document.xml with an A4 section, styles with a Calibri default and a
+  Table Grid style, a font table, a header, a footer, core/app
+  properties). The harness checks the zip structure directly (local
+  headers in order, end of central directory counting the parts) and
+  the XML escaping. The generated file passes `unzip -t` and renders
+  correctly in LibreOffice.
 - **What is listed:** every setup and pack-down whose time overlaps the
   window — a booking's Setup/Teardown timeline entries (Crown calls
   them Setup/Teardown, MCG calls them Bump In/Bump Out) and any
@@ -729,9 +749,11 @@ just spits the file out.
   board (`.markup-note.timetarget`) and on the printout, so the notation
   the export reads is visible as such. A hand-typed note is never
   purple and is never read by the export.
-- **The file:** RTF (no dependency — built as text), three empty "- "
-  bullets under each event. An empty window still produces a file saying
-  "No setups in this window", so the crew can see there is nothing
+- **The file:** .docx (MIME
+  `application/vnd.openxmlformats-officedocument.wordprocessingml.document`),
+  one section per day, each event with its setup time and three empty
+  "- " bullets. An empty window still produces a file saying "No
+  setups in this window", so the crew can see there is nothing
   overnight instead of wondering whether the export failed. Only board
   data is used: room, title, date, setup time. No job numbers,
   salespeople or duty manager — none of those are in the template.

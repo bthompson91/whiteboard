@@ -1,16 +1,16 @@
 // Weekend / overnight notes export: the template the overnight crew works
-// from. A button on the top bar spits out an RTF file listing every setup
-// (and pack-down) happening in the current overnight window, with an
-// empty bullet list under each event to write in. Nothing here is
+// from. A button on the top bar spits out a Word document listing every
+// setup (and pack-down) happening in the current overnight window, with
+// an empty bullet list under each event to write in. Nothing here is
 // invented: every item comes from a booking's timeline or a TimeTarget
 // note on the board.
 //
 // The format follows Brendan's own weekend notes (Weekend_Notes_Oct_24-25
-// .docx, Dec_12_to_Dec_14_Weekend_Notes_V1.pdf): Tahoma, a title line,
-// the duty-manager header table, day sections, "Event/Room" headings
-// (with PD after the event for a pack-down), and "- " bullets. The one
-// deliberate difference: every day gets a heading, where his hand-written
-// notes leave the first day unheaded.
+// .docx, Dec_12_to_Dec_14_Weekend_Notes_V1.pdf): Calibri, the title in
+// the header, the duty-manager header table, day sections, "Event/Room"
+// headings (with PD after the event for a pack-down), and "- " bullets.
+// The one deliberate difference: every day gets a heading, where his
+// hand-written notes leave the first day unheaded.
 //
 // The window: on a non-Friday weekday it is 5pm today to 7am tomorrow;
 // on a weekend it is 5pm Friday to 7am Monday. The date decides the
@@ -19,6 +19,8 @@
 
 import type { Booking, MarkupItem } from '../types';
 import type { ParsedVenueConfig } from './venueConfig';
+import { buildDocx } from './docx';
+import type { DocxBlock, DocxParagraph } from './docx';
 
 export interface OvernightWindow {
   kind: 'weekend' | 'weeknight';
@@ -44,7 +46,7 @@ export interface OvernightItem {
 }
 
 export interface WeekendNotesResult {
-  rtf: string;
+  bytes: Uint8Array;
   filename: string;
   window: OvernightWindow;
   days: number;
@@ -75,7 +77,7 @@ export function overnightWindow(now: Date): OvernightWindow {
       end: atTime(monday, 7, 0),
       title: 'Weekend Notes',
       rangeLabel: `${fmtTitleDate(friday)} - ${fmtTitleDate(sunday)}`,
-      filename: `Weekend Notes ${fmtShort(friday)} - ${fmtShort(sunday)}.rtf`,
+      filename: `Weekend Notes ${fmtShort(friday)} - ${fmtShort(sunday)}.docx`,
     };
   }
   const tomorrow = addDays(now, 1);
@@ -85,8 +87,15 @@ export function overnightWindow(now: Date): OvernightWindow {
     end: atTime(tomorrow, 7, 0),
     title: 'Overnight Notes',
     rangeLabel: `${fmtTitleDate(now)} - ${fmtTitleDate(tomorrow)}`,
-    filename: `Overnight Notes ${fmtShort(now)} - ${fmtShort(tomorrow)}.rtf`,
+    filename: `Overnight Notes ${fmtShort(now)} - ${fmtShort(tomorrow)}.docx`,
   };
+}
+
+// The title as the header shows it: the samples' header uses the
+// compact range ("October 24-25"), which fits on one line at 24pt.
+export function headerRangeLabel(window: OvernightWindow): string {
+  if (window.kind === 'weekend') return `${fmtShort(window.start)} - ${fmtShort(addDays(window.start, 2))}`;
+  return `${fmtShort(window.start)} - ${fmtShort(window.end)}`;
 }
 
 // The two days the header table names. The samples name Saturday and
@@ -236,28 +245,15 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
   return items;
 }
 
-const rtfEscape = (s: string) =>
-  s
-    .replace(/\\/g, '\\\\')
-    .replace(/{/g, '\\{')
-    .replace(/}/g, '\\}')
-    .replace(/\n/g, ' ')
-    .split('')
-    .map(ch => {
-      const code = ch.charCodeAt(0);
-      if (code < 128) return ch;
-      if (code < 256) return `\\'${code.toString(16).padStart(2, '0')}`;
-      return `\\u${code}?`;
-    })
-    .join('');
-
-// The RTF itself, in the samples' shape: Tahoma on A4, a title line,
-// the duty-manager header table, then a section per day — "Event/Room"
+// The document itself, in the samples' shape: Calibri on A4, the title
+// in the header (24pt bold, centred — as in the samples, where the
+// title lives in the header and the body starts with the table), the
+// duty-manager header table, then a section per day — "Event/Room"
 // headings (PD after the event for a pack-down), the setup time on its
 // own line, and three empty "- " bullets to write in. An empty window
 // still produces a file, so the crew can see there is nothing overnight
 // instead of wondering whether the export failed.
-export function buildWeekendNotesRtf(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, now = new Date()): WeekendNotesResult {
+export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, now = new Date()): WeekendNotesResult {
   const window = overnightWindow(now);
   const items = collectOvernightItems(bookings, markup, venue, window);
   const days: { date: string; items: OvernightItem[] }[] = [];
@@ -267,46 +263,48 @@ export function buildWeekendNotesRtf(bookings: Booking[], markup: MarkupItem[], 
     else days.push({ date: item.date, items: [item] });
   }
   const [day1, day2] = headerTableDays(window);
-  const cellBorders = '\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10';
-  const lines: string[] = [];
-  lines.push('{\\rtf1\\ansi\\ansicpg1252\\deff0');
-  lines.push('{\\fonttbl{\\f0 Tahoma;}}');
-  lines.push('\\paperw11906\\paperh16838\\margl1440\\margr1440\\margt1440\\margb1440\\viewkind4\\uc1');
-  lines.push('{\\footer\\pard\\qc\\fs22 Page {\\field{\\*\\fldinst PAGE}{\\fldrslt 1}} of {\\field{\\*\\fldinst NUMPAGES}{\\fldrslt 1}}\\par}');
-  lines.push(`\\pard\\b\\fs36 ${rtfEscape(`${window.title} ${window.rangeLabel}`)}\\par`);
-  lines.push('\\pard\\fs28\\par');
-  // Duty Manager – ________________
-  lines.push(`\\trowd\\trgaph108\\trleft0${cellBorders}\\cellx9016`);
-  lines.push(`\\pard\\intbl\\qc\\b\\fs28 ${rtfEscape('Duty Manager – ________________')}\\cell`);
-  lines.push('\\row');
-  // Saturday | Sunday
-  lines.push(`\\trowd\\trgaph108\\trleft0${cellBorders}\\cellx4508${cellBorders}\\cellx9016`);
-  lines.push(`\\pard\\intbl\\qc\\b\\fs28 ${rtfEscape(weekdayLong(day1))}\\cell`);
-  lines.push(`\\pard\\intbl\\qc\\b\\fs28 ${rtfEscape(weekdayLong(day2))}\\cell`);
-  lines.push('\\row');
-  // Start and end hours for each day — blank: the board does not know
-  // the duty manager's hours, so the crew writes them in.
-  lines.push(`\\trowd\\trgaph108\\trleft0${cellBorders}\\cellx2254${cellBorders}\\cellx4508${cellBorders}\\cellx6762${cellBorders}\\cellx9016`);
-  for (let i = 0; i < 4; i++) lines.push('\\pard\\intbl\\qc\\b\\fs30\\cell');
-  lines.push('\\row');
-  // Out of hours (Crown On Call): 0427 421 821
-  lines.push(`\\trowd\\trgaph108\\trleft0${cellBorders}\\cellx9016`);
-  lines.push(`\\pard\\intbl\\qc\\b\\fs28 ${rtfEscape('Out of hours (Crown On Call): ')}\\b0\\fs28 0427 421 821\\cell`);
-  lines.push('\\row');
-  lines.push('\\pard\\fs28\\par');
+  const title = `${window.title} ${window.rangeLabel}`;
+  const blank: DocxParagraph = { runs: [], size: 28 };
+  const body: DocxBlock[] = [];
+  body.push({
+    type: 'table',
+    table: {
+      widths: [2254, 2254, 2254, 2254],
+      rows: [
+        [{ paragraphs: [{ runs: [{ text: 'Duty Manager – ________________' }], align: 'center', bold: true, size: 28 }], gridSpan: 4, width: 9016 }],
+        [
+          { paragraphs: [{ runs: [{ text: weekdayLong(day1) }], align: 'center', bold: true, size: 28 }], gridSpan: 2, width: 4508 },
+          { paragraphs: [{ runs: [{ text: weekdayLong(day2) }], align: 'center', bold: true, size: 28 }], gridSpan: 2, width: 4508 },
+        ],
+        // Start and end hours for each day — blank: the board does not
+        // know the duty manager's hours, so the crew writes them in.
+        [2254, 2254, 2254, 2254].map(width => ({ paragraphs: [{ runs: [], align: 'center', bold: true, size: 30 }], width })),
+        [{ paragraphs: [{ runs: [{ text: 'Out of hours (Crown On Call): ' }, { text: '0427 421 821' }], align: 'center', bold: true, size: 28 }], gridSpan: 4, width: 9016 }],
+      ],
+    },
+  });
+  body.push({ type: 'paragraph', paragraph: blank });
   if (!items.length) {
-    lines.push(`\\pard\\fs28 ${rtfEscape('No setups in this window.')}\\par`);
+    body.push({ type: 'paragraph', paragraph: { runs: [{ text: 'No setups in this window.' }], size: 28 } });
   }
   for (const [dayIndex, day] of days.entries()) {
-    if (dayIndex > 0) lines.push('\\pard\\fs28\\par');
-    lines.push(`\\pard\\b\\fs28 ${rtfEscape(weekdayLong(new Date(`${day.date}T12:00:00`)))}\\par`);
+    if (dayIndex > 0) body.push({ type: 'paragraph', paragraph: blank });
+    body.push({ type: 'paragraph', paragraph: { runs: [{ text: weekdayLong(new Date(`${day.date}T12:00:00`)) }], bold: true, size: 28 } });
     for (const item of day.items) {
       const heading = item.title ? `${item.title}${item.isPackDown ? ' PD' : ''}/${item.roomName}` : `${item.functionLabel}/${item.roomName}`;
-      lines.push(`\\pard\\b\\fs36 ${rtfEscape(heading)}\\par`);
-      lines.push(`\\pard\\fs28 ${rtfEscape(item.timeLine)}\\par`);
-      for (let i = 0; i < 3; i++) lines.push('\\pard\\fs28 - \\par');
+      body.push({ type: 'paragraph', paragraph: { runs: [{ text: heading }], bold: true, size: 36 } });
+      body.push({ type: 'paragraph', paragraph: { runs: [{ text: item.timeLine }], size: 28 } });
+      for (let i = 0; i < 3; i++) body.push({ type: 'paragraph', paragraph: { runs: [{ text: '- ' }], size: 28 } });
     }
   }
-  lines.push('}');
-  return { rtf: lines.join('\n'), filename: window.filename, window, days: days.length, items: items.length };
+  const bytes = buildDocx({
+    title,
+    header: [{ runs: [{ text: `${window.title} ${headerRangeLabel(window)}` }], align: 'center', bold: true, size: 48 }],
+    footer: [
+      { runs: [{ text: 'Crown On Call Phone: 0427 421 821' }], align: 'center', bold: true, size: 24 },
+      { runs: [{ text: 'Page ' }, { field: 'PAGE' }, { text: ' of ' }, { field: 'NUMPAGES' }], align: 'center', bold: true, size: 24 },
+    ],
+    body,
+  });
+  return { bytes, filename: window.filename, window, days: days.length, items: items.length };
 }
