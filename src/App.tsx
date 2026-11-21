@@ -20,6 +20,7 @@ import {
 import { BookingChange, compareImports } from './lib/importComparison';
 import { mergeMatchedBooking } from './lib/reviewApply';
 import { applyTimetargetRows, parseTimetargetWorkbook, TimetargetSkipped } from './lib/timetargetImport';
+import { buildWeekendNotesRtf } from './lib/weekendNotes';
 import {
   createSharedFile,
   downloadSharedFile,
@@ -674,6 +675,19 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+  // Weekend notes: a one-off RTF download for the overnight crew. No
+  // file picker, no linking — the button just spits the file out.
+  const exportWeekendNotes = () => {
+    if (!venue) return;
+    const result = buildWeekendNotesRtf(bookings, markup, venue);
+    const blob = new Blob([result.rtf], { type: 'application/rtf' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = result.filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   // Refresh only: re-read the linked board file. This is what a viewer
   // does, and what the board does automatically every 30 seconds in
   // viewer mode.
@@ -760,6 +774,7 @@ export default function App() {
         onOpenLinkFiles={() => setLinkFilesOpen(true)}
         onOpenPrint={openPrintDialog}
         onImportTimes={importTimetargetTimes}
+        onExportWeekendNotes={exportWeekendNotes}
       />
       <main className="board-container">
         <BookingGrid

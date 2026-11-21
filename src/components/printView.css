@@ -28,6 +28,7 @@ prints, landscape, with the app chrome hidden. */
 .print-block-compact{grid-column:1/-1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 3px}
 .print-note{position:absolute;color:#7a1f1f;font-weight:600;font-size:16px;line-height:1.25;white-space:pre-wrap;max-width:280px;padding:2px;z-index:2}
 .print-note.highlight{background:#ffff00}
+.print-note.timetarget{color:#6a1b9a}
 .print-arrows{position:absolute;left:0;top:0;pointer-events:none;z-index:2;overflow:visible}
 
 /* Print: only the board prints, landscape, app chrome hidden. The

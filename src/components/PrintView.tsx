@@ -246,7 +246,7 @@ export default function PrintView({ venue, bookings, salespeople, roomBorders, o
                 if (m.type !== 'text') return null;
                 const p = pointFromAnchor(layout, { date: m.date!, roomId: m.roomId!, fx: m.fx!, fy: m.fy! });
                 if (!p) return null;
-                return <div key={m.id} className={`print-note${m.highlight ? ' highlight' : ''}`} style={{ left: p.x, top: p.y }}>{m.text}</div>;
+                return <div key={m.id} className={`print-note${m.highlight ? ' highlight' : ''}${m.source === 'timetarget' ? ' timetarget' : ''}`} style={{ left: p.x, top: p.y }}>{m.text}</div>;
               })}
               {/* Markup arrows, drawn from their two anchors. */}
               {chunkArrows.length > 0 && (

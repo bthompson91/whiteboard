@@ -106,6 +106,9 @@ export type MarkupItem =
       // A hand-typed note has neither, and the import never touches it.
       source?: 'timetarget';
       timetargetKey?: string;
+      // The setup time the note marks, 24-hour HH:MM. The weekend notes
+      // export reads it; the text above is the display form.
+      time?: string;
     }
   | {
       id: string;

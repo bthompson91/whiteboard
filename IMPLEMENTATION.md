@@ -680,10 +680,52 @@ against is `test-data/timetarget-sample.xlsx`, made by
   column in Configuration for the rooms (the Crown YAML has none yet),
   and lay out the real export in the sample's format.
 
+## Weekend notes export
+
+Shipped 2026-11-21 (tests 240/240, live verified). The 📄 Weekend notes
+button on the top bar (all roles — it only reads) downloads an RTF file
+for the overnight crew: the template they work from, with an empty bullet
+list under each event to write in. No file picker, no linking — the
+button just spits the file out.
+
+- **The window** (`src/lib/weekendNotes.ts`, `overnightWindow`): on a
+  non-Friday weekday it is 5pm today to 7am tomorrow; on a weekend it is
+  5pm Friday to 7am Monday. The date decides the window, not the time of
+  day, so opening it on a Saturday still gives that weekend's window.
+  The file is titled "Weekend Notes Friday 2 Oct – Sunday 4 Oct" for a
+  weekend window and "Overnight Notes Tuesday 6 Oct – Wednesday 7 Oct"
+  for a weeknight one.
+- **What is listed:** every setup and pack-down whose time overlaps the
+  window — a booking's Setup/Teardown timeline entries (Crown calls
+  them Setup/Teardown, MCG calls them Bump In/Bump Out) and any
+  TimeTarget note in the window. A setup that starts before 5pm and
+  runs past it is in; a pack-down past midnight is in (an end at or
+  before its start is read as the next day). A multi-room booking is
+  listed under every room it is in. Items are grouped by room in board
+  order, then chronological within the room.
+- **The setup time:** when a purple TimeTarget note belongs to a setup,
+  its time is the one shown ("Set Up 06:30"); otherwise the timeline
+  entry's own start is shown ("Setup 09:00"). A note with no timeline
+  entry to belong to is a setup on its own — the TimeTarget file is the
+  only record of it. The note's time is stored on the note itself
+  (`MarkupItem.time`, set by the TimeTarget import); a note made before
+  that field existed has its time read back out of its text.
+- **The purple notation:** TimeTarget notes render in purple on the
+  board (`.markup-note.timetarget`) and on the printout, so the notation
+  the export reads is visible as such. A hand-typed note is never
+  purple and is never read by the export.
+- **The file:** RTF (Arial, no dependency — built as text), one section
+  per room, each event with its date and setup time and three empty
+  bullets. An empty window still produces a file saying "No setups in
+  this window", so the crew can see there is nothing overnight instead
+  of wondering whether the export failed. Only board data is used: room,
+  title, date, setup time. No job numbers, salespeople or duty manager
+  — none of those are in the template.
+
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-227 checks covering matching tiers and weights, booking identity, height and
+240 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

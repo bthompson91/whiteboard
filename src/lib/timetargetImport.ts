@@ -194,12 +194,12 @@ export function applyTimetargetRows(markup: MarkupItem[], rows: TimetargetRow[])
       const existingId = existing.id;
       next = next.map(m => {
         if (m.id !== existingId || m.type !== 'text') return m;
-        return { ...m, text, fy, bookingId: row.bookingId ?? m.bookingId, timetargetKey: key };
+        return { ...m, text, fy, time: row.startTime, bookingId: row.bookingId ?? m.bookingId, timetargetKey: key };
       });
       updated++;
     } else {
       const id = `timetarget-${key.replace(/[^a-z0-9]+/gi, '-')}`;
-      next = [...next, { id, type: 'text', x: 0, y: 0, text, bookingId: row.bookingId, date: row.date, roomId: row.roomId, fx: 0.5, fy, source: 'timetarget', timetargetKey: key }];
+      next = [...next, { id, type: 'text', x: 0, y: 0, text, time: row.startTime, bookingId: row.bookingId, date: row.date, roomId: row.roomId, fx: 0.5, fy, source: 'timetarget', timetargetKey: key }];
       added++;
     }
   }

@@ -378,7 +378,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
         return (
           <div
             key={item.id}
-            className={`markup-note ${selected === item.id ? 'selected' : ''} ${item.highlight ? 'highlight' : ''}`}
+            className={`markup-note ${selected === item.id ? 'selected' : ''} ${item.highlight ? 'highlight' : ''} ${item.source === 'timetarget' ? 'timetarget' : ''}`}
             style={{ left: pos.x, top: pos.y, opacity: isHighlighted(item) ? undefined : 0.25 }}
             onPointerDown={(event) => begin(event, item)}
             onDoubleClick={(event) => {
