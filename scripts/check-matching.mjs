@@ -943,17 +943,18 @@ try {
   // --- Weekend / overnight notes ---
   const wnVenue = parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Room A', 'Room B', 'Room C']\n`);
   const wnFri = overnightWindow(new Date(2026, 9, 2, 10, 0));
-  check('a Friday opens the weekend window, 5pm Friday to 7am Monday', wnFri.kind === 'weekend' && wnFri.start.getDay() === 5 && wnFri.start.getDate() === 2 && wnFri.start.getHours() === 17 && wnFri.end.getDay() === 1 && wnFri.end.getDate() === 5 && wnFri.end.getHours() === 7 && wnFri.title === 'Weekend Notes' && wnFri.filename.startsWith('Weekend Notes ') && wnFri.filename.endsWith('.rtf'), JSON.stringify(wnFri));
+  check('a Friday opens the weekend window, 5pm Friday to 7am Monday', wnFri.kind === 'weekend' && wnFri.start.getDay() === 5 && wnFri.start.getDate() === 2 && wnFri.start.getHours() === 17 && wnFri.end.getDay() === 1 && wnFri.end.getDate() === 5 && wnFri.end.getHours() === 7 && wnFri.title === 'Weekend Notes' && wnFri.rangeLabel === 'Friday Oct 2 - Sunday Oct 4' && wnFri.filename.startsWith('Weekend Notes ') && wnFri.filename.endsWith('.rtf'), JSON.stringify(wnFri));
   const wnSat = overnightWindow(new Date(2026, 9, 3, 10, 0));
   const wnSun = overnightWindow(new Date(2026, 9, 4, 10, 0));
   check('Saturday and Sunday open the same weekend window', wnSat.start.getTime() === wnFri.start.getTime() && wnSat.end.getTime() === wnFri.end.getTime() && wnSun.start.getTime() === wnFri.start.getTime() && wnSun.end.getTime() === wnFri.end.getTime(), JSON.stringify([wnSat, wnSun]));
   const wnMon = overnightWindow(new Date(2026, 9, 5, 10, 0));
-  check('a Monday opens that night, 5pm to 7am Tuesday', wnMon.kind === 'weeknight' && wnMon.start.getDay() === 1 && wnMon.start.getDate() === 5 && wnMon.start.getHours() === 17 && wnMon.end.getDay() === 2 && wnMon.end.getDate() === 6 && wnMon.end.getHours() === 7 && wnMon.title === 'Overnight Notes', JSON.stringify(wnMon));
+  check('a Monday opens that night, 5pm to 7am Tuesday', wnMon.kind === 'weeknight' && wnMon.start.getDay() === 1 && wnMon.start.getDate() === 5 && wnMon.start.getHours() === 17 && wnMon.end.getDay() === 2 && wnMon.end.getDate() === 6 && wnMon.end.getHours() === 7 && wnMon.title === 'Overnight Notes' && wnMon.rangeLabel === 'Monday Oct 5 - Tuesday Oct 6', JSON.stringify(wnMon));
   check('parseHhmm reads 24-hour times and rejects the rest', parseHhmm('06:30') === 390 && parseHhmm('23:59') === 1439 && parseHhmm('24:00') === null && parseHhmm('6.30') === null);
   const wnBookings = [
     booking({ id: 'b-setup-in', title: 'Setup In', date: '2026-10-02', roomId: 'Room A', roomIds: ['Room A'], timeline: [{ label: 'Setup', start: '15:00', end: '22:00' }] }),
     booking({ id: 'b-setup-out', title: 'Setup Out', date: '2026-10-02', roomId: 'Room A', roomIds: ['Room A'], timeline: [{ label: 'Setup', start: '09:00', end: '15:00' }] }),
     booking({ id: 'b-sat-early', title: 'Sat Early', date: '2026-10-03', roomId: 'Room B', roomIds: ['Room B'], timeline: [{ label: 'Setup', start: '06:00', end: '09:00' }] }),
+    booking({ id: 'b-sun', title: 'Sun Setup', date: '2026-10-04', roomId: 'Room A', roomIds: ['Room A'], timeline: [{ label: 'Setup', start: '10:00', end: '12:00' }] }),
     booking({ id: 'b-mon-late', title: 'Mon Late', date: '2026-10-05', roomId: 'Room A', roomIds: ['Room A'], timeline: [{ label: 'Setup', start: '08:00', end: '10:00' }] }),
     booking({ id: 'b-teardown', title: 'Teardown', date: '2026-10-02', roomId: 'Room B', roomIds: ['Room B'], timeline: [{ label: 'Teardown', start: '23:00', end: '01:00' }] }),
     booking({ id: 'b-multi', title: 'Multi Room', date: '2026-10-02', roomId: 'Room A', roomIds: ['Room A', 'Room B'], timeline: [{ label: 'Setup', start: '18:00', end: '20:00' }] }),
@@ -961,26 +962,24 @@ try {
   ];
   const wnMarkup = [
     { id: 'n-1', type: 'text', x: 0, y: 0, text: 'Set Up 16:30', time: '16:30', bookingId: 'b-note', date: '2026-10-02', roomId: 'Room A', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-02|Room A|set up||b-note' },
-    { id: 'n-2', type: 'text', x: 0, y: 0, text: 'Set Up 05:00', time: '05:00', date: '2026-10-03', roomId: 'Room C', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-03|Room C|set up||' },
+    { id: 'n-2', type: 'text', x: 0, y: 0, text: 'Pack Down 05:00', time: '05:00', date: '2026-10-03', roomId: 'Room C', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-03|Room C|pack down||' },
     { id: 'n-3', type: 'text', x: 0, y: 0, text: 'Set Up 08:00', time: '08:00', date: '2026-10-05', roomId: 'Room A', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-05|Room A|set up||' }
   ];
   const wnItems = collectOvernightItems(wnBookings, wnMarkup, wnVenue, wnFri);
-  check('the weekend window keeps only the setups overlapping it', wnItems.length === 7 && !wnItems.some(i => ['Setup Out', 'Mon Late'].includes(i.title)), JSON.stringify(wnItems.map(i => `${i.roomId} ${i.date} ${i.title}`)));
-  const wnRoomA = wnItems.filter(i => i.roomId === 'Room A').map(i => i.title);
-  const wnRoomB = wnItems.filter(i => i.roomId === 'Room B').map(i => i.title);
-  check('items are by room, then chronological', JSON.stringify(wnRoomA) === JSON.stringify(['Setup In', 'Noted Setup', 'Multi Room']) && JSON.stringify(wnRoomB) === JSON.stringify(['Multi Room', 'Teardown', 'Sat Early']), JSON.stringify([wnRoomA, wnRoomB]));
+  check('the weekend window keeps only the setups overlapping it', wnItems.length === 8 && !wnItems.some(i => ['Setup Out', 'Mon Late'].includes(i.title)), JSON.stringify(wnItems.map(i => `${i.roomId} ${i.date} ${i.title}`)));
+  check('items print by day, then by room, then chronologically', JSON.stringify(wnItems.map(i => i.title)) === JSON.stringify(['Setup In', 'Noted Setup', 'Multi Room', 'Multi Room', 'Teardown', 'Sat Early', '', 'Sun Setup']), JSON.stringify(wnItems.map(i => `${i.date} ${i.roomId} ${i.title}`)));
   check('a multi-room setup is listed under every room', wnItems.filter(i => i.title === 'Multi Room').length === 2, JSON.stringify(wnItems.filter(i => i.title === 'Multi Room')));
   const wnNoted = wnItems.find(i => i.title === 'Noted Setup');
-  check('the setup time comes from the purple note when there is one', wnNoted?.timeLine === 'Set Up 16:30', JSON.stringify(wnNoted));
+  check('the setup time comes from the purple note when there is one', wnNoted?.timeLine === 'Set Up 16:30' && wnNoted?.functionLabel === 'Set Up' && !wnNoted?.isPackDown, JSON.stringify(wnNoted));
   const wnTeardown = wnItems.find(i => i.title === 'Teardown');
-  check('a teardown past midnight is in the window', wnTeardown?.timeLine === 'Teardown 23:00', JSON.stringify(wnTeardown));
+  check('a teardown past midnight is in the window and marked a pack-down', wnTeardown?.timeLine === 'Teardown 23:00' && wnTeardown?.isPackDown, JSON.stringify(wnTeardown));
   const wnNoteOnly = wnItems.find(i => i.roomId === 'Room C');
-  check('a purple note with no timeline entry is a setup on its own', wnNoteOnly?.title === '' && wnNoteOnly?.timeLine === 'Set Up 05:00', JSON.stringify(wnNoteOnly));
+  check('a purple note with no timeline entry is a setup on its own', wnNoteOnly?.title === '' && wnNoteOnly?.timeLine === 'Pack Down 05:00' && wnNoteOnly?.functionLabel === 'Pack Down' && wnNoteOnly?.isPackDown, JSON.stringify(wnNoteOnly));
   const wnResult = buildWeekendNotesRtf(wnBookings, wnMarkup, wnVenue, new Date(2026, 9, 2, 10, 0));
-  const wnBullets = (wnResult.rtf.match(/\\'95/g) || []).length;
-  check('the RTF lists the rooms in board order with three empty bullets per event', wnResult.items === 7 && wnResult.rooms === 3 && wnResult.rtf.startsWith('{\\rtf1') && wnResult.rtf.indexOf('Room A') < wnResult.rtf.indexOf('Room B') && wnResult.rtf.indexOf('Room B') < wnResult.rtf.indexOf('Room C') && wnResult.rtf.includes('Set Up 16:30') && wnBullets === 21, `bullets ${wnBullets}`);
+  const wnBullets = wnResult.rtf.split('- \\par').length - 1;
+  check('the RTF follows the samples: Tahoma, title, header table, day sections, Event/Room headings, dash bullets', wnResult.items === 8 && wnResult.days === 3 && wnResult.rtf.startsWith('{\\rtf1') && wnResult.rtf.includes('Tahoma') && wnResult.rtf.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnResult.rtf.includes('Duty Manager') && wnResult.rtf.includes('0427 421 821') && wnResult.rtf.includes('\\pard\\b\\fs28 Saturday\\par') && wnResult.rtf.includes('\\pard\\b\\fs28 Sunday\\par') && wnResult.rtf.indexOf('\\pard\\b\\fs28 Saturday\\par') < wnResult.rtf.indexOf('\\pard\\b\\fs28 Sunday\\par') && wnResult.rtf.includes('Setup In/Room A') && wnResult.rtf.includes('Noted Setup/Room A') && wnResult.rtf.includes('Teardown PD/Room B') && wnResult.rtf.includes('Pack Down/Room C') && wnResult.rtf.includes('Sun Setup/Room A') && wnResult.rtf.includes('Set Up 16:30') && wnBullets === 24, `bullets ${wnBullets}`);
   const wnEmpty = buildWeekendNotesRtf([], [], wnVenue, new Date(2026, 9, 2, 10, 0));
-  check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmpty.rtf.includes('No setups in this window.'), wnEmpty.rtf);
+  check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmpty.rtf.includes('No setups in this window.') && wnEmpty.rtf.includes('Duty Manager'), wnEmpty.rtf);
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;
