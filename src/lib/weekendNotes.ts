@@ -2,9 +2,10 @@
 // from. A button on the top bar spits out a Word document listing every
 // setup (and pack-down) happening in the current overnight window, with
 // an empty bullet list under each event to write in. Nothing here is
-// invented, and nothing comes from the hotel's timings: every time is a
-// purple TimeTarget note, imported from a TimeTarget export. A booking
-// with no purple note is not listed at all.
+// invented, and no time comes from the hotel: every time shown is a
+// purple TimeTarget note's own time, imported from a TimeTarget export.
+// An event with no purple note is still listed — by its function, with
+// no time, so the crew writes the time in.
 //
 // The format follows Brendan's own weekend notes (Weekend_Notes_Oct_24-25
 // .docx, Dec_12_to_Dec_14_Weekend_Notes_V1.pdf): Calibri, the title in
@@ -41,9 +42,10 @@ export interface OvernightItem {
   date: string;
   startMs: number;
   title: string;
-  // The times as shown, one line each, e.g. ["Set Up 07:00", "Pack Down 23:00"].
-  // They come only from the purple TimeTarget notes — never from the
-  // hotel's timeline.
+  // The lines as shown, one per function, e.g. ["Set Up 07:00", "Pack Down 23:00"].
+  // A time on a line is always a purple TimeTarget note's own time —
+  // never the hotel's. A function with no purple note in the window is
+  // listed by its name alone, e.g. ["Set Up"].
   timeLines: string[];
   // The work of the earliest line, e.g. "Set Up" — only used for the
   // heading when the item has no title.
@@ -132,6 +134,20 @@ const firstTimeInText = (text: string): string | null => {
   return m ? m[0] : null;
 };
 
+// Timeline labels that count as overnight work: the setup and the
+// pack-down. Crown calls them Setup/Teardown, MCG calls them Bump In /
+// Bump Out; the match is by label, not by venue.
+const isWorkLabel = (label: string) => /setup|bump in|teardown|bump out|pack/i.test(label);
+
+// The function as shown when there is no purple time for it: a setup
+// is "Set Up" and a pack-down is "Pack Down", whatever the venue
+// called it. Anything else is shown as written.
+function functionDisplayName(label: string): string {
+  if (/teardown|bump out|pack/i.test(label)) return 'Pack Down';
+  if (/setup|bump in/i.test(label)) return 'Set Up';
+  return label;
+}
+
 // The work a purple note records, from its text: "Set Up 06:30" is a
 // "Set Up", "Pack Down 22:30" is a "Pack Down".
 function functionFromNoteText(text: string): string {
@@ -188,11 +204,13 @@ export function roomDisplayName(venue: ParsedVenueConfig, roomIds: string[]): st
 // The items in the order they print: by day, then by room in board
 // order (the event's first room), then chronologically within the room.
 //
-// Only the purple TimeTarget notes make items. The hotel's timeline
-// times are never used: a booking with no purple note is not listed at
-// all, however many Setup/Teardown entries its timeline has. And one
-// event is one item, however many functions it has — a setup and its
-// pack-down are two time lines under one heading, not two entries.
+// Every event in the window is listed — a booking with no purple note
+// is still an item. But a time is only ever a purple TimeTarget note's
+// own time: the hotel's timeline times are never shown. A function
+// with no note in the window is listed by its name alone ("Set Up"),
+// with no time, so the crew writes the time in. One event is one item,
+// however many functions it has — a setup and its pack-down are two
+// lines under one heading, not two entries.
 export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, window: OvernightWindow): OvernightItem[] {
   const notes = purpleNotes(markup);
   const byBooking = new Map(bookings.map(b => [b.id, b]));
@@ -202,33 +220,77 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
   const items: OvernightItem[] = [];
   const inWindow = (startMs: number) => startMs >= window.start.getTime() && startMs <= window.end.getTime();
 
-  // Notes for one event on one day are one item, even when the board
-  // holds the event as two bookings — a setup note and its pack-down
-  // note can land on different bookings of the same title, and they
-  // are still one entry. The event is its title, date and rooms. Each
-  // distinct time becomes one line, earliest first. A note with no
-  // booking is a setup on its own.
-  const grouped = new Map<string, { booking?: Booking; notes: PurpleNote[] }>();
+  // The work of one event, grouped by function. An event is its title,
+  // date and rooms — the board can hold it as two bookings (a setup
+  // note and its pack-down note landing on different same-title
+  // bookings), and it is still one entry. A function is in the window
+  // when one of its purple notes falls inside it, or when its timeline
+  // entry's range overlaps the window.
+  interface EventWork {
+    title: string;
+    date: string;
+    rooms: string[];
+    bookingId?: string;
+    functions: Map<string, { notes: PurpleNote[]; entries: { startMs: number; endMs: number }[] }>;
+  }
+  const events = new Map<string, EventWork>();
+  const eventFor = (title: string, date: string, rooms: string[], bookingId?: string): EventWork => {
+    const key = `${title}|${date}|${[...rooms].sort().join(',')}`;
+    let ev = events.get(key);
+    if (!ev) { ev = { title, date, rooms, bookingId, functions: new Map() }; events.set(key, ev); }
+    if (!ev.bookingId) ev.bookingId = bookingId;
+    return ev;
+  };
+  const fnFor = (ev: EventWork, fn: string) => {
+    let f = ev.functions.get(fn);
+    if (!f) { f = { notes: [], entries: [] }; ev.functions.set(fn, f); }
+    return f;
+  };
+  // The timeline entries: the work the venue's export records. Their
+  // times are never shown — only whether the work is in the window.
+  for (const b of bookings) {
+    const rooms = allRooms(b);
+    for (const entry of b.timeline ?? []) {
+      if (!isWorkLabel(entry.label)) continue;
+      const start = parseHhmm(entry.start);
+      const end = parseHhmm(entry.end);
+      if (start === null || end === null) continue;
+      // The entry runs past midnight when its end is at or before its
+      // start.
+      let endMs = toMs(b.date, end);
+      if (endMs <= toMs(b.date, start)) endMs += DAY_MS;
+      fnFor(eventFor(b.title, b.date, rooms, b.id), functionDisplayName(entry.label)).entries.push({ startMs: toMs(b.date, start), endMs });
+    }
+  }
+  // The purple notes: the only source of times. A note with no booking
+  // is a setup on its own.
   for (const note of notes) {
-    if (!inWindow(note.startMs)) continue;
     const booking = note.bookingId ? byBooking.get(note.bookingId) : undefined;
     const rooms = booking ? allRooms(booking) : [note.roomId];
     const title = booking?.title ?? '';
-    const key = `${title}|${note.date}|${[...rooms].sort().join(',')}`;
-    const entry = grouped.get(key) ?? { booking, notes: [] };
-    entry.notes.push(note);
-    if (!entry.booking) entry.booking = booking;
-    grouped.set(key, entry);
+    fnFor(eventFor(title, note.date, rooms, booking?.id), functionDisplayName(note.functionLabel)).notes.push(note);
   }
-  const pushItem = (entry: { booking?: Booking; notes: PurpleNote[] }) => {
-    const ordered = entry.notes.slice().sort((a, b) => a.startMs - b.startMs);
-    const seen = new Set<string>();
-    const timeLines = ordered.map(n => n.text).filter(t => (seen.has(t) ? false : (seen.add(t), true)));
-    const first = ordered[0];
-    const rooms = entry.booking ? allRooms(entry.booking) : [first.roomId];
-    items.push({ roomId: rooms[0], roomName: entry.booking ? roomDisplayName(venue, rooms) : roomName(first.roomId), date: first.date, startMs: first.startMs, title: entry.booking?.title ?? '', timeLines, functionLabel: first.functionLabel, bookingId: entry.booking?.id ?? first.bookingId });
-  };
-  for (const entry of grouped.values()) pushItem(entry);
+  for (const ev of events.values()) {
+    const lines: { text: string; startMs: number }[] = [];
+    for (const [fn, f] of ev.functions) {
+      const notesIn = f.notes.filter(n => inWindow(n.startMs)).sort((a, b) => a.startMs - b.startMs);
+      const entriesIn = f.entries.filter(e => e.startMs <= window.end.getTime() && e.endMs >= window.start.getTime()).sort((a, b) => a.startMs - b.startMs);
+      if (notesIn.length) {
+        const seen = new Set<string>();
+        for (const n of notesIn) {
+          if (seen.has(n.text)) continue;
+          seen.add(n.text);
+          lines.push({ text: n.text, startMs: n.startMs });
+        }
+      } else if (entriesIn.length) {
+        lines.push({ text: fn, startMs: entriesIn[0].startMs });
+      }
+    }
+    if (!lines.length) continue;
+    lines.sort((a, b) => a.startMs - b.startMs);
+    const first = lines[0];
+    items.push({ roomId: ev.rooms[0], roomName: ev.title ? roomDisplayName(venue, ev.rooms) : roomName(ev.rooms[0]), date: ev.date, startMs: first.startMs, title: ev.title, timeLines: lines.map(l => l.text), functionLabel: functionFromNoteText(first.text), bookingId: ev.bookingId });
+  }
 
   const orderOf = (roomId: string) => (roomOrder.has(roomId) ? roomOrder.get(roomId)! : Number.MAX_SAFE_INTEGER);
   items.sort((a, b) => a.date.localeCompare(b.date) || orderOf(a.roomId) - orderOf(b.roomId) || a.startMs - b.startMs || a.title.localeCompare(b.title));
@@ -239,8 +301,8 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
 // in the header (24pt bold, centred — as in the samples, where the
 // title lives in the header and the body starts with the table), the
 // duty-manager header table, then a section per day — "Event/Room"
-// headings, each of the event's times on its own line (a setup and its
-// pack-down are two lines under one heading, not two entries), and
+// headings, each of the event's functions on its own line (with its
+// purple time when there is one, otherwise just the function name), and
 // three empty "- " bullets to write in. An empty window still produces
 // a file, so the crew can see there is nothing overnight instead of
 // wondering whether the export failed.
