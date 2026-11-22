@@ -682,9 +682,9 @@ against is `test-data/timetarget-sample.xlsx`, made by
 
 ## Weekend notes export
 
-Shipped 2026-11-21 (tests 246/246, live verified; reworked twice the
-same day — first to follow the samples' formatting, then to output a
-real Word document). The 📄 Weekend notes button on the top bar (all
+Shipped 2026-11-21 (tests 247/247, live verified; reworked three times
+the same day — first to follow the samples' formatting, then to output a
+real Word document, then to use only purple TimeTarget times). The 📄 Weekend notes button on the top bar (all
 roles — it only reads) downloads a .docx file for the overnight crew:
 the template they work from, with an empty bullet list under each
 event to write in. No file picker, no linking — the button just spits
@@ -728,28 +728,28 @@ the file out.
   headers in order, end of central directory counting the parts) and
   the XML escaping. The generated file passes `unzip -t` and renders
   correctly in LibreOffice.
-- **What is listed:** every setup and pack-down whose time overlaps the
-  window — a booking's Setup/Teardown timeline entries (Crown calls
-  them Setup/Teardown, MCG calls them Bump In/Bump Out) and any
-  TimeTarget note in the window. A setup that starts before 5pm and
-  runs past it is in; a pack-down past midnight is in (an end at or
-  before its start is read as the next day). **One event is one entry,
-  however many rooms it spans** — a merged Palladium block is
-  "Copeland/Palladium", not one line per room. The heading's room is
-  the combined name when the rooms match a room mapping exactly, the
-  rooms joined when they do not, and the first room plus a count when
-  the list is long ("Long Room + 60 more"). Items print by day, then by
-  room in board order (the event's first room), then chronologically
-  within the room.
-- **The setup time:** when a purple TimeTarget note belongs to a setup,
-  its time is the one shown, on its own line under the heading
-  ("Set Up 06:30"); otherwise the timeline entry's own start is shown
-  ("Setup 09:00"). A note with no timeline entry to belong to is a
-  setup on its own — the TimeTarget file is the only record of it. The
-  note's time is stored on the note itself (`MarkupItem.time`, set by
-  the TimeTarget import); a note made before that field existed has its
-  time read back out of its text. A pack-down gets " PD" after the event
-  in its heading ("Freeedom Property PD/Horizon"), as in the samples.
+- **What is listed:** only the purple TimeTarget notes. The hotel's
+  timeline times are never used — a booking with no purple note is not
+  listed at all, however many Setup/Teardown entries its timeline has.
+  So if no TimeTarget times have been imported for the weekend, the
+  file says "No setups in this window" instead of listing the hotel's
+  times. A note is in the window when its time falls inside it (5pm
+  Friday to 7am Monday for a weekend, 5pm to 7am for a weeknight).
+  **One event is one entry, however many functions it has** — the
+  notes for one event on one day (same title, date and rooms) combine
+  into one item, each distinct time a line under the one heading,
+  earliest first. A setup and its pack-down are two lines under
+  "Copeland/Palladium", not two entries, and the " PD" heading suffix
+  is gone. The heading's room is the combined name when the rooms
+  match a room mapping exactly, the rooms joined when they do not, and
+  the first room plus a count when the list is long ("Long Room + 60
+  more"). Items print by day, then by room in board order (the event's
+  first room), then chronologically within the room.
+- **The setup time:** every time line is a purple TimeTarget note's
+  own text ("Set Up 06:30", "Pack Down 22:30"), one line per distinct
+  time. The note's time is stored on the note itself (`MarkupItem.time`,
+  set by the TimeTarget import); a note made before that field existed
+  has its time read back out of its text.
 - **The purple notation:** TimeTarget notes render in purple on the
   board (`.markup-note.timetarget`) and on the printout, so the notation
   the export reads is visible as such. A hand-typed note is never
@@ -766,7 +766,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-246 checks covering matching tiers and weights, booking identity, height and
+247 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating, exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`

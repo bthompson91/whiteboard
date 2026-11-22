@@ -2,15 +2,19 @@
 // from. A button on the top bar spits out a Word document listing every
 // setup (and pack-down) happening in the current overnight window, with
 // an empty bullet list under each event to write in. Nothing here is
-// invented: every item comes from a booking's timeline or a TimeTarget
-// note on the board.
+// invented, and nothing comes from the hotel's timings: every time is a
+// purple TimeTarget note, imported from a TimeTarget export. A booking
+// with no purple note is not listed at all.
 //
 // The format follows Brendan's own weekend notes (Weekend_Notes_Oct_24-25
 // .docx, Dec_12_to_Dec_14_Weekend_Notes_V1.pdf): Calibri, the title in
 // the header, the duty-manager header table, day sections, "Event/Room"
-// headings (with PD after the event for a pack-down), and "- " bullets.
-// The one deliberate difference: every day gets a heading, where his
-// hand-written notes leave the first day unheaded.
+// headings, and "- " bullets. The one deliberate difference: every day
+// gets a heading, where his hand-written notes leave the first day
+// unheaded.
+//
+// The title follows the day of generation: Friday, Saturday or Sunday
+// gives "Weekend Notes", Monday to Thursday gives "Overnight Notes".
 //
 // The window: on a non-Friday weekday it is 5pm today to 7am tomorrow;
 // on a weekend it is 5pm Friday to 7am Monday. The date decides the
@@ -37,11 +41,13 @@ export interface OvernightItem {
   date: string;
   startMs: number;
   title: string;
-  // The setup time as shown, e.g. "Set Up 06:30" or "Setup 09:00".
-  timeLine: string;
-  // The work itself, e.g. "Set Up", "Pack Down", "Setup", "Teardown".
+  // The times as shown, one line each, e.g. ["Set Up 07:00", "Pack Down 23:00"].
+  // They come only from the purple TimeTarget notes — never from the
+  // hotel's timeline.
+  timeLines: string[];
+  // The work of the earliest line, e.g. "Set Up" — only used for the
+  // heading when the item has no title.
   functionLabel: string;
-  isPackDown: boolean;
   bookingId?: string;
 }
 
@@ -133,13 +139,6 @@ function functionFromNoteText(text: string): string {
   return stripped || text;
 }
 
-// Timeline labels that count as overnight work: the setup and the
-// pack-down. Crown calls them Setup/Teardown, MCG calls them Bump In /
-// Bump Out; the match is by label, not by venue.
-const isSetupLabel = (label: string) => /setup|bump in/i.test(label);
-const isTeardownLabel = (label: string) => /teardown|bump out|pack/i.test(label);
-const isWorkLabel = (label: string) => isSetupLabel(label) || isTeardownLabel(label);
-
 interface PurpleNote {
   id: string;
   date: string;
@@ -188,6 +187,12 @@ export function roomDisplayName(venue: ParsedVenueConfig, roomIds: string[]): st
 
 // The items in the order they print: by day, then by room in board
 // order (the event's first room), then chronologically within the room.
+//
+// Only the purple TimeTarget notes make items. The hotel's timeline
+// times are never used: a booking with no purple note is not listed at
+// all, however many Setup/Teardown entries its timeline has. And one
+// event is one item, however many functions it has — a setup and its
+// pack-down are two time lines under one heading, not two entries.
 export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, window: OvernightWindow): OvernightItem[] {
   const notes = purpleNotes(markup);
   const byBooking = new Map(bookings.map(b => [b.id, b]));
@@ -195,88 +200,35 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
   const roomName = (roomId: string) => venue.rooms.find(r => r.id === roomId)?.name ?? roomId;
   const allRooms = (b: Booking) => (b.roomIds && b.roomIds.length ? b.roomIds : [b.roomId]);
   const items: OvernightItem[] = [];
-  const usedNotes = new Set<string>();
-  const inWindow = (startMs: number, endMs: number) => startMs <= window.end.getTime() && endMs >= window.start.getTime();
+  const inWindow = (startMs: number) => startMs >= window.start.getTime() && startMs <= window.end.getTime();
 
-  // A purple note belongs to the closest work entry of its booking (or,
-  // when the note has no booking, the closest entry of any booking on
-  // that date in that room). Several notes can belong to one entry — a
-  // TimeTarget row per room of a merged block — and the earliest is the
-  // time the export shows. The note's time is the setup time; the
-  // timeline entry is the work it belongs to.
-  const notesForEntry = new Map<string, PurpleNote[]>();
+  // Notes for one event on one day are one item, even when the board
+  // holds the event as two bookings — a setup note and its pack-down
+  // note can land on different bookings of the same title, and they
+  // are still one entry. The event is its title, date and rooms. Each
+  // distinct time becomes one line, earliest first. A note with no
+  // booking is a setup on its own.
+  const grouped = new Map<string, { booking?: Booking; notes: PurpleNote[] }>();
   for (const note of notes) {
-    const candidates: { booking: Booking; entryIndex: number; diff: number }[] = [];
-    const consider = (b: Booking) => {
-      if (b.date !== note.date || !allRooms(b).includes(note.roomId)) return;
-      (b.timeline ?? []).forEach((entry, entryIndex) => {
-        if (!isWorkLabel(entry.label)) return;
-        const start = parseHhmm(entry.start);
-        if (start === null) return;
-        candidates.push({ booking: b, entryIndex, diff: Math.abs(toMs(b.date, start) - note.startMs) });
-      });
-    };
-    if (note.bookingId && byBooking.has(note.bookingId)) consider(byBooking.get(note.bookingId)!);
-    else bookings.forEach(consider);
-    if (!candidates.length) continue;
-    candidates.sort((a, b) => a.diff - b.diff);
-    const best = candidates[0];
-    usedNotes.add(note.id);
-    const key = `${best.booking.id}|${best.entryIndex}`;
-    const list = notesForEntry.get(key) ?? [];
-    list.push(note);
-    notesForEntry.set(key, list);
-  }
-
-  for (const b of bookings) {
-    const entries = (b.timeline ?? [])
-      .map((entry, entryIndex) => ({ entry, entryIndex }))
-      .filter(({ entry }) => isWorkLabel(entry.label));
-    if (!entries.length) continue;
-    const rooms = allRooms(b);
-    for (const { entry, entryIndex } of entries) {
-      const start = parseHhmm(entry.start);
-      const end = parseHhmm(entry.end);
-      if (start === null || end === null) continue;
-      const entryNotes = (notesForEntry.get(`${b.id}|${entryIndex}`) ?? []).sort((a, c) => a.startMs - c.startMs);
-      const note = entryNotes[0];
-      const startMs = note ? note.startMs : toMs(b.date, start);
-      // The entry runs past midnight when its end is at or before its
-      // start. When the note's time is past the entry's end, the two
-      // disagree and the setup is a point at the note's time, not a
-      // range.
-      let endMs = toMs(b.date, end);
-      if (endMs <= toMs(b.date, start)) endMs += DAY_MS;
-      if (endMs <= startMs) endMs = startMs;
-      if (!inWindow(startMs, endMs)) continue;
-      const functionLabel = note ? note.functionLabel : entry.label;
-      items.push({ roomId: rooms[0], roomName: roomDisplayName(venue, rooms), date: b.date, startMs, title: b.title, timeLine: note ? note.text : `${entry.label} ${entry.start}`, functionLabel, isPackDown: isTeardownLabel(functionLabel), bookingId: b.id });
-    }
-  }
-
-  // A purple note with no timeline entry to belong to is a setup on its
-  // own: the TimeTarget file is the only record of it. Notes for the
-  // same booking are one setup, not one per room.
-  const noteOnlyByBooking = new Map<string, PurpleNote[]>();
-  const standaloneNotes: PurpleNote[] = [];
-  for (const note of notes) {
-    if (usedNotes.has(note.id)) continue;
-    if (note.startMs < window.start.getTime() || note.startMs > window.end.getTime()) continue;
-    if (note.bookingId) {
-      const list = noteOnlyByBooking.get(note.bookingId) ?? [];
-      list.push(note);
-      noteOnlyByBooking.set(note.bookingId, list);
-    } else standaloneNotes.push(note);
-  }
-  const pushNoteOnly = (note: PurpleNote, booking?: Booking) => {
+    if (!inWindow(note.startMs)) continue;
+    const booking = note.bookingId ? byBooking.get(note.bookingId) : undefined;
     const rooms = booking ? allRooms(booking) : [note.roomId];
-    items.push({ roomId: rooms[0], roomName: booking ? roomDisplayName(venue, rooms) : roomName(note.roomId), date: note.date, startMs: note.startMs, title: booking?.title ?? '', timeLine: note.text, functionLabel: note.functionLabel, isPackDown: isTeardownLabel(note.functionLabel), bookingId: note.bookingId });
-  };
-  for (const [bookingId, list] of noteOnlyByBooking) {
-    const note = list.sort((a, b) => a.startMs - b.startMs)[0];
-    pushNoteOnly(note, byBooking.get(bookingId));
+    const title = booking?.title ?? '';
+    const key = `${title}|${note.date}|${[...rooms].sort().join(',')}`;
+    const entry = grouped.get(key) ?? { booking, notes: [] };
+    entry.notes.push(note);
+    if (!entry.booking) entry.booking = booking;
+    grouped.set(key, entry);
   }
-  for (const note of standaloneNotes) pushNoteOnly(note);
+  const pushItem = (entry: { booking?: Booking; notes: PurpleNote[] }) => {
+    const ordered = entry.notes.slice().sort((a, b) => a.startMs - b.startMs);
+    const seen = new Set<string>();
+    const timeLines = ordered.map(n => n.text).filter(t => (seen.has(t) ? false : (seen.add(t), true)));
+    const first = ordered[0];
+    const rooms = entry.booking ? allRooms(entry.booking) : [first.roomId];
+    items.push({ roomId: rooms[0], roomName: entry.booking ? roomDisplayName(venue, rooms) : roomName(first.roomId), date: first.date, startMs: first.startMs, title: entry.booking?.title ?? '', timeLines, functionLabel: first.functionLabel, bookingId: entry.booking?.id ?? first.bookingId });
+  };
+  for (const entry of grouped.values()) pushItem(entry);
 
   const orderOf = (roomId: string) => (roomOrder.has(roomId) ? roomOrder.get(roomId)! : Number.MAX_SAFE_INTEGER);
   items.sort((a, b) => a.date.localeCompare(b.date) || orderOf(a.roomId) - orderOf(b.roomId) || a.startMs - b.startMs || a.title.localeCompare(b.title));
@@ -287,10 +239,11 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
 // in the header (24pt bold, centred — as in the samples, where the
 // title lives in the header and the body starts with the table), the
 // duty-manager header table, then a section per day — "Event/Room"
-// headings (PD after the event for a pack-down), the setup time on its
-// own line, and three empty "- " bullets to write in. An empty window
-// still produces a file, so the crew can see there is nothing overnight
-// instead of wondering whether the export failed.
+// headings, each of the event's times on its own line (a setup and its
+// pack-down are two lines under one heading, not two entries), and
+// three empty "- " bullets to write in. An empty window still produces
+// a file, so the crew can see there is nothing overnight instead of
+// wondering whether the export failed.
 export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, now = new Date()): WeekendNotesResult {
   const window = overnightWindow(now);
   const items = collectOvernightItems(bookings, markup, venue, window);
@@ -329,9 +282,9 @@ export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[],
     if (dayIndex > 0) body.push({ type: 'paragraph', paragraph: blank });
     body.push({ type: 'paragraph', paragraph: { runs: [{ text: weekdayLong(new Date(`${day.date}T12:00:00`)) }], bold: true, size: 28 } });
     for (const item of day.items) {
-      const heading = item.title ? `${item.title}${item.isPackDown ? ' PD' : ''}/${item.roomName}` : `${item.functionLabel}/${item.roomName}`;
+      const heading = item.title ? `${item.title}/${item.roomName}` : `${item.functionLabel}/${item.roomName}`;
       body.push({ type: 'paragraph', paragraph: { runs: [{ text: heading }], bold: true, size: 36 } });
-      body.push({ type: 'paragraph', paragraph: { runs: [{ text: item.timeLine }], size: 28 } });
+      for (const line of item.timeLines) body.push({ type: 'paragraph', paragraph: { runs: [{ text: line }], size: 28 } });
       for (let i = 0; i < 3; i++) body.push({ type: 'paragraph', paragraph: { runs: [{ text: '- ' }], size: 28 } });
     }
   }
