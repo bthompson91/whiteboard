@@ -9,11 +9,11 @@
 //
 // The format follows Brendan's own weekend notes (Weekend_Notes_Oct_24-25
 // .docx, Dec_12_to_Dec_14_Weekend_Notes_V1.pdf): Calibri, the title in
-// the header, day sections, "Event/Room" headings, and "- " bullets.
-// The duty-manager header table from his samples is not in the export:
-// the board does not know the duty manager or their hours. The one
-// deliberate difference: every day gets a heading, where his hand-written
-// notes leave the first day unheaded.
+// the header, the duty-manager header table, day sections, "Event/Room"
+// headings, and "- " bullets. The table is in the weekend export only:
+// a weeknight's overnight notes start straight at the day sections.
+// The one deliberate difference: every day gets a heading, where his
+// hand-written notes leave the first day unheaded.
 //
 // The title follows the day of generation: Friday, Saturday or Sunday
 // gives "Weekend Notes", Monday to Thursday gives "Overnight Notes".
@@ -106,6 +106,15 @@ export function overnightWindow(now: Date): OvernightWindow {
 export function headerRangeLabel(window: OvernightWindow): string {
   if (window.kind === 'weekend') return `${fmtShort(window.start)} - ${fmtShort(addDays(window.start, 2))}`;
   return `${fmtShort(window.start)} - ${fmtShort(window.end)}`;
+}
+
+// The two days the header table names. The samples name Saturday and
+// Sunday for a weekend window; a weeknight names the two days its window
+// spans. Only the weekend export prints the table — the overnight one
+// starts straight at the day sections.
+export function headerTableDays(window: OvernightWindow): Date[] {
+  if (window.kind === 'weekend') return [addDays(window.start, 1), addDays(window.start, 2)];
+  return [window.start, window.end];
 }
 
 // "09:30" -> 570 (minutes after midnight), or null when it is not a time.
@@ -293,13 +302,13 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
 
 // The document itself, in the samples' shape: Calibri on A4, the title
 // in the header (24pt bold, centred — as in the samples, where the
-// title lives in the header and the body starts with the day sections),
-// then a section per day — "Event/Room" headings, each of the event's
-// functions on its own line (with its purple time when there is one,
-// otherwise just the function name), and three empty "- " bullets to
-// write in. An empty window still produces a file, so the crew can see
-// there is nothing overnight instead of wondering whether the export
-// failed. The footer names the after-hours contact from Configuration.
+// title lives in the header and the body starts with the table), the
+// duty-manager header table on a weekend window only, then a section per day — "Event/Room"
+// headings, each of the event's functions on its own line (with its
+// purple time when there is one, otherwise just the function name), and
+// three empty "- " bullets to write in. An empty window still produces
+// a file, so the crew can see there is nothing overnight instead of
+// wondering whether the export failed. The footer names the after-hours contact from Configuration.
 export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, now = new Date()): WeekendNotesResult {
   const window = overnightWindow(now);
   const items = collectOvernightItems(bookings, markup, venue, window);
@@ -312,6 +321,31 @@ export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[],
   const title = `${window.title} ${window.rangeLabel}`;
   const blank: DocxParagraph = { runs: [], size: 28 };
   const body: DocxBlock[] = [];
+  // The duty-manager header table is a weekend thing: the overnight
+  // notes for a weeknight start straight at the day sections. The
+  // table's contact is the venue's After Hours Contact, not a
+  // hard-coded number — same as the footer.
+  if (window.kind === 'weekend') {
+    const [day1, day2] = headerTableDays(window);
+    body.push({
+      type: 'table',
+      table: {
+        widths: [2254, 2254, 2254, 2254],
+        rows: [
+          [{ paragraphs: [{ runs: [{ text: 'Duty Manager – ________________' }], align: 'center', bold: true, size: 28 }], gridSpan: 4, width: 9016 }],
+          [
+            { paragraphs: [{ runs: [{ text: weekdayLong(day1) }], align: 'center', bold: true, size: 28 }], gridSpan: 2, width: 4508 },
+            { paragraphs: [{ runs: [{ text: weekdayLong(day2) }], align: 'center', bold: true, size: 28 }], gridSpan: 2, width: 4508 },
+          ],
+          // Start and end hours for each day — blank: the board does not
+          // know the duty manager's hours, so the crew writes them in.
+          [2254, 2254, 2254, 2254].map(width => ({ paragraphs: [{ runs: [], align: 'center', bold: true, size: 30 }], width })),
+          [{ paragraphs: [{ runs: [{ text: `After Hours Contact: ${venue.afterHoursContact}` }], align: 'center', bold: true, size: 28 }], gridSpan: 4, width: 9016 }],
+        ],
+      },
+    });
+    body.push({ type: 'paragraph', paragraph: blank });
+  }
   if (!items.length) {
     body.push({ type: 'paragraph', paragraph: { runs: [{ text: 'No setups in this window.' }], size: 28 } });
   }

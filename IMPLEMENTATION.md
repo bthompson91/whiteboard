@@ -705,11 +705,13 @@ against is `test-data/timetarget-sample.xlsx`, made by
 Shipped 2026-11-21 (tests 248/248, live verified; reworked four times
 the same day — first to follow the samples' formatting, then to output a
 real Word document, then to list only purple-noted events, then to list
-every event with purple times only). Reworked 2026-11-23: the duty
-manager table was dropped, the footer names the venue's After Hours
-Contact, setup/pack-down read "SU"/"PD", and the button reads
+every event with purple times only). Reworked 2026-11-23: the footer names
+the venue's After Hours Contact, setup/pack-down read "SU"/"PD", and the
+button reads
 "Overnight Notes" Monday to Thursday and "Weekend Notes" Friday to
-Sunday, naming what it will generate. The 📄 notes button on the top bar (all
+Sunday, naming what it will generate. The duty-manager table was dropped
+for the overnight notes that day and put back the same day: it belongs in
+the weekend export only, not in a weeknight's overnight notes. The 📄 notes button on the top bar (all
 roles — it only reads) downloads a .docx file for the overnight crew:
 the template they work from, with an empty bullet list under each
 event to write in. No file picker, no linking — the button just spits
@@ -729,16 +731,19 @@ the file out.
   minor font is Calibri, and the Tahoma in styles.xml is an 8pt
   footnote style. The title lives in the **header** (24pt bold,
   centred — "Weekend Notes Fri, 2 Oct - Sun, 4 Oct", the compact range
-  as the samples write it) and the body starts directly with the first day
-  section — there is no header table; the duty manager table from the
-  samples was dropped, the board does not know the duty manager. The
+  as the samples write it) and the body starts with the duty-manager
+  header table on a weekend window — a weeknight's overnight notes start
+  straight at the first day section, with no table. The
   footer carries "After Hours Contact: 0427 421 821" and "Page N of M"
   (real PAGE and NUMPAGES fields), bold 12pt, centred. The contact is
   the venue's `site.after_hours_contact` from Configuration, defaulting
   to the Crown on-call number when blank. The page is A4
   with 1440-twip margins, as in the samples.
-- **The header table** is gone: the body starts with the first day
-  heading. Event headings are bold 18pt, day
+- **The header table** (weekend only) is a 4-column TableGrid: "Duty
+  Manager – ____" (blank — the board does not know the duty manager),
+  the two days (Saturday and Sunday), blank start/end hours for each
+  day, and "After Hours Contact: 0427 421 821" from the venue setting.
+  Event headings are bold 18pt, day
   headings bold 14pt, body 14pt, and the default paragraph spacing is
   after 200, line 1.15, as in the samples. The one deliberate
   difference from his hand-written notes: every day gets a heading,
@@ -793,15 +798,15 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-267 checks covering matching tiers and weights, booking identity, height and
+269 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`
 read, default, derivation, and rejection of a non-list value), note
 placement and the drag-from-rendered-position fix, SU/PD short names, the
-overnight-notes button title, the duty-table-free DOCX and the After Hours
-Contact footer. Run it before pushing;
+overnight-notes button title, the weekend-only duty-manager table and the
+After Hours Contact footer. Run it before pushing;
 the build (`npm run build`) must also be green.
 
 ## Known limitations
