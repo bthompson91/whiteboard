@@ -60,7 +60,7 @@ export function readConfiguration(text:string, strict=true):ConfigDocument {
   if(!object(d)||!object(d.rooms)||!strings(d.rooms.order)||!d.rooms.order.length)throw new Error('YAML must contain a non-empty rooms.order list.');
   const names=d.rooms.order as string[];
   if(names.some(n=>!n.trim())||new Set(names.map(n=>n.trim().toLowerCase())).size!==names.length)throw new Error('Room names must be non-empty and unique.');
-  if(d.site!==undefined&&(!object(d.site)||typeof d.site.name!=='string'))throw new Error('site.name must be text.');
+  if(d.site!==undefined&&(!object(d.site)||typeof d.site.name!=='string'||(d.site.after_hours_contact!==undefined&&typeof d.site.after_hours_contact!=='string')))throw new Error('site.name and site.after_hours_contact must be text.');
   if(d.fields!==undefined&&(!object(d.fields)||!Object.values(d.fields).every(v=>typeof v==='string')))throw new Error('fields must map names to text column headers.');
   if(strict&&d.fields!==undefined&&Object.values(d.fields).some(v=>!(v as string).trim()))throw new Error('Field mappings must name a column header; leave a mapping out instead of blank.');
   if(d.file_input!==undefined&&(!object(d.file_input)||(d.file_input.format!==undefined&&typeof d.file_input.format!=='string')||(d.file_input.has_header!==undefined&&typeof d.file_input.has_header!=='boolean')))throw new Error('file_input must map format to text and has_header to true/false.');
@@ -134,7 +134,33 @@ export function boardSettings(d:ConfigDocument):BoardSettings {
     const key=k.trim();
     if(key)room_types[key]=v;
   }
-  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},room_width_min:typeof w.room_width_min==='number'?w.room_width_min:125,room_width_max:typeof w.room_width_max==='number'?w.room_width_max:600,salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])],operable_walls:[...(w.operable_walls||[])],random_event_colours:w.random_event_colours===true};
+  // Operable walls: when the venue has not set any, the walls between
+  // the rooms of each combined room are operable — a combination only
+  // exists because those rooms can be opened into one space, so a
+  // combined booking renders as one wide block without the venue
+  // having to tick every wall by hand. An explicit list, even an empty
+  // one, always wins: unticking a wall in Configuration writes it back
+  // and the derivation stops applying. Only walls between rooms that
+  // sit next to each other in the board order count; a combination
+  // naming rooms that are not adjacent, or a room that is not on the
+  // board, contributes nothing.
+  let operable_walls:string[];
+  if(w.operable_walls!==undefined){
+    operable_walls=[...w.operable_walls];
+  }else{
+    const order=((d.rooms?.order||[]) as string[]).map(r=>typeof r==='string'?r.trim():'').filter(Boolean);
+    const index=new Map(order.map((name,i)=>[name.toLowerCase(),i]));
+    const derived=new Set<number>();
+    const mappings=(d.rooms?.room_mappings||{}) as Record<string,unknown>;
+    for(const rooms of Object.values(mappings)){
+      if(!Array.isArray(rooms))continue;
+      const idxs=rooms.map(r=>typeof r==='string'?index.get(r.trim().toLowerCase()):undefined).filter((i):i is number=>i!==undefined);
+      idxs.sort((a,b)=>a-b);
+      for(let i=0;i+1<idxs.length;i++)if(idxs[i+1]===idxs[i]+1)derived.add(idxs[i]);
+    }
+    operable_walls=[...derived].sort((a,b)=>a-b).map(i=>order[i]);
+  }
+  return {room_types,room_widths:{large:200,small:125,other:150,...(w.room_widths||{})},room_width_min:typeof w.room_width_min==='number'?w.room_width_min:125,room_width_max:typeof w.room_width_max==='number'?w.room_width_max:600,salespeople:(w.salespeople||[]).map((p:Salesperson)=>({...p})),room_borders:[...(w.room_borders||[])],operable_walls,random_event_colours:w.random_event_colours===true};
 }
 export function writeConfiguration(d:ConfigDocument):string { return yaml.dump(d,{noRefs:true,lineWidth:120,sortKeys:false}); }
 // Tidy a configuration document before saving: trim stray whitespace
@@ -148,6 +174,13 @@ export function normalizeConfigDoc(d:ConfigDocument):ConfigDocument {
   if ('time_slots' in d) delete d.time_slots;
   const trimList = (v: unknown) => Array.isArray(v) ? v.map(x => typeof x === 'string' ? x.trim() : x).filter(x => typeof x === 'string' && x) : v;
   if (d.site && typeof d.site.name === 'string') d.site.name = d.site.name.trim();
+  // The after-hours contact for the overnight notes: blank falls back
+  // to the Crown on-call number, so drop it rather than saving an empty
+  // value that would read as no contact at all.
+  if (d.site && typeof d.site.after_hours_contact === 'string') {
+    d.site.after_hours_contact = d.site.after_hours_contact.trim();
+    if (!d.site.after_hours_contact) delete d.site.after_hours_contact;
+  }
   if (object(d.fields)) for (const k of Object.keys(d.fields)) { const v = d.fields[k]; if (typeof v === 'string') d.fields[k] = v.trim(); }
   if (object(d.file_input)) {
     if (typeof d.file_input.room_separator === 'string') d.file_input.room_separator = d.file_input.room_separator.trim();

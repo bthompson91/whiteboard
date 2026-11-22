@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState, PointerEvent as PE } from 'react';
-import { MarkupItem } from '../types';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, PointerEvent as PE } from 'react';
+import { Booking, MarkupItem } from '../types';
 import { AnchorLayout, anchorFromPoint, pointFromAnchor } from '../lib/markupAnchor';
+import { blocksFor, blockSegments, timeFraction } from '../lib/blocks';
+import { BlockSpan, NOTE_HEIGHT_ESTIMATE_PX, placeNote } from '../lib/notePlacement';
+import { ParsedVenueConfig } from '../lib/venueConfig';
+import { Salesperson } from '../lib/configuration';
 
 interface Props {
   markup: MarkupItem[];
@@ -12,6 +16,21 @@ interface Props {
   // full; everything else dims to 25%, the same as a filtered-out
   // block. Empty means no filter, so nothing dims.
   highlightedCells?: Set<string>;
+  // The board's blocks, for placing notes above them: the bookings and
+  // the settings the grid renders them with. A note is centred above
+  // the block it belongs to, moved up when it would overlap that block,
+  // and centred between two blocks with a highlight when it would
+  // overlap the block above too.
+  bookings?: Booking[];
+  venue?: ParsedVenueConfig | null;
+  salespeople?: Salesperson[];
+  roomBorders?: string[];
+  operableWalls?: string[];
+  randomEventColours?: boolean;
+  // Whether hidden blocks are on the board (the grid's editing-or-
+  // show-hidden flag): a note moves above exactly the blocks the grid
+  // shows, hidden ones included only when they are visible.
+  showHiddenBlocks?: boolean;
   onChange: (items: MarkupItem[]) => void;
   onClearSelectedBooking: () => void;
 }
@@ -21,9 +40,19 @@ type Drag = {
   x: number;
   y: number;
   part: 'move' | 'start' | 'end';
+  // The item's rendered position when the drag started. The stored x/y
+  // is not the rendered position for an anchored item — an imported
+  // note stores 0,0 and renders from its anchor — so dragging from the
+  // stored position teleports the note to the top-left corner, where it
+  // looks like it vanished. The drag is always from where the item
+  // renders, plus the pointer's movement since the drag started.
+  baseX: number;
+  baseY: number;
+  baseX2?: number;
+  baseY2?: number;
 };
 
-export default function MarkupLayer({ markup, mode, selectedBookingId, editingEnabled, highlightedCells, onChange, onClearSelectedBooking }: Props) {
+export default function MarkupLayer({ markup, mode, selectedBookingId, editingEnabled, highlightedCells, bookings, venue, salespeople, roomBorders, operableWalls, randomEventColours, showHiddenBlocks, onChange, onClearSelectedBooking }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [layout, setLayout] = useState<AnchorLayout | null>(null);
@@ -132,11 +161,91 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     }
     return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
   };
+  // The blocks' spans, in board pixels, per day and room: where a note
+  // may not sit. Rebuilt with the layout, from the same blocks the grid
+  // renders, so a note moves above exactly the block it would overlap.
+  // A merged block contributes one span per room it covers, with the
+  // whole block's span, so a note centres on the merged block. The
+  // span uses the event's own times (mainStart/mainEnd), not the
+  // timeline-extended span: a setup note at 07:00 sits clear of an
+  // 18:30 event and must stay at its anchor, not be flung above a
+  // block that only reaches 07:00 because its setup does.
+  const spansByCell = useMemo(() => {
+    const map = new Map<string, BlockSpan[]>();
+    if (!layout || !venue || !bookings) return map;
+    const blocks = blocksFor(bookings, venue, salespeople || [], showHiddenBlocks ?? false, roomBorders || [], operableWalls || [], randomEventColours ?? false);
+    for (const block of blocks) {
+      const left = layout.roomLefts[block.rooms[0]];
+      const right = layout.roomLefts[block.rooms[block.rooms.length - 1]] + layout.roomWidths[block.rooms[block.rooms.length - 1]];
+      if (left === undefined || right === undefined) continue;
+      for (const seg of blockSegments({...block, start: block.mainStart, end: block.mainEnd})) {
+        const day = layout.dates.indexOf(seg.date);
+        if (day < 0) continue;
+        const top = layout.rowTops[day] + timeFraction(seg.start) * layout.dayHeight;
+        const bottom = layout.rowTops[day] + timeFraction(seg.end) * layout.dayHeight;
+        for (const roomIdx of block.rooms) {
+          const roomId = layout.roomIds[roomIdx];
+          if (!roomId) continue;
+          const key = `${seg.date}|${roomId}`;
+          const list = map.get(key) || [];
+          list.push({ top, bottom, left, right, block });
+          map.set(key, list);
+        }
+      }
+    }
+    for (const list of map.values()) list.sort((a, b) => a.top - b.top);
+    return map;
+  }, [layout, venue, bookings, salespeople, roomBorders, operableWalls, randomEventColours, showHiddenBlocks]);
+
+  // A note's height, measured from the board: the placement needs it to
+  // know whether the note overlaps the block below it. Measured after
+  // every render, so a note that grows while being edited is placed by
+  // its real height; the first render uses the single-line estimate.
+  const [noteHeights, setNoteHeights] = useState<Map<string, number>>(new Map());
+  useLayoutEffect(() => {
+    const els = root.current?.querySelectorAll<HTMLElement>('[data-note-id]');
+    if (!els) return;
+    setNoteHeights(prev => {
+      let next: Map<string, number> | null = null;
+      for (const el of els) {
+        const id = el.dataset.noteId;
+        const h = el.offsetHeight;
+        if (!id || !h) continue;
+        if (prev.get(id) !== h) {
+          if (!next) next = new Map(prev);
+          next.set(id, h);
+        }
+      }
+      return next ?? prev;
+    });
+  });
+
+  // Where a text note renders: centred above the block it belongs to,
+  // moved up when it would overlap that block, centred between two
+  // blocks with a highlight when it would overlap the block above too.
+  // A note with no block keeps its anchor. The x it returns is the
+  // note's centre, which the CSS centres on with a translate.
+  const notePlacement = (item: Extract<MarkupItem, { type: 'text' }>): { x: number; y: number; squeezed: boolean } | null => {
+    const anchor = textPos(item);
+    if (!anchor) return null;
+    const height = noteHeights.get(item.id) ?? NOTE_HEIGHT_ESTIMATE_PX;
+    if (!item.date || !item.roomId || !layout) return { x: anchor.x, y: anchor.y, squeezed: false };
+    const spans = spansByCell.get(`${item.date}|${item.roomId}`) || [];
+    return placeNote(anchor, height, spans, item.bookingId);
+  };
+
   const positions = new Map<string, { x: number; y: number; x2?: number; y2?: number }>();
+  // A note squeezed between two blocks renders highlighted: a
+  // render-time state, not a stored one, so it follows the board as
+  // bookings change instead of sticking to the note.
+  const squeezed = new Map<string, boolean>();
   for (const item of markup) {
     if (item.type === 'text') {
-      const pos = textPos(item);
-      if (pos) positions.set(item.id, pos);
+      const placed = notePlacement(item);
+      if (placed) {
+        positions.set(item.id, { x: placed.x, y: placed.y });
+        if (placed.squeezed) squeezed.set(item.id, true);
+      }
     } else {
       const pos = arrowPos(item);
       if (pos) positions.set(item.id, { x: pos.x1, y: pos.y1, x2: pos.x2, y2: pos.y2 });
@@ -155,8 +264,8 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     if (end === 'start') return { ...item, x1: x, y1: y, date1: a?.date, roomId1: a?.roomId, fx1: a?.fx, fy1: a?.fy };
     return { ...item, x2: x, y2: y, date2: a?.date, roomId2: a?.roomId, fx2: a?.fx, fy2: a?.fy };
   };
-  const reanchorArrowMove = (item: Extract<MarkupItem, { type: 'arrow' }>, dx: number, dy: number) => {
-    const next = { ...item, x1: item.x1 + dx, y1: item.y1 + dy, x2: item.x2 + dx, y2: item.y2 + dy };
+  const reanchorArrowMove = (item: Extract<MarkupItem, { type: 'arrow' }>, dx: number, dy: number, baseX1: number, baseY1: number, baseX2: number, baseY2: number) => {
+    const next = { ...item, x1: baseX1 + dx, y1: baseY1 + dy, x2: baseX2 + dx, y2: baseY2 + dy };
     const a1 = layout ? anchorFromPoint(layout, next.x1, next.y1) : null;
     const a2 = layout ? anchorFromPoint(layout, next.x2, next.y2) : null;
     return { ...next, date1: a1?.date, roomId1: a1?.roomId, fx1: a1?.fx, fy1: a1?.fy, date2: a2?.date, roomId2: a2?.roomId, fx2: a2?.fx, fy2: a2?.fy };
@@ -238,7 +347,15 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     if (!editingEnabled) return;
     event.stopPropagation();
     setSelected(item.id);
-    setDrag({ item, ...point(event), part });
+    // The drag starts from where the item renders, not from its stored
+    // position: an imported note stores 0,0 and renders from its
+    // anchor, so the stored position is not where it is.
+    const pos = positions.get(item.id);
+    const baseX = pos?.x ?? (item.type === 'text' ? item.x : item.x1);
+    const baseY = pos?.y ?? (item.type === 'text' ? item.y : item.y1);
+    const baseX2 = pos?.x2 ?? (item.type === 'arrow' ? item.x2 : undefined);
+    const baseY2 = pos?.y2 ?? (item.type === 'arrow' ? item.y2 : undefined);
+    setDrag({ item, ...point(event), part, baseX, baseY, baseX2, baseY2 });
     capture(event);
   };
 
@@ -294,16 +411,20 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     if (!drag) return;
     const deltaX = position.x - drag.x;
     const deltaY = position.y - drag.y;
+    // A click jitters a pixel or two: ignore it, so clicking a note
+    // selects it without moving it — and without writing the board
+    // back for a move that never happened.
+    if (Math.hypot(deltaX, deltaY) < 3) return;
     const item = drag.item;
     let next: MarkupItem;
     if (item.type === 'text') {
-      next = reanchorText(item, item.x + deltaX, item.y + deltaY);
+      next = reanchorText(item, drag.baseX + deltaX, drag.baseY + deltaY);
     } else if (drag.part === 'start') {
       next = reanchorArrowEnd(item, 'start', position.x, position.y);
     } else if (drag.part === 'end') {
       next = reanchorArrowEnd(item, 'end', position.x, position.y);
     } else {
-      next = reanchorArrowMove(item, deltaX, deltaY);
+      next = reanchorArrowMove(item, deltaX, deltaY, drag.baseX, drag.baseY, drag.baseX2 ?? item.x2, drag.baseY2 ?? item.y2);
     }
     onChange(markup.map((item2) => (item2.id === item.id ? next : item2)));
   };
@@ -378,7 +499,8 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
         return (
           <div
             key={item.id}
-            className={`markup-note ${selected === item.id ? 'selected' : ''} ${item.highlight ? 'highlight' : ''} ${item.source === 'timetarget' ? 'timetarget' : ''}`}
+            data-note-id={item.id}
+            className={`markup-note ${selected === item.id ? 'selected' : ''} ${item.highlight || squeezed.get(item.id) ? 'highlight' : ''} ${item.source === 'timetarget' ? 'timetarget' : ''}`}
             style={{ left: pos.x, top: pos.y, opacity: isHighlighted(item) ? undefined : 0.25 }}
             onPointerDown={(event) => begin(event, item)}
             onDoubleClick={(event) => {

@@ -258,8 +258,13 @@ render at their exact times with no snapping.
   `strongBorders` (case/whitespace-insensitive). `blocksFor` takes the
   `operable_walls` list as its sixth parameter. A single booking that spans
   several rooms via `room_mappings` also only renders as one wide block
-  across operable walls. Default: no walls operable, so cross-room merging
-  is off until the walls are ticked in Configuration.
+  across operable walls. When the venue has set no `operable_walls` list
+  at all, `boardSettings` derives one from the combined rooms: the walls
+  between the rooms of each `room_mappings` entry are operable, because a
+  combination only exists where those rooms can be opened into one space.
+  Only walls between rooms that sit next to each other in the board order
+  count. An explicit list, even an empty one, always wins — unticking a
+  wall in Configuration writes it back, and the derivation stops applying.
 - **Manual merge.** The inspector's "Merge left" / "Merge right" buttons set
   a shared `mergeGroup` on two bookings in neighbouring rooms (same day,
   overlapping main times, same loose title preferred). A merge group joins
@@ -413,6 +418,20 @@ or an arrow end re-anchors it.
   filtered person's bookings from yesterday onward, and passes it to
   MarkupLayer. A text note stays full iff its anchor cell is in the set; an
   arrow stays full iff either end is; unanchored items dim to 25%.
+- **Placement.** A text note is centred above the block it belongs to
+  (`src/lib/notePlacement.ts`, `placeNote`): its left edge is the block's
+  centre, its width fits its text, and when it would overlap the block it
+  moves just above it. When that would overlap the block above too, it is
+  centred between the two and highlighted. The spans it is placed against
+  use the block's own event times (`mainStart`/`mainEnd`), not the
+  timeline-extended span, so a setup note hours before the event stays at
+  its anchor instead of being flung above a block that only reaches its
+  time because of its setup.
+- **Dragging starts where the note renders.** An imported note stores
+  0,0 and renders from its anchor, so a drag must start from the rendered
+  position, not the stored one — dragging from 0,0 re-anchored the note to
+  the top-left corner, where it looked vanished. Movements under 3px are
+  ignored, so a click selects without moving the note.
 
 Markup travels in the shared board file (it used to live only in each
 browser's localStorage, so it never showed across devices). The lowlight
@@ -527,8 +546,9 @@ Operable wall | Reorder | Remove**:
 - **Combined rooms** — its own section under the room table: each name on
   the left is a name the export file uses for a combination of rooms, and
   it expands to the rooms on the right. One entry per spelling the venue
-  uses. A combined booking only renders as one wide block when the walls
-  between those rooms are ticked operable; an operable wall merges
+  uses. A combined booking renders as one wide block because the walls
+  between the rooms of a combination are filled in as operable (see
+  Operable walls above); an operable wall merges
   separate bookings, it does not expand one booking, so the mapping is
   still what turns a combined export name into board rooms.
 
@@ -685,7 +705,11 @@ against is `test-data/timetarget-sample.xlsx`, made by
 Shipped 2026-11-21 (tests 248/248, live verified; reworked four times
 the same day — first to follow the samples' formatting, then to output a
 real Word document, then to list only purple-noted events, then to list
-every event with purple times only). The 📄 Weekend notes button on the top bar (all
+every event with purple times only). Reworked 2026-11-23: the duty
+manager table was dropped, the footer names the venue's After Hours
+Contact, setup/pack-down read "SU"/"PD", and the button reads
+"Overnight Notes" Monday to Thursday and "Weekend Notes" Friday to
+Sunday, naming what it will generate. The 📄 notes button on the top bar (all
 roles — it only reads) downloads a .docx file for the overnight crew:
 the template they work from, with an empty bullet list under each
 event to write in. No file picker, no linking — the button just spits
@@ -705,15 +729,16 @@ the file out.
   minor font is Calibri, and the Tahoma in styles.xml is an 8pt
   footnote style. The title lives in the **header** (24pt bold,
   centred — "Weekend Notes Fri, 2 Oct - Sun, 4 Oct", the compact range
-  as the samples write it) and the body starts with the table. The
-  footer carries "Crown On Call Phone: 0427 421 821" and "Page N of M"
-  (real PAGE and NUMPAGES fields), bold 12pt, centred. The page is A4
+  as the samples write it) and the body starts directly with the first day
+  section — there is no header table; the duty manager table from the
+  samples was dropped, the board does not know the duty manager. The
+  footer carries "After Hours Contact: 0427 421 821" and "Page N of M"
+  (real PAGE and NUMPAGES fields), bold 12pt, centred. The contact is
+  the venue's `site.after_hours_contact` from Configuration, defaulting
+  to the Crown on-call number when blank. The page is A4
   with 1440-twip margins, as in the samples.
-- **The header table** is a 4-column TableGrid: "Duty Manager – ____"
-  (blank — the board does not know the duty manager), the two days
-  (Saturday and Sunday for a weekend, the two window days for a
-  weeknight), blank start/end hours for each day, and "Out of hours
-  (Crown On Call): 0427 421 821". Event headings are bold 18pt, day
+- **The header table** is gone: the body starts with the first day
+  heading. Event headings are bold 18pt, day
   headings bold 14pt, body 14pt, and the default paragraph spacing is
   after 200, line 1.15, as in the samples. The one deliberate
   difference from his hand-written notes: every day gets a heading,
@@ -745,10 +770,11 @@ the file out.
   room in board order (the event's first room), then chronologically
   within the room.
 - **The times:** a time on a line is always a purple TimeTarget note's
-  own time ("Set Up 06:30", "Pack Down 22:30"). The hotel's timeline
+  own time ("SU 06:30", "PD 22:30"). The hotel's timeline
   times are never shown. A function with no purple note in the window
-  is listed by its name alone ("Set Up", "Pack Down"), so the crew
-  writes the time in. The note's time is stored on the note itself
+  is listed by its short name alone ("SU", "PD"), so the crew
+  writes the time in. "SU" is short for Set Up and "PD" for Pack Down,
+  in the notes and in the export alike. The note's time is stored on the note itself
   (`MarkupItem.time`, set by the TimeTarget import); a note made
   before that field existed has its time read back out of its text.
 - **The purple notation:** TimeTarget notes render in purple on the
@@ -767,11 +793,15 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-248 checks covering matching tiers and weights, booking identity, height and
-width merges, operable-wall gating, exact-title cross-room merges, strong
+267 checks covering matching tiers and weights, booking identity, height and
+width merges, operable-wall gating and derivation from combined rooms,
+exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
 night compression, and configuration validation (including `operable_walls`
-read, default, and rejection of a non-list value). Run it before pushing;
+read, default, derivation, and rejection of a non-list value), note
+placement and the drag-from-rendered-position fix, SU/PD short names, the
+overnight-notes button title, the duty-table-free DOCX and the After Hours
+Contact footer. Run it before pushing;
 the build (`npm run build`) must also be green.
 
 ## Known limitations

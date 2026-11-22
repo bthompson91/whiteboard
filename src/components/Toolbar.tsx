@@ -40,12 +40,15 @@ interface Props {
   onOpenPrint: () => void;
   onImportTimes: () => void;
   onExportWeekendNotes: () => void;
+  // The notes button reads "Overnight Notes" Monday to Thursday and
+  // "Weekend Notes" Friday to Sunday, so it names what it will generate.
+  weekendNotesTitle: string;
 }
 export default function Toolbar({
   venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, filterSalespersonId, error, revision,
   saving, linkedFiles, editorLockName,
   onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onFilterSalespersonChange, onSetMarkupMode, onOpenConfiguration,
-  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint, onImportTimes, onExportWeekendNotes
+  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint, onImportTimes, onExportWeekendNotes, weekendNotesTitle
 }: Props) {
   return (
     <header className="toolbar">
@@ -75,7 +78,7 @@ export default function Toolbar({
       </button>
       <button onClick={onToday} title="Snap to today">📅 Today</button>
       <button onClick={onOpenPrint} title="Export the board for a date range as a printout (Save as PDF)">🖨️ Print</button>
-      <button onClick={onExportWeekendNotes} title="Download the overnight notes for this window as a Word document: every setup and pack-down from 5pm today to 7am tomorrow, or 5pm Friday to 7am Monday on a weekend, by room then chronologically, with the setup time from the purple TimeTarget note when there is one">📄 Weekend notes</button>
+      <button onClick={onExportWeekendNotes} title={`Download the ${weekendNotesTitle.toLowerCase()} for this window as a Word document: every setup and pack-down from 5pm today to 7am tomorrow, or 5pm Friday to 7am Monday on a weekend, by room then chronologically, with the setup time from the purple TimeTarget note when there is one`}>📄 {weekendNotesTitle}</button>
       <select value={filterSalespersonId} onChange={event => onFilterSalespersonChange(event.target.value)} aria-label="Filter by salesperson" title="Show one salesperson's blocks at full strength; everyone else's dims to 25%">
         <option value="">All salespeople</option>
         {salespeople.map(person => <option key={person.id} value={person.id} style={{ backgroundColor: person.colour, color: readableText(person.colour) }}>{person.name}</option>)}

@@ -74,12 +74,30 @@ function StringList({ values, onChange, label }: { values:string[]; onChange:(ne
   </div>)}
   <button onClick={()=>onChange([...values,''])}>Add</button></div>;
 }
-function MappingEditor({ map, onChange, keyLabel, valueLabel }: { map:Record<string,string[]>; onChange:(next:Record<string,string[]>)=>void; keyLabel:string; valueLabel:string }) {
+// A key -> list editor, with an optional third column: one extra text
+// value per row. The Combined rooms section uses it for the TimeTarget
+// area of a combined room, so a combination has its own rostering area
+// the same way a single room does. Renaming a key moves its extra value
+// with it, and removing a row drops it.
+function MappingEditor({ map, onChange, keyLabel, valueLabel, extraLabel, extra, onExtraChange }: { map:Record<string,string[]>; onChange:(next:Record<string,string[]>)=>void; keyLabel:string; valueLabel:string; extraLabel?:string; extra?:Record<string,string>; onExtraChange?:(next:Record<string,string>)=>void }) {
   const rows = Object.entries(map);
+  const renameExtra = (oldKey: string, newKey: string) => {
+    if (!extra || !onExtraChange) return;
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(extra)) next[k === oldKey ? newKey : k] = v;
+    onExtraChange(next);
+  };
+  const dropExtra = (key: string) => {
+    if (!extra || !onExtraChange) return;
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(extra)) if (k !== key) next[k] = v;
+    onExtraChange(next);
+  };
   return <div>{rows.map(([key,values])=><div key={key} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-    <input aria-label={keyLabel} value={key} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k===key?e.target.value:k]=v;onChange(next);}} />
+    <input aria-label={keyLabel} value={key} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k===key?e.target.value:k]=v;onChange(next);renameExtra(key,e.target.value);}} />
     <input aria-label={valueLabel} value={values.join(', ')} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k]=k===key?e.target.value.split(',').map(s=>s.trim()).filter(Boolean):v;onChange(next);}} />
-    <button onClick={()=>{const next:Record<string,string[]>={};for(const [k,v] of rows)if(k!==key)next[k]=v;onChange(next);}}>Remove</button>
+    {extraLabel && extra && onExtraChange && <input aria-label={`${extraLabel} for ${key}`} placeholder={extraLabel} title={`${extraLabel} for this combined room, for the TimeTarget import`} value={extra[key] || ''} onChange={e=>{const value=e.target.value;const next={...extra};if(value.trim())next[key]=value;else delete next[key];onExtraChange(next);}} />}
+    <button onClick={()=>{const next:Record<string,string[]>={};for(const [k,v] of rows)if(k!==key)next[k]=v;onChange(next);dropExtra(key);}}>Remove</button>
   </div>)}
   <button onClick={()=>onChange({ ...map, '': [] })}>Add</button></div>;
 }
@@ -121,7 +139,9 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
       <label>Import venue YAML <input type="file" accept=".yaml,.yml" onChange={importFile}/></label>
       {(validation||message)&&<p role="status" className={validation?'configuration-error':''}>{validation||message}</p>}
       {doc&&settings&&<>
-        <section><h2>Venue</h2><label>Venue name <input value={doc.site?.name||''} onChange={e=>{const value=e.target.value;change(d=>{d.site={...(d.site||{}),name:value};});}}/></label></section>
+        <section><h2>Venue</h2><label>Venue name <input value={doc.site?.name||''} onChange={e=>{const value=e.target.value;change(d=>{d.site={...(d.site||{}),name:value};});}}/></label>{' '}
+          <label>After Hours Contact <input aria-label="After Hours Contact" placeholder="0427 421 821" title="The number the overnight notes print in the footer as the after-hours contact. Left blank, they use 0427 421 821." value={doc.site?.after_hours_contact||''} onChange={e=>{const value=e.target.value;change(d=>{d.site={...(d.site||{})};if(value.trim())d.site.after_hours_contact=value;else delete d.site.after_hours_contact;});}} /></label>
+          <p>The number the overnight notes print in the footer as the after-hours contact. Left blank, they use 0427 421 821.</p></section>
         <section><h2>Event file</h2><p>How the venue&apos;s export file is laid out.</p>
           <label>Format <select value={doc.file_input?.format||'csv'} onChange={e=>change(d=>{d.file_input={...(d.file_input||{}),format:e.target.value};})}><option value="csv">csv</option><option value="xls">xls</option><option value="xlsx">xlsx</option><option value="html">html</option></select></label>{' '}
           <label><input type="checkbox" checked={doc.file_input?.has_header!==false} onChange={e=>change(d=>{d.file_input={...(d.file_input||{}),has_header:e.target.checked};})} /> First row is a header</label>{' '}
@@ -153,8 +173,8 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
         </section>
-        <section><h2>Combined rooms</h2><p>Each name on the left is a name the venue&apos;s export file uses for a combination of rooms; it expands to the rooms on its right. Add one entry per spelling the venue uses — “Palladium A &amp; B”, “Palladium AB” and “Palladium A and B” are three different names, so each needs its own entry. A combined booking only renders as one wide block when the walls between those rooms are ticked operable. Excluded rooms are not edited here: they stay in the YAML (<code>rooms.exclude</code>) and still skip rooms at import.</p>
-          <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" onChange={next=>change(d=>{d.rooms.room_mappings=next;})} />
+        <section><h2>Combined rooms</h2><p>Each name on the left is a name the venue&apos;s export file uses for a combination of rooms; it expands to the rooms on its right. Add one entry per spelling the venue uses — “Palladium A &amp; B”, “Palladium AB” and “Palladium A and B” are three different names, so each needs its own entry. The walls between the rooms in each combination are filled in as operable, so a combined booking renders as one wide block — untick a wall in the room table above if two rooms in a combination should never merge. The TimeTarget area column holds the area name TimeTarget uses for the whole combination — the rostering import matches it the same way it matches a single room&apos;s area, so a “Palladium” row lands on the merged block instead of being skipped. Excluded rooms are not edited here: they stay in the YAML (<code>rooms.exclude</code>) and still skip rooms at import.</p>
+          <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" extraLabel="TimeTarget area" extra={(doc.rooms.timetarget_areas as Record<string,string>)||{}} onExtraChange={next=>change(d=>{d.rooms.timetarget_areas=next;})} onChange={next=>change(d=>{d.rooms.room_mappings=next;})} />
         </section>
         <section><h2>Timeline items</h2><p>Rows such as Setup and Teardown are folded into their booking instead of shown as bookings of their own.</p>
           <StringList label="Timeline item" values={Array.isArray(doc.timeline_items)?(doc.timeline_items as string[]):[]} onChange={next=>change(d=>{d.timeline_items=next;})} />

@@ -32,7 +32,8 @@ try {
       join(root, 'src/lib/bookingImport.ts'),
       join(root, 'src/lib/timetargetImport.ts'),
       join(root, 'src/lib/docx.ts'),
-      join(root, 'src/lib/weekendNotes.ts')
+      join(root, 'src/lib/weekendNotes.ts'),
+      join(root, 'src/lib/notePlacement.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -46,14 +47,15 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, blockJobNumber, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
-  const { findTimetargetColumns, resolveTimetargetRoom, eventMatchesEvent, timetargetNoteKey, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
+  const { findTimetargetColumns, resolveTimetargetRoom, resolveTimetargetRooms, shortFunctionName, eventMatchesEvent, timetargetNoteKey, timetargetNoteText, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
   const { overnightWindow, headerRangeLabel, parseHhmm, roomDisplayName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
+  const { placeNote } = await import(pathToFileURL(join(dir, 'notePlacement.js')).href);
   const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
 
   let failures = 0;
@@ -495,10 +497,10 @@ try {
     return blank && blank.event === '' && blank.bookingId === undefined && blank.startTime === '04:00';
   })());
   let ttApplied = applyTimetargetRows([], ttParsed.rows);
-  check('the sample import adds 10 TimeTarget notes, each marked with its key', ttApplied.added === 10 && ttApplied.updated === 0 && ttApplied.markup.every(m => m.type === 'text' && m.source === 'timetarget' && m.timetargetKey) && ttApplied.markup.filter(m => m.text === 'Set Up 15:00').length === 1, JSON.stringify(ttApplied.markup.map(m => m.text)));
+  check('the sample import adds 10 TimeTarget notes, each marked with its key', ttApplied.added === 10 && ttApplied.updated === 0 && ttApplied.markup.every(m => m.type === 'text' && m.source === 'timetarget' && m.timetargetKey) && ttApplied.markup.filter(m => m.text === 'SU 15:00').length === 1, JSON.stringify(ttApplied.markup.map(m => m.text)));
   check('the two sessions of one event get two notes, at their own times', (() => {
     const notes = ttApplied.markup.filter(m => m.type === 'text' && m.roomId === 'M9');
-    return notes.length === 2 && notes.some(m => m.text === 'Set Up 13:00') && notes.some(m => m.text === 'Set Up 20:00');
+    return notes.length === 2 && notes.some(m => m.text === 'SU 13:00') && notes.some(m => m.text === 'SU 20:00');
   })());
   ttApplied = applyTimetargetRows(ttApplied.markup, ttParsed.rows);
   check('re-importing the same file updates the notes instead of duplicating them', ttApplied.added === 0 && ttApplied.updated === 10 && ttApplied.markup.length === 10);
@@ -506,13 +508,63 @@ try {
     const moved = ttParsed.rows.map(r => (r.roomId === 'Garden Room 3' ? { ...r, startTime: '16:00', startMinutes: 960 } : r));
     const again = applyTimetargetRows(ttApplied.markup, moved);
     const note = again.markup.find(m => m.type === 'text' && m.roomId === 'Garden Room 3');
-    return again.added === 0 && again.updated === 10 && note?.text === 'Set Up 16:00' && note?.id === ttApplied.markup.find(m => m.type === 'text' && m.roomId === 'Garden Room 3')?.id;
+    return again.added === 0 && again.updated === 10 && note?.text === 'SU 16:00' && note?.id === ttApplied.markup.find(m => m.type === 'text' && m.roomId === 'Garden Room 3')?.id;
   })());
   check('a hand-typed note at the same place is never touched by the import', (() => {
     const manual = { id: 'manual-1', type: 'text', x: 0, y: 0, text: 'Setup 06:30 — crew call 06:00', date: '2026-10-01', roomId: 'Garden Room 3', fx: 0.5, fy: 0.5 };
     const again = applyTimetargetRows([manual, ...ttApplied.markup], ttParsed.rows);
     return again.markup.find(m => m.id === 'manual-1')?.text === 'Setup 06:30 — crew call 06:00' && again.markup.length === 11;
   })());
+  // --- Combined rooms have their own TimeTarget area ---
+  // A combined room's area is set in the Combined rooms section of
+  // Configuration and expands to the combination's rooms, so a
+  // "Palladium" row lands on the merged block instead of being skipped.
+  const ttCombinedVenue = parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Palladium A', 'Palladium B', 'Room C']\n  room_mappings:\n    Palladium: ['Palladium A', 'Palladium B']\n  timetarget_areas:\n    Palladium: Crown Melbourne - Palladium\n    Palladium A: Crown Melbourne - Palladium A\n`);
+  check('a combined room area resolves to the combination rooms', JSON.stringify(resolveTimetargetRooms('Crown Melbourne - Palladium', ttCombinedVenue)) === JSON.stringify(['Palladium A', 'Palladium B']) && JSON.stringify(resolveTimetargetRooms('Crown Melbourne - Palladium A', ttCombinedVenue)) === JSON.stringify(['Palladium A']) && resolveTimetargetRoom('Crown Melbourne - Palladium', ttCombinedVenue) === 'Palladium A' && resolveTimetargetRooms('Crown Melbourne - Nowhere', ttCombinedVenue).length === 0, JSON.stringify(resolveTimetargetRooms('Crown Melbourne - Palladium', ttCombinedVenue)));
+  // --- Short function names ---
+  check('a setup is SU and a pack-down is PD, whatever the venue called it', shortFunctionName('Set Up') === 'SU' && shortFunctionName('Setup') === 'SU' && shortFunctionName('Bump In') === 'SU' && shortFunctionName('Pack Down') === 'PD' && shortFunctionName('Teardown') === 'PD' && shortFunctionName('Bump Out') === 'PD' && shortFunctionName('AV Check') === 'AV Check', JSON.stringify([shortFunctionName('Set Up'), shortFunctionName('Pack Down')]));
+  check('the import writes the short function into the note', timetargetNoteText({ function: 'Set Up', startTime: '06:30' }) === 'SU 06:30' && timetargetNoteText({ function: 'Pack Down', startTime: '23:00' }) === 'PD 23:00', timetargetNoteText({ function: 'Set Up', startTime: '06:30' }));
+  // --- The after-hours contact is a venue setting ---
+  const cfgContact = parseVenueConfig(`site:\n  name: Test Venue\n  after_hours_contact: 0400 111 222\nrooms:\n  order: ['Room A']\n`);
+  check('the after-hours contact comes from the venue, defaulting to the Crown number', cfgContact.afterHoursContact === '0400 111 222' && parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Room A']\n`).afterHoursContact === '0427 421 821', cfgContact.afterHoursContact);
+  check('the after-hours contact and a combined room area survive a config round-trip', (() => {
+    const doc = readConfiguration(`site:\n  name: Test Venue\n  after_hours_contact: 0400 111 222\nrooms:\n  order: ['Palladium A', 'Palladium B']\n  room_mappings:\n    Palladium: ['Palladium A', 'Palladium B']\n  timetarget_areas:\n    Palladium: Crown Melbourne - Palladium\n`);
+    const round = readConfiguration(writeConfiguration(normalizeConfigDoc(structuredClone(doc))));
+    return round.site.after_hours_contact === '0400 111 222' && round.rooms.timetarget_areas.Palladium === 'Crown Melbourne - Palladium' && parseVenueConfig(writeConfiguration(round)).afterHoursContact === '0400 111 222';
+  })());
+  // --- A block that runs past midnight is one segment per day ---
+  check('a block past midnight splits into a segment per day', (() => {
+    const segs = blockSegments({ date: '2026-10-02', title: 'Late', ids: ['x'], rooms: [0], start: 1380, end: 1500, mainStart: 1380, mainEnd: 1500, facts: [], mergeRoom: true });
+    return segs.length === 2 && segs[0].date === '2026-10-02' && segs[0].start === 1380 && segs[0].end === 1440 && !segs[0].continuation && segs[1].date === '2026-10-03' && segs[1].start === 0 && segs[1].end === 60 && segs[1].continuation;
+  })());
+  check('a block inside one day is a single segment', (() => {
+    const segs = blockSegments({ date: '2026-10-02', title: 'Day', ids: ['x'], rooms: [0], start: 1080, end: 1320, mainStart: 1080, mainEnd: 1320, facts: [], mergeRoom: true });
+    return segs.length === 1 && segs[0].date === '2026-10-02' && segs[0].start === 1080 && segs[0].end === 1320 && !segs[0].continuation;
+  })());
+  // --- Note placement: centred above the block, never on it ---
+  const noteBlock = { date: '2026-10-02', title: 'Dinner', ids: ['b1'], rooms: [0], start: 1110, end: 1380, mainStart: 1110, mainEnd: 1380, facts: [], mergeRoom: true };
+  const noteSpan = { top: 100, bottom: 200, left: 160, right: 360, block: noteBlock };
+  check('a note clear of its block stays at its anchor, centred on the block', (() => {
+    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1');
+    return p.x === 260 && p.y === 50 && p.squeezed === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1')));
+  check('a note that would overlap its block moves just above it', (() => {
+    const p = placeNote({ x: 200, y: 80 }, 29, [noteSpan], 'b1');
+    return p.x === 260 && p.y === 69 && p.squeezed === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 80 }, 29, [noteSpan], 'b1')));
+  check('a note that would overlap the block above too centres between them and squeezes', (() => {
+    const above = { top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } };
+    const p = placeNote({ x: 200, y: 80 }, 29, [above, noteSpan], 'b1');
+    return p.x === 260 && p.y === 73 && p.squeezed === true;
+  })(), JSON.stringify(placeNote({ x: 200, y: 80 }, 29, [{ top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } }, noteSpan], 'b1')));
+  check('a note below its block is left alone', (() => {
+    const p = placeNote({ x: 200, y: 210 }, 29, [noteSpan], 'b1');
+    return p.x === 260 && p.y === 210 && p.squeezed === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 210 }, 29, [noteSpan], 'b1')));
+  check('a note with no block keeps its anchor, centred on it', (() => {
+    const p = placeNote({ x: 300, y: 50 }, 29, []);
+    return p.x === 300 && p.y === 50 && p.squeezed === false;
+  })(), JSON.stringify(placeNote({ x: 300, y: 50 }, 29, [])));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);
@@ -537,6 +589,15 @@ try {
   check('a manual merge does not cross a fixed wall', blocks.length === 2, JSON.stringify(blocks));
   check('operable walls are read from the YAML whiteboard section', JSON.stringify(boardSettings({ whiteboard: { operable_walls: ['Palladium A', 'River Room 1'] } }).operable_walls) === JSON.stringify(['Palladium A', 'River Room 1']));
   check('operable walls default to none', boardSettings({ whiteboard: {} }).operable_walls.length === 0);
+  // When no walls are set at all, the walls between the rooms of each
+  // combined room are operable — a combination only exists because
+  // those rooms can be opened into one space. An explicit list, even
+  // an empty one, always wins over the derivation.
+  check('operable walls are derived from combined rooms when none are set', JSON.stringify(boardSettings({ rooms: { order: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'River Room 1', 'River Room 2'], room_mappings: { Palladium: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2'], 'River Room': ['River Room 1', 'River Room 2'] } }, whiteboard: {} }).operable_walls) === JSON.stringify(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1']));
+  check('an explicit empty operable walls list is not derived from', boardSettings({ rooms: { order: ['Palladium A', 'Palladium B'], room_mappings: { Palladium: ['Palladium A', 'Palladium B'] } }, whiteboard: { operable_walls: [] } }).operable_walls.length === 0);
+  check('an explicit operable walls list wins over the derivation', JSON.stringify(boardSettings({ rooms: { order: ['Palladium A', 'Palladium B'], room_mappings: { Palladium: ['Palladium A', 'Palladium B'] } }, whiteboard: { operable_walls: ['Palladium B'] } }).operable_walls) === JSON.stringify(['Palladium B']));
+  check('a combination naming rooms that are not next to each other derives no wall', boardSettings({ rooms: { order: ['Palladium A', 'Palladium B', 'Palladium C1'], room_mappings: { Odd: ['Palladium A', 'Palladium C1'] } }, whiteboard: {} }).operable_walls.length === 0);
+  check('a combination naming a room that is not on the board derives nothing', boardSettings({ rooms: { order: ['Palladium A', 'Palladium B'], room_mappings: { Ghost: ['Palladium A', 'No Such Room'] } }, whiteboard: {} }).operable_walls.length === 0);
   check('a non-list operable walls value is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  operable_walls: Room 1\n`, false); return false; } catch (e) { return String(e.message || e).includes('Operable walls must be a list'); } })());
   check('operable wall matching ignores case and whitespace', operableWallAfter(['Palladium A', 'Palladium B'], [' palladium a '])[0] === true && operableWallAfter(['Palladium A', 'Palladium B'], [' palladium a '])[1] === false);
   // The original planner's output settings are dead: the board never
@@ -879,6 +940,18 @@ try {
   check('a point past the last row has no anchor', anchorFromPoint(anchorLayout, 200, 300) === null);
   check('an anchor for a day that is not shown resolves to nothing', pointFromAnchor(anchorLayout, { date: '2026-11-21', roomId: 'A', fx: 0.5, fy: 0.5 }) === null);
   check('an anchor for a room that is not shown resolves to nothing', pointFromAnchor(anchorLayout, { date: '2026-11-19', roomId: 'C', fx: 0.5, fy: 0.5 }) === null);
+  // --- Dragging an imported note must start from where it renders ---
+  // An imported note stores 0,0 and renders from its anchor, so a drag
+  // that starts from the stored position teleports it to the top-left
+  // corner and clears its anchor — the note vanishes. A drag from its
+  // rendered position keeps it in the same cell.
+  const importedNote = { date: '2026-11-19', roomId: 'A', fx: 0.5, fy: 0.5 };
+  const rendered = pointFromAnchor(anchorLayout, importedNote);
+  check('dragging an imported note from its stored 0,0 loses its anchor', rendered?.x === 235 && rendered?.y === 100 && anchorFromPoint(anchorLayout, 0 + 1, 0 + 0) === null, JSON.stringify(rendered));
+  check('dragging it from where it renders keeps it in the same cell', (() => {
+    const a = rendered ? anchorFromPoint(anchorLayout, rendered.x + 1, rendered.y + 0) : null;
+    return a?.date === '2026-11-19' && a?.roomId === 'A';
+  })(), JSON.stringify(rendered));
 
   // --- Booking ids are unique per row, not per event ---
   // A Setup, a Dinner and a Crew Meals for one event in the same rooms
@@ -982,15 +1055,15 @@ try {
   check('all events in the window are listed, with no hotel times', wnItems.length === 8 && wnItems.some(i => i.title === 'Setup In') && wnItems.some(i => i.title === 'Teardown') && !wnItems.some(i => ['Setup Out', 'Mon Late'].includes(i.title)), JSON.stringify(wnItems.map(i => `${i.roomId} ${i.date} ${i.title}`)));
   check('items print by day, then by room, then chronologically', JSON.stringify(wnItems.map(i => i.title)) === JSON.stringify(['Setup In', 'Multi Room', 'Noted Setup', 'Twin Event', 'Teardown', 'Sat Early', '', 'Sun Setup']), JSON.stringify(wnItems.map(i => `${i.date} ${i.roomId} ${i.title}`)));
   check('a multi-room setup is listed once, under its rooms', wnItems.filter(i => i.title === 'Multi Room').length === 1 && wnItems.find(i => i.title === 'Multi Room')?.roomName === 'Room A, Room B', JSON.stringify(wnItems.filter(i => i.title === 'Multi Room')));
-  check('a booking with no purple note is listed with its function, not a hotel time', JSON.stringify(wnItems.find(i => i.title === 'Setup In')?.timeLines) === JSON.stringify(['Set Up']) && JSON.stringify(wnItems.find(i => i.title === 'Teardown')?.timeLines) === JSON.stringify(['Pack Down']), JSON.stringify(wnItems.filter(i => ['Setup In', 'Teardown'].includes(i.title))));
+  check('a booking with no purple note is listed with its function, not a hotel time', JSON.stringify(wnItems.find(i => i.title === 'Setup In')?.timeLines) === JSON.stringify(['SU']) && JSON.stringify(wnItems.find(i => i.title === 'Teardown')?.timeLines) === JSON.stringify(['PD']), JSON.stringify(wnItems.filter(i => ['Setup In', 'Teardown'].includes(i.title))));
   const wnNoted = wnItems.find(i => i.title === 'Noted Setup');
-  check('a setup and its pack-down are one entry, with the purple times only', JSON.stringify(wnNoted?.timeLines) === JSON.stringify(['Set Up 18:30', 'Pack Down 23:00']) && wnNoted?.functionLabel === 'Set Up', JSON.stringify(wnNoted));
+  check('a setup and its pack-down are one entry, with the purple times only', JSON.stringify(wnNoted?.timeLines) === JSON.stringify(['Set Up 18:30', 'Pack Down 23:00']) && wnNoted?.functionLabel === 'SU', JSON.stringify(wnNoted));
   const wnTwin = wnItems.find(i => i.title === 'Twin Event');
   check('the setup and pack-down of one event on two bookings are one entry', wnItems.filter(i => i.title === 'Twin Event').length === 1 && JSON.stringify(wnTwin?.timeLines) === JSON.stringify(['Set Up 19:00', 'Pack Down 23:30']), JSON.stringify(wnTwin));
   const wnMulti = wnItems.find(i => i.title === 'Multi Room');
   check('the same purple time in two rooms of one block is one line', JSON.stringify(wnMulti?.timeLines) === JSON.stringify(['Set Up 18:00']), JSON.stringify(wnMulti));
   const wnNoteOnly = wnItems.find(i => i.roomId === 'Room C');
-  check('a purple note with no booking is a setup on its own', wnNoteOnly?.title === '' && JSON.stringify(wnNoteOnly?.timeLines) === JSON.stringify(['Pack Down 05:00']) && wnNoteOnly?.functionLabel === 'Pack Down', JSON.stringify(wnNoteOnly));
+  check('a purple note with no booking is a setup on its own', wnNoteOnly?.title === '' && JSON.stringify(wnNoteOnly?.timeLines) === JSON.stringify(['Pack Down 05:00']) && wnNoteOnly?.functionLabel === 'PD', JSON.stringify(wnNoteOnly));
   // --- The .docx writer ---
   const dx = buildDocx({
     title: 'Test & <Doc>',
@@ -1032,10 +1105,10 @@ try {
   const wnResult = buildWeekendNotesDocx(wnBookings, wnMarkup, wnVenue, new Date(2026, 9, 2, 10, 0));
   const wnText = new TextDecoder().decode(wnResult.bytes);
   const wnBullets = wnText.split('<w:t xml:space="preserve">- </w:t>').length - 1;
-  check('the DOCX follows the samples: Calibri, header title, header table, day sections, Event/Room headings, dash bullets, no hotel times', wnResult.items === 8 && wnResult.days === 3 && wnResult.filename.endsWith('.docx') && wnResult.bytes[0] === 0x50 && wnResult.bytes[1] === 0x4b && wnText.includes('Weekend Notes Fri, 2 Oct - Sun, 4 Oct') && wnText.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnText.includes('Duty Manager') && wnText.includes('0427 421 821') && wnText.includes('Saturday') && wnText.includes('Sunday') && wnText.lastIndexOf('>Saturday</w:t>') < wnText.lastIndexOf('>Sunday</w:t>') && wnText.includes('Setup In/Room A') && wnText.includes('Multi Room/Room A, Room B') && wnText.includes('Noted Setup/Room A') && wnText.includes('Twin Event/Room A') && wnText.includes('Teardown/Room B') && wnText.includes('Sat Early/Room B') && wnText.includes('Pack Down/Room C') && wnText.includes('Sun Setup/Room A') && wnText.includes('Set Up 18:00') && wnText.includes('Set Up 18:30') && wnText.includes('Pack Down 23:00') && wnText.includes('Set Up 19:00') && wnText.includes('Pack Down 23:30') && wnText.includes('Set Up 06:00') && wnText.includes('Pack Down 05:00') && wnText.includes('Set Up 10:00') && !wnText.includes('Setup 09:00') && !wnText.includes('Setup 15:00') && !wnText.includes('Setup 19:00') && !wnText.includes('Teardown 23:00') && !wnText.includes(' PD/') && wnText.includes(' PAGE ') && wnText.includes(' NUMPAGES ') && wnBullets === 24, `bullets ${wnBullets}`);
+  check('the DOCX follows the samples: Calibri, header title, day sections, Event/Room headings, dash bullets, no hotel times', wnResult.items === 8 && wnResult.days === 3 && wnResult.filename.endsWith('.docx') && wnResult.bytes[0] === 0x50 && wnResult.bytes[1] === 0x4b && wnText.includes('Weekend Notes Fri, 2 Oct - Sun, 4 Oct') && wnText.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && !wnText.includes('Duty Manager') && wnText.includes('After Hours Contact: 0427 421 821') && wnText.includes('Saturday') && wnText.includes('Sunday') && wnText.lastIndexOf('>Saturday</w:t>') < wnText.lastIndexOf('>Sunday</w:t>') && wnText.includes('Setup In/Room A') && wnText.includes('Multi Room/Room A, Room B') && wnText.includes('Noted Setup/Room A') && wnText.includes('Twin Event/Room A') && wnText.includes('Teardown/Room B') && wnText.includes('Sat Early/Room B') && wnText.includes('PD/Room C') && wnText.includes('Sun Setup/Room A') && wnText.includes('Set Up 18:00') && wnText.includes('Set Up 18:30') && wnText.includes('Pack Down 23:00') && wnText.includes('Set Up 19:00') && wnText.includes('Pack Down 23:30') && wnText.includes('Set Up 06:00') && wnText.includes('Pack Down 05:00') && wnText.includes('Set Up 10:00') && wnText.includes('>SU</w:t>') && wnText.includes('>PD</w:t>') && !wnText.includes('Setup 09:00') && !wnText.includes('Setup 15:00') && !wnText.includes('Setup 19:00') && !wnText.includes('Teardown 23:00') && !wnText.includes(' PD/') && wnText.includes(' PAGE ') && wnText.includes(' NUMPAGES ') && wnBullets === 24, `bullets ${wnBullets}`);
   const wnEmpty = buildWeekendNotesDocx([], [], wnVenue, new Date(2026, 9, 2, 10, 0));
   const wnEmptyText = new TextDecoder().decode(wnEmpty.bytes);
-  check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmptyText.includes('No setups in this window.') && wnEmptyText.includes('Duty Manager'), '');
+  check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmptyText.includes('No setups in this window.') && wnEmptyText.includes('After Hours Contact: 0427 421 821'), '');
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

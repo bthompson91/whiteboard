@@ -2,7 +2,7 @@ import yaml from 'js-yaml';
 import { VenueConfig, VenueRoom } from '../types';
 
 interface RawVenue {
-  site?: { name?: string };
+  site?: { name?: string; after_hours_contact?: string };
   file_input?: { date_format?: string; header_row?: number; room_separator?: string };
   fields?: Record<string, string>;
   display?: {
@@ -46,6 +46,10 @@ export interface ParsedVenueConfig extends VenueConfig {
   // the front). The TimeTarget import matches each row's area against
   // these values to find its board room.
   timetargetAreas: Record<string, string>;
+  // The after-hours contact the overnight notes print in the footer.
+  // Set in Configuration; the Crown on-call number is the default when
+  // the venue has not set one.
+  afterHoursContact: string;
 }
 
 const normalizeRoomName = (value: string) => value.trim().toLowerCase();
@@ -80,7 +84,8 @@ export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
     excludedRooms: data.rooms.exclude ?? [],
     aliases: data.rooms.room_aliases ?? {},
     mappings: data.rooms.room_mappings ?? {},
-    timetargetAreas: data.rooms.timetarget_areas ?? {}
+    timetargetAreas: data.rooms.timetarget_areas ?? {},
+    afterHoursContact: data.site?.after_hours_contact?.trim() || '0427 421 821'
   };
 }
 

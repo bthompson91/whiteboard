@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, blockJobNumber, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { applyJobNumberEdits } from '../lib/reviewApply';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
@@ -293,7 +293,7 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
   const blocks=blocksFor(bookings,venue,salespeople,editingEnabled||showHidden,roomBorders,operableWalls,randomEventColours);
   const strongAfter=strongBorders(venue.rooms.map(r=>r.id),roomBorders);
   const wallOperable=operableWallAfter(venue.rooms.map(r=>r.id),operableWalls);
-  const segments=blocks.flatMap(b=>{const result:{block:Block;date:string;start:number;end:number;continuation:boolean}[]=[];for(let offset=0;offset<=Math.floor(Math.max(b.start,b.end-1)/1440);offset++){const start=Math.max(0,b.start-offset*1440),end=Math.min(1440,b.end-offset*1440);if(end>=start)result.push({block:b,date:format(addDays(parseISO(b.date),offset),'yyyy-MM-dd'),start,end,continuation:offset>0});}return result;});
+  const segments=blocks.flatMap(b=>blockSegments(b).map(s=>({block:b,...s})));
   const sourceDates=[...new Set(segments.map(s=>s.date))].sort();
   const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
   const columns=`160px ${widths.map(width=>`${width}px`).join(' ')}`;

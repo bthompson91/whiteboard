@@ -20,7 +20,7 @@ import {
 import { BookingChange, compareImports } from './lib/importComparison';
 import { mergeMatchedBooking } from './lib/reviewApply';
 import { applyTimetargetRows, parseTimetargetWorkbook, TimetargetSkipped } from './lib/timetargetImport';
-import { buildWeekendNotesDocx } from './lib/weekendNotes';
+import { buildWeekendNotesDocx, overnightWindow } from './lib/weekendNotes';
 import {
   createSharedFile,
   downloadSharedFile,
@@ -775,6 +775,7 @@ export default function App() {
         onOpenPrint={openPrintDialog}
         onImportTimes={importTimetargetTimes}
         onExportWeekendNotes={exportWeekendNotes}
+        weekendNotesTitle={overnightWindow(new Date()).title}
       />
       <main className="board-container">
         <BookingGrid
@@ -803,6 +804,13 @@ export default function App() {
           selectedBookingId={selectedBookingId}
           editingEnabled={role !== 'viewer'}
           highlightedCells={highlightedCells}
+          bookings={bookings}
+          venue={venue}
+          salespeople={settings?.salespeople || []}
+          roomBorders={settings?.room_borders || []}
+          operableWalls={settings?.operable_walls || []}
+          randomEventColours={settings?.random_event_colours ?? false}
+          showHiddenBlocks={(editingEnabled && role !== 'viewer') || showHidden}
           onChange={setMarkup}
           onClearSelectedBooking={() => setSelectedBookingId(null)}
         />

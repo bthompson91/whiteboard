@@ -9,10 +9,11 @@
 //
 // The format follows Brendan's own weekend notes (Weekend_Notes_Oct_24-25
 // .docx, Dec_12_to_Dec_14_Weekend_Notes_V1.pdf): Calibri, the title in
-// the header, the duty-manager header table, day sections, "Event/Room"
-// headings, and "- " bullets. The one deliberate difference: every day
-// gets a heading, where his hand-written notes leave the first day
-// unheaded.
+// the header, day sections, "Event/Room" headings, and "- " bullets.
+// The duty-manager header table from his samples is not in the export:
+// the board does not know the duty manager or their hours. The one
+// deliberate difference: every day gets a heading, where his hand-written
+// notes leave the first day unheaded.
 //
 // The title follows the day of generation: Friday, Saturday or Sunday
 // gives "Weekend Notes", Monday to Thursday gives "Overnight Notes".
@@ -26,6 +27,7 @@ import type { Booking, MarkupItem } from '../types';
 import type { ParsedVenueConfig } from './venueConfig';
 import { buildDocx } from './docx';
 import type { DocxBlock, DocxParagraph } from './docx';
+import { shortFunctionName } from './timetargetImport';
 
 export interface OvernightWindow {
   kind: 'weekend' | 'weeknight';
@@ -106,14 +108,6 @@ export function headerRangeLabel(window: OvernightWindow): string {
   return `${fmtShort(window.start)} - ${fmtShort(window.end)}`;
 }
 
-// The two days the header table names. The samples name Saturday and
-// Sunday for a weekend window; a weeknight names the two days its window
-// spans.
-export function headerTableDays(window: OvernightWindow): Date[] {
-  if (window.kind === 'weekend') return [addDays(window.start, 1), addDays(window.start, 2)];
-  return [window.start, window.end];
-}
-
 // "09:30" -> 570 (minutes after midnight), or null when it is not a time.
 export function parseHhmm(value: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
@@ -136,16 +130,16 @@ const firstTimeInText = (text: string): string | null => {
 
 // Timeline labels that count as overnight work: the setup and the
 // pack-down. Crown calls them Setup/Teardown, MCG calls them Bump In /
-// Bump Out; the match is by label, not by venue.
-const isWorkLabel = (label: string) => /setup|bump in|teardown|bump out|pack/i.test(label);
+// Bump Out; the match is by label, not by venue. "Set Up" with a space
+// counts the same as "Setup".
+const isWorkLabel = (label: string) => /set\s?up|bump in|teardown|bump out|pack/i.test(label);
 
 // The function as shown when there is no purple time for it: a setup
-// is "Set Up" and a pack-down is "Pack Down", whatever the venue
-// called it. Anything else is shown as written.
+// is "SU" and a pack-down is "PD", whatever the venue called it. The
+// purple notes read the same way, so an old "Set Up" note and a new
+// "SU" note group under one function. Anything else is shown as written.
 function functionDisplayName(label: string): string {
-  if (/teardown|bump out|pack/i.test(label)) return 'Pack Down';
-  if (/setup|bump in/i.test(label)) return 'Set Up';
-  return label;
+  return shortFunctionName(label);
 }
 
 // The work a purple note records, from its text: "Set Up 06:30" is a
@@ -289,7 +283,7 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
     if (!lines.length) continue;
     lines.sort((a, b) => a.startMs - b.startMs);
     const first = lines[0];
-    items.push({ roomId: ev.rooms[0], roomName: ev.title ? roomDisplayName(venue, ev.rooms) : roomName(ev.rooms[0]), date: ev.date, startMs: first.startMs, title: ev.title, timeLines: lines.map(l => l.text), functionLabel: functionFromNoteText(first.text), bookingId: ev.bookingId });
+    items.push({ roomId: ev.rooms[0], roomName: ev.title ? roomDisplayName(venue, ev.rooms) : roomName(ev.rooms[0]), date: ev.date, startMs: first.startMs, title: ev.title, timeLines: lines.map(l => l.text), functionLabel: functionDisplayName(functionFromNoteText(first.text)), bookingId: ev.bookingId });
   }
 
   const orderOf = (roomId: string) => (roomOrder.has(roomId) ? roomOrder.get(roomId)! : Number.MAX_SAFE_INTEGER);
@@ -299,13 +293,13 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
 
 // The document itself, in the samples' shape: Calibri on A4, the title
 // in the header (24pt bold, centred — as in the samples, where the
-// title lives in the header and the body starts with the table), the
-// duty-manager header table, then a section per day — "Event/Room"
-// headings, each of the event's functions on its own line (with its
-// purple time when there is one, otherwise just the function name), and
-// three empty "- " bullets to write in. An empty window still produces
-// a file, so the crew can see there is nothing overnight instead of
-// wondering whether the export failed.
+// title lives in the header and the body starts with the day sections),
+// then a section per day — "Event/Room" headings, each of the event's
+// functions on its own line (with its purple time when there is one,
+// otherwise just the function name), and three empty "- " bullets to
+// write in. An empty window still produces a file, so the crew can see
+// there is nothing overnight instead of wondering whether the export
+// failed. The footer names the after-hours contact from Configuration.
 export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, now = new Date()): WeekendNotesResult {
   const window = overnightWindow(now);
   const items = collectOvernightItems(bookings, markup, venue, window);
@@ -315,28 +309,9 @@ export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[],
     if (last && last.date === item.date) last.items.push(item);
     else days.push({ date: item.date, items: [item] });
   }
-  const [day1, day2] = headerTableDays(window);
   const title = `${window.title} ${window.rangeLabel}`;
   const blank: DocxParagraph = { runs: [], size: 28 };
   const body: DocxBlock[] = [];
-  body.push({
-    type: 'table',
-    table: {
-      widths: [2254, 2254, 2254, 2254],
-      rows: [
-        [{ paragraphs: [{ runs: [{ text: 'Duty Manager – ________________' }], align: 'center', bold: true, size: 28 }], gridSpan: 4, width: 9016 }],
-        [
-          { paragraphs: [{ runs: [{ text: weekdayLong(day1) }], align: 'center', bold: true, size: 28 }], gridSpan: 2, width: 4508 },
-          { paragraphs: [{ runs: [{ text: weekdayLong(day2) }], align: 'center', bold: true, size: 28 }], gridSpan: 2, width: 4508 },
-        ],
-        // Start and end hours for each day — blank: the board does not
-        // know the duty manager's hours, so the crew writes them in.
-        [2254, 2254, 2254, 2254].map(width => ({ paragraphs: [{ runs: [], align: 'center', bold: true, size: 30 }], width })),
-        [{ paragraphs: [{ runs: [{ text: 'Out of hours (Crown On Call): ' }, { text: '0427 421 821' }], align: 'center', bold: true, size: 28 }], gridSpan: 4, width: 9016 }],
-      ],
-    },
-  });
-  body.push({ type: 'paragraph', paragraph: blank });
   if (!items.length) {
     body.push({ type: 'paragraph', paragraph: { runs: [{ text: 'No setups in this window.' }], size: 28 } });
   }
@@ -354,7 +329,7 @@ export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[],
     title,
     header: [{ runs: [{ text: `${window.title} ${headerRangeLabel(window)}` }], align: 'center', bold: true, size: 48 }],
     footer: [
-      { runs: [{ text: 'Crown On Call Phone: 0427 421 821' }], align: 'center', bold: true, size: 24 },
+      { runs: [{ text: `After Hours Contact: ${venue.afterHoursContact}` }], align: 'center', bold: true, size: 24 },
       { runs: [{ text: 'Page ' }, { field: 'PAGE' }, { text: ' of ' }, { field: 'NUMPAGES' }], align: 'center', bold: true, size: 24 },
     ],
     body,

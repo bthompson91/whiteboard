@@ -23,6 +23,24 @@ export function fitFontSize(textWidths: number[], availableWidths: number[], ref
   return Math.max(minSize, Math.min(maxSize, Math.floor(size)));
 }
 
+// A block's per-day segments: a block that runs past midnight is one
+// segment per day it touches, so a note or a print row can place it on
+// the day it falls on. The same split BookingGrid renders.
+export function blockSegments(block: Block): { date: string; start: number; end: number; continuation: boolean }[] {
+  const result: { date: string; start: number; end: number; continuation: boolean }[] = [];
+  const [y, mo, d] = block.date.split('-').map(Number);
+  for (let offset = 0; offset <= Math.floor(Math.max(block.start, block.end - 1) / 1440); offset++) {
+    const start = Math.max(0, block.start - offset * 1440);
+    const end = Math.min(1440, block.end - offset * 1440);
+    if (end >= start) {
+      const dt = new Date(y, mo - 1, d + offset);
+      const date = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      result.push({ date, start, end, continuation: offset > 0 });
+    }
+  }
+  return result;
+}
+
 // Fraction of the day's height for a minute of the day. 00:00–06:00 is
 // compressed to 75% height per hour so daytime bookings read bigger:
 // the 6 night hours take 4.5 units, the 18 day hours take 18 units,

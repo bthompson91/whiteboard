@@ -5,7 +5,7 @@
 // name may not match the board title exactly, so it is matched loosely.
 import * as XLSX from 'xlsx';
 import { Booking, MarkupItem } from '../types';
-import { ParsedVenueConfig } from './venueConfig';
+import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 import { readWorkbook, sheetRecords } from './bookingImport';
 import { dateValue, timeValue } from './dateTime';
 import { normalizeIdentity } from './bookingIdentity';
@@ -58,21 +58,37 @@ export function findTimetargetColumns(headers: string[]): { date: string; startT
   return { date: date!, startTime: startTime!, function: fn!, area: area!, event };
 }
 
+// The short form the board shows for a function: a setup is "SU" and
+// a pack-down is "PD". The purple notes and the overnight notes both
+// use it, so the two read the same. Anything else is shown as written.
+export function shortFunctionName(fn: string): string {
+  if (/teardown|bump out|pack/i.test(fn)) return 'PD';
+  if (/set\s?up|bump in/i.test(fn)) return 'SU';
+  return fn;
+}
+
 // A TimeTarget area is the name TimeTarget uses for a room, with the
 // venue name on the front. It matches a board room through
 // timetarget_areas first, then a board room name itself, then an alias.
-export function resolveTimetargetRoom(area: string, venue: ParsedVenueConfig): string | null {
+// A combined room's area is set in the Combined rooms section of
+// Configuration, and it expands to the combination's rooms — a
+// "Palladium" row lands on the merged block instead of being skipped.
+export function resolveTimetargetRooms(area: string, venue: ParsedVenueConfig): string[] {
   const key = normalizeIdentity(area);
-  if (!key) return null;
-  for (const [room, areaName] of Object.entries(venue.timetargetAreas || {})) {
-    if (normalizeIdentity(areaName) === key) return room;
+  if (!key) return [];
+  for (const [name, areaName] of Object.entries(venue.timetargetAreas || {})) {
+    if (normalizeIdentity(areaName) === key) return resolveRooms(name, venue);
   }
   const room = venue.rooms.find(r => normalizeIdentity(r.name) === key);
-  if (room) return room.id;
+  if (room) return [room.id];
   for (const [roomId, aliases] of Object.entries(venue.aliases || {})) {
-    if ((aliases || []).some(a => normalizeIdentity(a) === key)) return roomId;
+    if ((aliases || []).some(a => normalizeIdentity(a) === key)) return [roomId];
   }
-  return null;
+  return [];
+}
+
+export function resolveTimetargetRoom(area: string, venue: ParsedVenueConfig): string | null {
+  return resolveTimetargetRooms(area, venue)[0] ?? null;
 }
 
 // The event name in TimeTarget may not match the board title exactly
@@ -98,7 +114,7 @@ export function timetargetNoteKey(date: string, roomId: string, fn: string, even
 }
 
 export function timetargetNoteText(row: Pick<TimetargetRow, 'function' | 'startTime'>): string {
-  return `${row.function} ${row.startTime}`;
+  return `${shortFunctionName(row.function)} ${row.startTime}`;
 }
 
 export async function parseTimetargetWorkbook(file: File, venue: ParsedVenueConfig, bookings: Booking[]): Promise<TimetargetParsed> {
@@ -123,11 +139,12 @@ export async function parseTimetargetWorkbook(file: File, venue: ParsedVenueConf
       const startTime = timeValue(record[columns.startTime]);
       if (!fn) throw new Error('no function');
       if (!area) throw new Error('no area');
-      const roomId = resolveTimetargetRoom(area, venue);
-      if (!roomId) {
+      const roomIds = resolveTimetargetRooms(area, venue);
+      if (!roomIds.length) {
         skipped.push({ row: sheetRow, reason: `no board room matches area "${area}"` });
         return;
       }
+      const roomId = roomIds[0];
       const event = get(columns.event);
       const [hh, mm] = startTime.split(':').map(Number);
       const startMinutes = hh * 60 + mm;
@@ -135,13 +152,14 @@ export async function parseTimetargetWorkbook(file: File, venue: ParsedVenueConf
       // a title the event name loosely matches. When several sessions of
       // one event share the room and day, the closest start time wins —
       // a setup precedes its session, so the 13:00 setup belongs to the
-      // 15:00 session, not the 22:00 one.
+      // 15:00 session, not the 22:00 one. A combined area matches any
+      // booking in one of its rooms.
       const minutesOf = (t: string) => {
         const [h, m] = t.split(':').map(Number);
         return h * 60 + m;
       };
       const matches = event
-        ? bookings.filter(b => b.date === date && (b.roomIds?.includes(roomId) || b.roomId === roomId) && eventMatchesEvent(event, b.title))
+        ? bookings.filter(b => b.date === date && (b.roomIds?.some(r => roomIds.includes(r)) || roomIds.includes(b.roomId)) && eventMatchesEvent(event, b.title))
         : [];
       const bookingId = matches.length
         ? matches.reduce((best, b) => (Math.abs(minutesOf(b.startTime) - startMinutes) < Math.abs(minutesOf(best.startTime) - startMinutes) ? b : best)).id
