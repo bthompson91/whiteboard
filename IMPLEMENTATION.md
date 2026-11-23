@@ -136,6 +136,18 @@ dropped while the rest of the booking keeps its rooms. An event with no
 room at all goes to `rooms.unassigned_room` when one is set, and is
 otherwise skipped.
 
+- **Multi-day events.** A venue can write one row for a whole span — the
+  MCG writes "Project Control 2026 (1 Day Bump in + 2 Days)" for a
+  three-day event, so the board only showed it on the bump-in day. The
+  import parses that parenthetical (`parseMultiDayDays`: bump-in days +
+  event days) and makes one booking per day, same title, times and rooms,
+  each carrying over from its own previous booking. The setup (bump-in)
+  attaches to the first day only and the teardown (bump-out) to the last
+  day only; middle days are just the event. Only the explicit "N Day(s)
+  Bump in + M Day(s)" form expands — a bare "(Day 2)" or "(Bump in)" is
+  a single day. Browser-verified on the real MCG export: Project Control
+  2026 expands to 23, 24, 25 Nov, six rooms each day, Bump In on day 1,
+  Bump Out on day 3.
 - **Timeline attach.** A Setup/Teardown row attaches to a main booking with
   the same `[title, date, roomIds]` when there is exactly one such candidate.
   If there are two (e.g. Dinner and Crew Meals under the same title), it
@@ -409,7 +421,11 @@ strong day separators remain (no hourly row lines).
   title, job number (with a NO AV tick box — ticking sets the job number to
   `NO AV`, unticking clears it), salesperson dropdown, Unavailable tick
   box, Hide from board, merge checkboxes, Merge left/right, Unmerge. Saving
-  a job number writes it to every booking in the block. Assigning a
+  a job number writes it to every booking in the block. The job-number
+  field sets the booking-level number as well as the per-room overrides:
+  a room with no override falls back to the booking-level number, so
+  clearing NO AV used to leave a booking-level 'NO AV' in place and the
+  block stayed grey — the untag looked broken. Assigning a
   salesperson when like bookings exist asks first: "Apply to all" or
   "Just this one" (the latter colours the whole merged block, not just the
   row).
@@ -1048,7 +1064,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-308 checks covering matching tiers and weights, booking identity, height and
+309 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,

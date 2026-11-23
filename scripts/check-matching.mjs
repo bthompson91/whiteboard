@@ -53,7 +53,7 @@ try {
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
-  const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
+  const { sheetRecords, parseMultiDayDays } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
   const { findTimetargetColumns, resolveTimetargetRoom, resolveTimetargetRooms, shortFunctionName, eventMatchesEvent, timetargetNoteKey, timetargetNoteText, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
   const { findJobsColumns, jobArea, jobEvent, jobNameScore, salesPersonMatches, jobSalesperson, findJobCandidates, parseJobsWorkbook } = await import(pathToFileURL(join(dir, 'jobsImport.js')).href);
   const { overnightWindow, headerRangeLabel, headerTableDays, parseHhmm, roomDisplayName, roomGroupName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
@@ -1364,6 +1364,9 @@ try {
     { OTHER: ['Betty Cuthbert Lounge', 'Unassigned'], 'Olympic Room': ['Olympic Room A', 'Olympic Room B'], 'Jim Stynes Grill': ['Jim Stynes A', 'Jim Stynes B'], 'HCA Harrison Room': ['HCA Harrison Room A', 'HCA Harrison Room B'], 'Jack Ryder Room': ['Jack Ryder Room A', 'Jack Ryder Room B', 'Jack Ryder Room C'], 'Legends Room': ['Legends Room A', 'Legends Room B'] });
   check('board order groups MCG members together, alphabetical, no duplicate combined names', mcgOrder.join('|') === ['Members Dining Room', 'Dillbabiik Room', 'Long Room', 'Committee Room', 'Hans Ebeling Room', 'Lindsay Hassett Room', 'Keith Miller Room', 'AFL Dining Room', 'Change Room 1', 'Change Room 2', 'Australian Sports Museum', 'Corporate Suite 3-79-81', 'Jim Stynes A', 'Jim Stynes B', 'Olympic Room A', 'Olympic Room B', 'HCA Harrison Room A', 'HCA Harrison Room B', 'Jack Ryder Room A', 'Jack Ryder Room B', 'Jack Ryder Room C', 'Legends Room A', 'Legends Room B', 'Unassigned'].join('|'), mcgOrder.join('|'));
   check('board order keeps a lone combined-name member standalone', boardRoomOrder(['Room A', 'Room B', 'Unassigned'], { OTHER: ['Unassigned'] }).join('|') === 'Room A|Room B|Unassigned');
+  // A multi-day event named "(N Day Bump in + M Days)" spans N+M days;
+  // anything else is a single day.
+  check('multi-day title parses bump-in plus event days', parseMultiDayDays('Project Control 2026 (1 Day Bump in + 2 Days)') === 3 && parseMultiDayDays('Expo (2 Days Bump in + 3 Days)') === 5 && parseMultiDayDays('Project Control 2026 (Day 2)') === 1 && parseMultiDayDays('Project Control 2026 (Bump in)') === 1 && parseMultiDayDays('Gala Dinner') === 1);
   // The Configuration rooms table groups combined rooms: a parent room
   // row followed by its member rows, a group header row when the
   // combined name is not a room, and members only as children (never

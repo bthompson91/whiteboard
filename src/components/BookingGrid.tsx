@@ -342,13 +342,17 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
   // Setting the job number. The optional salesperson is set in the same
   // draft update, so selecting a job never clobbers the number (or the
   // salesperson) with a stale draft — both land in one setDraft.
+  // The booking-level number is set too, not just the per-room
+  // overrides: a room with no override falls back to it, so clearing
+  // NO AV here left the booking-level 'NO AV' in place and the block
+  // stayed grey — the untag looked broken.
   const setJobField=(value:string, salesperson?:Salesperson)=>{
     if(!draft)return;
     const base={...draft,...(salesperson?{salespersonId:salesperson.id,colour:salesperson.colour}:{})};
     if((draft.roomIds?.length||0)<=1){setDraft({...base,jobNumber:value});return;}
     const jobNumbers={...(draft.jobNumbers||{})};
     for(const room of inspectorRooms){if(value)jobNumbers[room]=value;else delete jobNumbers[room];}
-    setDraft({...base,jobNumbers});
+    setDraft({...base,jobNumber:value||undefined,jobNumbers});
   };
   // Selecting a job from Possible jobs sets the job number and, when
   // the job's salesperson matches someone in the palette, that

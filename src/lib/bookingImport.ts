@@ -1,9 +1,22 @@
 import * as XLSX from 'xlsx';
 import yaml from 'js-yaml';
+import { addDays, format, parseISO } from 'date-fns';
 import { Booking, BookingSnapshot, ImportSource } from '../types';
 import { ImportComparison, compareImports } from './importComparison';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 import { dateValue, timeValue } from './dateTime';
+// A multi-day event named the way the MCG writes it — "Project Control
+// 2026 (1 Day Bump in + 2 Days)" — is one row for the whole span, so
+// the board only showed it on the bump-in day. The parenthetical is the
+// span: bump-in days + event days. parseMultiDayDays returns the total
+// days (1 when the title carries no such span), so the import can make
+// one booking per day. Only the explicit "N Day(s) Bump in + M Day(s)"
+// form is expanded; a bare "(Day 2)" or "(Bump in)" is a single day.
+export function parseMultiDayDays(title: string): number {
+  const m = /\((\d+)\s+days?\s+bump\s+in\s*\+\s*(\d+)\s+days?\)/i.exec(title);
+  if (!m) return 1;
+  return Number(m[1]) + Number(m[2]);
+}
 export type BoardBooking = Booking & { activity?: string };
 export interface ImportResult {
   bookings: Booking[];
@@ -134,42 +147,60 @@ export async function parseBookingWorkbook(file: File, venue: ParsedVenueConfig,
         roomIds
       };
       // A first import can be limited to a date range, so a file that
-      // spans years does not make a board four years tall.
-      if (options.dateRange && (booking.date < options.dateRange.start || booking.date > options.dateRange.end)) return;
+      // spans years does not make a board four years tall. The range
+      // is checked per day below, so a multi-day event that starts
+      // before the range still shows its days inside it.
       if (jobNumber) booking.jobNumber = jobNumber;
       // Setup and teardown as columns, not rows: some venues give a
       // bump-in time and a bump-out time per event instead of separate
       // setup/teardown rows. The block spans them, as it does for
       // attached timeline rows. A column that cannot be read as a
       // time leaves the booking without that end instead of failing
-      // the whole import.
-      const timeline: { label: string; start: string; end: string }[] = [];
+      // the whole import. The setup belongs to the first day and the
+      // teardown to the last day of a multi-day event, so they are
+      // kept apart and attached per day below.
+      let setupPart: { label: string; start: string; end: string } | null = null;
+      let teardownPart: { label: string; start: string; end: string } | null = null;
       try {
         const setupStart = venue.fields.setup_start ? timeValue(get('setup_start')) : '';
-        if (setupStart && setupStart < booking.startTime) timeline.push({ label: labels[0] || 'Setup', start: setupStart, end: booking.startTime });
+        if (setupStart && setupStart < booking.startTime) setupPart = { label: labels[0] || 'Setup', start: setupStart, end: booking.startTime };
       } catch { /* An unreadable setup time leaves the booking without it. */ }
       try {
         const teardownEnd = venue.fields.teardown_end ? timeValue(get('teardown_end')) : '';
-        if (teardownEnd && teardownEnd > booking.endTime) timeline.push({ label: labels[1] || labels[0] || 'Teardown', start: booking.endTime, end: teardownEnd });
+        if (teardownEnd && teardownEnd > booking.endTime) teardownPart = { label: labels[1] || labels[0] || 'Teardown', start: booking.endTime, end: teardownEnd };
       } catch { /* An unreadable teardown time leaves the booking without it. */ }
-      if (timeline.length) booking.timeline = timeline;
-      booking.id = bookingId(booking, venue.name);
-      const existing = previousByIdentity.get(identityKey(booking, venue.name));
-      if (existing) {
-        // The id is not carried over: it is derived from the booking's
-        // own time and activity, so it stays unique per row. Carrying
-        // over the previous id would reintroduce the shared id that
-        // let one save replace several bookings.
-        if (existing.colour) booking.colour = existing.colour;
-        if (existing.salespersonId) booking.salespersonId = existing.salespersonId;
-        if (existing.unavailable !== undefined) booking.unavailable = existing.unavailable;
-        if (existing.hidden !== undefined) booking.hidden = existing.hidden;
-        if (existing.hiddenRooms?.length) booking.hiddenRooms = existing.hiddenRooms;
-        if (existing.jobNumber) booking.jobNumber = existing.jobNumber;
-        if (existing.jobNumbers && Object.keys(existing.jobNumbers).length) booking.jobNumbers = existing.jobNumbers;
-        if (existing.timeline?.length) booking.timeline = existing.timeline;
+      // A multi-day event is one row for the whole span, so it gets one
+      // booking per day (same title, times and rooms) instead of only
+      // showing on the bump-in day. Each day carries over from its own
+      // previous booking, so colour, salesperson and job number stay
+      // per day.
+      const totalDays = parseMultiDayDays(title);
+      for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+        const dayBooking: BoardBooking = dayOffset === 0 ? booking : { ...booking };
+        dayBooking.date = format(addDays(parseISO(booking.date), dayOffset), 'yyyy-MM-dd');
+        if (options.dateRange && (dayBooking.date < options.dateRange.start || dayBooking.date > options.dateRange.end)) continue;
+        const dayTimeline: { label: string; start: string; end: string }[] = [];
+        if (dayOffset === 0 && setupPart) dayTimeline.push(setupPart);
+        if (dayOffset === totalDays - 1 && teardownPart) dayTimeline.push(teardownPart);
+        if (dayTimeline.length) dayBooking.timeline = dayTimeline; else delete dayBooking.timeline;
+        dayBooking.id = bookingId(dayBooking, venue.name);
+        const existing = previousByIdentity.get(identityKey(dayBooking, venue.name));
+        if (existing) {
+          // The id is not carried over: it is derived from the booking's
+          // own time and activity, so it stays unique per row. Carrying
+          // over the previous id would reintroduce the shared id that
+          // let one save replace several bookings.
+          if (existing.colour) dayBooking.colour = existing.colour;
+          if (existing.salespersonId) dayBooking.salespersonId = existing.salespersonId;
+          if (existing.unavailable !== undefined) dayBooking.unavailable = existing.unavailable;
+          if (existing.hidden !== undefined) dayBooking.hidden = existing.hidden;
+          if (existing.hiddenRooms?.length) dayBooking.hiddenRooms = existing.hiddenRooms;
+          if (existing.jobNumber) dayBooking.jobNumber = existing.jobNumber;
+          if (existing.jobNumbers && Object.keys(existing.jobNumbers).length) dayBooking.jobNumbers = existing.jobNumbers;
+          if (existing.timeline?.length) dayBooking.timeline = existing.timeline;
+        }
+        rows.push(dayBooking);
       }
-      rows.push(booking);
     });
   const key = (b: BoardBooking) => JSON.stringify([b.title, b.date, [...b.roomIds].sort()]);
   const isTimeline = (b: BoardBooking) => labels.some(l => l.toLowerCase() === b.activity?.toLowerCase());
