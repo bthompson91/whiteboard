@@ -105,8 +105,8 @@ try {
   // re-import still exact-matches instead of treating the booking as
   // new because the file carries no job number.
   result = compareImports(
-    [booking({ jobNumber: '1022948' })],
-    [booking({ id: 'booking-9', jobNumber: '1022948', startTime: '19:00', endTime: '23:00' })],
+    [booking({ jobNumber: '900099' })],
+    [booking({ id: 'booking-9', jobNumber: '900099', startTime: '19:00', endTime: '23:00' })],
     'Venue'
   );
   check('a changed booking never lists jobNumber as changed', result.changes[0].type === 'changed' && !result.changes[0].changedFields.includes('jobNumber') && result.changes[0].changedFields.includes('startTime'), JSON.stringify(result.changes[0]));
@@ -327,10 +327,10 @@ try {
   check('initials use the last word for three names', salespersonInitials({ id: 'a', name: 'Mary Jane Smith', colour: '#000000' }) === 'MS');
   check('initials are empty for a blank name', salespersonInitials({ id: 'a', name: '  ', colour: '#000000' }) === '');
   // A short name set in the palette wins over the derived initials, so
-  // two people who would otherwise collide can be told apart: M
-  // Carrasco and Cara Coughey would both derive "CC".
-  check('a set short name is used as the tag', salespersonInitials({ id: 'a', name: 'M Carrasco', colour: '#000000', shortName: 'MC' }) === 'MC');
-  check('the derived initials are used when no short name is set', salespersonInitials({ id: 'a', name: 'Cara Coughey', colour: '#000000' }) === 'CC');
+  // two people who would otherwise collide can be told apart: Cecilia
+  // Cole and Cora Carter would both derive "CC".
+  check('a set short name is used as the tag', salespersonInitials({ id: 'a', name: 'M Cole', colour: '#000000', shortName: 'MC' }) === 'MC');
+  check('the derived initials are used when no short name is set', salespersonInitials({ id: 'a', name: 'Cora Carter', colour: '#000000' }) === 'CC');
 
   // --- Block merging: height merges and width merges ---
   const venue = { rooms: [
@@ -351,15 +351,15 @@ try {
   // block's number came from one row and only that row was updated.
   const mergedPair = [
     booking({ id: 'a', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '18:45', jobNumber: '' }),
-    booking({ id: 'b', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:45', endTime: '00:00', jobNumber: '1022948' })
+    booking({ id: 'b', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:45', endTime: '00:00', jobNumber: '900099' })
   ];
   blocks = blocksFor(mergedPair, venue, [], false);
-  check('a merged block shows a job number carried by a later row', blocks.length === 1 && blocks[0].jobNumber === '1022948', JSON.stringify(blocks.map(b => b.jobNumber)));
+  check('a merged block shows a job number carried by a later row', blocks.length === 1 && blocks[0].jobNumber === '900099', JSON.stringify(blocks.map(b => b.jobNumber)));
   blocks = blocksFor([
-    booking({ id: 'a', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '18:45', jobNumber: '1022948' }),
+    booking({ id: 'a', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '18:45', jobNumber: '900099' }),
     booking({ id: 'b', title: 'Enchanted Ball', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '18:45', endTime: '00:00', jobNumber: '' })
   ], venue, [], false);
-  check('a merged block keeps the first row’s job number when a later row has none', blocks.length === 1 && blocks[0].jobNumber === '1022948', JSON.stringify(blocks.map(b => b.jobNumber)));
+  check('a merged block keeps the first row’s job number when a later row has none', blocks.length === 1 && blocks[0].jobNumber === '900099', JSON.stringify(blocks.map(b => b.jobNumber)));
   blocks = blocksFor([
     booking({ id: 'a', title: 'River Dinner', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '20:00' }),
     booking({ id: 'b', title: 'River Dinner', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '18:00', endTime: '22:00' })
@@ -434,24 +434,24 @@ try {
   check('a non-boolean random event colours is rejected', (() => { try { readConfiguration(`rooms:\n  order: [Room 1]\nwhiteboard:\n  random_event_colours: 5\n`, false); return false; } catch { return true; } })());
 
   // --- Per-room job numbers ---
-  check('the event identity ignores the job number, so a number set in the inspector does not hide the booking on re-import', identityKey(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') === identityKey(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948' }), 'MCG'));
-  check('the booking id still folds the job number in', bookingId(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') !== bookingId(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948' }), 'MCG'));
-  const numbered = booking({ id: 'n', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948', jobNumbers: { 'Palladium B': 'NO AV' } });
-  check('a block shows its own room number, or the booking number', blockJobNumber(numbered, ['Palladium A']) === '1022948' && blockJobNumber(numbered, ['Palladium B']) === 'NO AV');
-  check('a wide block shows the booking number when its rooms disagree', blockJobNumber(numbered, ['Palladium A', 'Palladium B']) === '1022948');
+  check('the event identity ignores the job number, so a number set in the inspector does not hide the booking on re-import', identityKey(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') === identityKey(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '900099' }), 'MCG'));
+  check('the booking id still folds the job number in', bookingId(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') !== bookingId(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '900099' }), 'MCG'));
+  const numbered = booking({ id: 'n', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumber: '900099', jobNumbers: { 'Palladium B': 'NO AV' } });
+  check('a block shows its own room number, or the booking number', blockJobNumber(numbered, ['Palladium A']) === '900099' && blockJobNumber(numbered, ['Palladium B']) === 'NO AV');
+  check('a wide block shows the booking number when its rooms disagree', blockJobNumber(numbered, ['Palladium A', 'Palladium B']) === '900099');
   check('a wide block shows the shared number when its rooms agree', blockJobNumber(booking({ id: 'w', title: 'X', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium A': 'NO AV', 'Palladium B': 'NO AV' } }), ['Palladium A', 'Palladium B']) === 'NO AV');
   blocks = blocksFor([numbered], venue, [], false);
-  check('each room of one booking shows its own job number', blocks.length === 2 && blocks.find(b => b.rooms[0] === 0).jobNumber === '1022948' && blocks.find(b => b.rooms[0] === 1).jobNumber === 'NO AV', JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber, b.unavailable])));
+  check('each room of one booking shows its own job number', blocks.length === 2 && blocks.find(b => b.rooms[0] === 0).jobNumber === '900099' && blocks.find(b => b.rooms[0] === 1).jobNumber === 'NO AV', JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber, b.unavailable])));
   check('NO AV is per room too: only that room renders grey', blocks.find(b => b.rooms[0] === 1).unavailable === true && blocks.find(b => b.rooms[0] === 0).unavailable === false, JSON.stringify(blocks.map(b => [b.rooms, b.unavailable])));
   blocks = blocksFor([numbered], venue, [], false, [], ['Palladium A']);
-  check('a wide block across operable walls shows the one booking number', blocks.length === 1 && blocks[0].jobNumber === '1022948' && blocks[0].unavailable === false, JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber, b.unavailable])));
+  check('a wide block across operable walls shows the one booking number', blocks.length === 1 && blocks[0].jobNumber === '900099' && blocks[0].unavailable === false, JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber, b.unavailable])));
   blocks = blocksFor([booking({ id: 'd', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium A': '111', 'Palladium B': '222' } })], venue, [], false);
   check('two rooms can carry two different job numbers', blocks.length === 2 && blocks.find(b => b.rooms[0] === 0).jobNumber === '111' && blocks.find(b => b.rooms[0] === 1).jobNumber === '222', JSON.stringify(blocks.map(b => [b.rooms, b.jobNumber])));
   check('a matched re-import carries the per-room job numbers over', (() => {
-    const previous = booking({ id: 'p', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948', jobNumbers: { 'Palladium B': 'NO AV' } });
+    const previous = booking({ id: 'p', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumber: '900099', jobNumbers: { 'Palladium B': 'NO AV' } });
     const next = booking({ id: 'n', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' });
     const merged = mergeMatchedBooking(previous, next);
-    return merged.jobNumber === '1022948' && JSON.stringify(merged.jobNumbers) === JSON.stringify({ 'Palladium B': 'NO AV' });
+    return merged.jobNumber === '900099' && JSON.stringify(merged.jobNumbers) === JSON.stringify({ 'Palladium B': 'NO AV' });
   })());
 
   // --- Related bookings list + per-room veto ---
@@ -471,18 +471,18 @@ try {
     return list.length === 2 && list[0].id === 'b' && list[1].id === 'a';
   })());
   check('a related job-number edit sets the number and clears per-room numbers', (() => {
-    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium A': 'NO AV' } })], { r: '001022948' });
-    return edited[0].jobNumber === '1022948' && edited[0].jobNumbers === undefined;
+    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium A': 'NO AV' } })], { r: '000900099' });
+    return edited[0].jobNumber === '900099' && edited[0].jobNumbers === undefined;
   })());
   check('a related edit never touches the block being edited', (() => {
-    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })], { r: '1022948' }, new Set(['r']));
+    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })], { r: '900099' }, new Set(['r']));
     return edited[0].jobNumber === undefined;
   })());
   check('an empty related edit clears the number', (() => {
-    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948' })], { r: '' });
+    const edited = applyJobNumberEdits([booking({ id: 'r', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '900099' })], { r: '' });
     return edited[0].jobNumber === undefined;
   })());
-  check('the match number is the booking number, else the first per-room number', matchJobNumber(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '1022948', jobNumbers: { 'Palladium A': '111' } })) === '1022948' && matchJobNumber(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium B': '222', 'Palladium A': '111' } })) === '111' && matchJobNumber(booking({ id: 'c', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })) === '');
+  check('the match number is the booking number, else the first per-room number', matchJobNumber(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '900099', jobNumbers: { 'Palladium A': '111' } })) === '900099' && matchJobNumber(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumbers: { 'Palladium B': '222', 'Palladium A': '111' } })) === '111' && matchJobNumber(booking({ id: 'c', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' })) === '');
   result = compareImports(
     [booking({ jobNumbers: { 'Palladium A': '111' } })],
     [booking({ id: 'booking-9', title: 'Charity Dinner', jobNumbers: { 'Palladium A': '222' } })],
@@ -579,26 +579,26 @@ try {
   // A job is a candidate when its event name overlaps the booking title
   // and its dates cover the booking (a day either side); the
   // salesperson breaks ties between jobs with the same name score.
-  check('a job description splits into area and event at the last bar', jobArea('Pall | CBA and SBV Retired Staff Christmas Lunch 2026') === 'Pall' && jobEvent('Pall | CBA and SBV Retired Staff Christmas Lunch 2026') === 'CBA and SBV Retired Staff Christmas Lunch 2026' && jobArea('1020926 - Pall | CBA Lunch') === '1020926 - Pall' && jobEvent('1020926 - Pall | CBA Lunch') === 'CBA Lunch' && jobEvent('No Bar Event') === 'No Bar Event' && jobArea('No Bar Event') === '');
+  check('a job description splits into area and event at the last bar', jobArea('Pall | Zenith and Apex Retired Staff Christmas Lunch 2026') === 'Pall' && jobEvent('Pall | Zenith and Apex Retired Staff Christmas Lunch 2026') === 'Zenith and Apex Retired Staff Christmas Lunch 2026' && jobArea('900001 - Pall | Zenith Lunch') === '900001 - Pall' && jobEvent('900001 - Pall | Zenith Lunch') === 'Zenith Lunch' && jobEvent('No Bar Event') === 'No Bar Event' && jobArea('No Bar Event') === '');
   check('the jobs columns are found case-insensitively, and a missing Order Id is refused', (() => {
     const cols = findJobsColumns(['order id', 'DESCRIPTION', 'Sales Person', 'start date', 'END DATE']);
     return cols.orderId === 'order id' && cols.description === 'DESCRIPTION' && cols.salesPerson === 'Sales Person' && cols.startDate === 'start date' && cols.endDate === 'END DATE';
   })());
   throws('Jobs import refuses a file without the Order Id column', () => findJobsColumns(['Description', 'Sales Person', 'Start Date', 'End Date']));
-  check('the name score is 1 for an exact match and 0 when nothing overlaps', jobNameScore('CBA and SBV Retired Staff Christmas Lunch 2026', 'CBA and SBV Retired Staff Christmas Lunch 2026') === 1 && jobNameScore('AI.CARE Conference 2026', 'AI Care Conference 2026') === 1 && jobNameScore('Dekoda Bell-Pickett & Nick Colley Wedding', "Dekoda & Nick's Wedding") > 0.5 && jobNameScore('TLC Healthcare Dinner 2026', 'Encore Storage - LaTrobe/TLC') === 0.5 && jobNameScore('Crown Christmas Trivia', 'Crown Conference Centre Carpet Upgrade') === 0.5 && jobNameScore('Frankston Valedictory', 'CPA Australia Dinner') === 0, JSON.stringify([jobNameScore('Dekoda Bell-Pickett & Nick Colley Wedding', "Dekoda & Nick's Wedding"), jobNameScore('TLC Healthcare Dinner 2026', 'Encore Storage - LaTrobe/TLC')]));
-  check('a salesperson matches by full name, by initial, or by last name only — but a contradicting initial does not match', salesPersonMatches('Cara Coughey', 'Cara Coughey') && salesPersonMatches('C. Coughey', 'Cara Coughey') && salesPersonMatches('Coughey', 'Cara Coughey') && salesPersonMatches('cara coughey', 'Cara Coughey') && !salesPersonMatches('M Carrasco', 'Cecilia Carrasco') && !salesPersonMatches('Cara Coughey', 'Cecilia Carrasco') && !salesPersonMatches('', 'Cara Coughey') && !salesPersonMatches('Cara Coughey', ''));
+  check('the name score is 1 for an exact match and 0 when nothing overlaps', jobNameScore('Zenith and Apex Retired Staff Christmas Lunch 2026', 'Zenith and Apex Retired Staff Christmas Lunch 2026') === 1 && jobNameScore('Acme.Care Conference 2026', 'Acme Care Conference 2026') === 1 && jobNameScore('Alex Morgan-Smith & Sam Jones Wedding', "Alex & Sam's Wedding") > 0.5 && jobNameScore('Beta Health Dinner 2026', 'Sample Storage - North/Beta') === 0.5 && jobNameScore('Sample Christmas Trivia', 'Sample Conference Centre Carpet Upgrade') === 0.5 && jobNameScore('Sample Valedictory', 'Beta Australia Dinner') === 0, JSON.stringify([jobNameScore('Alex Morgan-Smith & Sam Jones Wedding', "Alex & Sam's Wedding"), jobNameScore('Beta Health Dinner 2026', 'Sample Storage - North/Beta')]));
+  check('a salesperson matches by full name, by initial, or by last name only — but a contradicting initial does not match', salesPersonMatches('Cora Carter', 'Cora Carter') && salesPersonMatches('C. Carter', 'Cora Carter') && salesPersonMatches('Carter', 'Cora Carter') && salesPersonMatches('cora carter', 'Cora Carter') && !salesPersonMatches('M Cole', 'Cecilia Cole') && !salesPersonMatches('Cora Carter', 'Cecilia Cole') && !salesPersonMatches('', 'Cora Carter') && !salesPersonMatches('Cora Carter', ''));
   check('a job resolves to its board salesperson by name, and to nothing when the palette does not have them', (() => {
-    const palette = [{ id: 'sp-cara', name: 'Cara Coughey', colour: '#e67e22' }, { id: 'sp-cecilia', name: 'Cecilia Carrasco', colour: '#2980b9' }];
+    const palette = [{ id: 'sp-cora', name: 'Cora Carter', colour: '#e67e22' }, { id: 'sp-cecilia', name: 'Cecilia Cole', colour: '#2980b9' }];
     const job = (salesPerson) => ({ orderId: '1', description: 'X | Y', area: 'X', event: 'Y', salesPerson, company: '', startDate: '2026-11-24', endDate: '2026-11-24' });
-    return jobSalesperson(job('Cecilia Carrasco'), palette)?.id === 'sp-cecilia'
-      && jobSalesperson(job('C. Carrasco'), palette)?.id === 'sp-cecilia'
-      && jobSalesperson(job('Brayan Mera'), palette) === undefined
+    return jobSalesperson(job('Cecilia Cole'), palette)?.id === 'sp-cecilia'
+      && jobSalesperson(job('C. Cole'), palette)?.id === 'sp-cecilia'
+      && jobSalesperson(job('Sam Reed'), palette) === undefined
       && jobSalesperson(job(''), palette) === undefined
-      && jobSalesperson(job('M Carrasco'), palette) === undefined;
+      && jobSalesperson(job('M Cole'), palette) === undefined;
   })());
   check('a block with a real job number has one, and a block with none or NO AV does not', (() => {
     const blk = (jobNumber) => ({ jobNumber });
-    return blockHasJobNumber(blk('1020926')) === true
+    return blockHasJobNumber(blk('900001')) === true
       && blockHasJobNumber(blk(undefined)) === false
       && blockHasJobNumber(blk('')) === false
       && blockHasJobNumber(blk('NO AV')) === false;
@@ -607,43 +607,43 @@ try {
   const jobsWb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(jobsWb, XLSX.utils.aoa_to_sheet([
     ['Order Id', 'Status', 'Type', 'Description', 'Company', 'Sales Person', 'Amount', '', 'Site', 'Start Date', 'End Date'],
-    [1020926, 'Open', 'Reservation', 'Pall | CBA and SBV Retired Staff Christmas Lunch 2026', 'CBA', 'Cara Coughey', 100, '', 'Crown', jobsSerial('2026-11-24'), jobsSerial('2026-11-24')],
-    [1008061, 'Open', 'Reservation', 'Prom 1 & 2 | AI.CARE Conference 2026', 'AI Care', 'Barbara Thompson', 100, '', 'Crown', jobsSerial('2026-11-23'), jobsSerial('2026-11-24')],
-    [1008504, 'Open', 'Reservation', 'M1&2 | AI.Care Conference', 'AI Care', 'Cara Coughey', 100, '', 'Crown', jobsSerial('2026-11-23'), jobsSerial('2026-11-24')],
-    [977355, 'Open', 'Reservation', 'PAL | TLC Healthcare Dinner 2026', 'TLC', 'Lana Richards', 100, '', 'Crown', jobsSerial('2026-11-28'), jobsSerial('2026-11-28')],
-    ['', 'Open', 'Reservation', 'No Order Id Event', 'X', 'Cara Coughey', 100, '', 'Crown', jobsSerial('2026-11-25'), jobsSerial('2026-11-25')],
+    [900001, 'Open', 'Reservation', 'Pall | Zenith and Apex Retired Staff Christmas Lunch 2026', 'Zenith', 'Cora Carter', 100, '', 'Crown', jobsSerial('2026-11-24'), jobsSerial('2026-11-24')],
+    [900002, 'Open', 'Reservation', 'Prom 1 & 2 | Acme.Care Conference 2026', 'Acme Care', 'Dana Kim', 100, '', 'Crown', jobsSerial('2026-11-23'), jobsSerial('2026-11-24')],
+    [900003, 'Open', 'Reservation', 'M1&2 | Acme.Care Conference', 'Acme Care', 'Cora Carter', 100, '', 'Crown', jobsSerial('2026-11-23'), jobsSerial('2026-11-24')],
+    [900004, 'Open', 'Reservation', 'PAL | Beta Health Dinner 2026', 'Beta Health', 'Riley Morgan', 100, '', 'Crown', jobsSerial('2026-11-28'), jobsSerial('2026-11-28')],
+    ['', 'Open', 'Reservation', 'No Order Id Event', 'X', 'Cora Carter', 100, '', 'Crown', jobsSerial('2026-11-25'), jobsSerial('2026-11-25')],
     [999999, 'Open', 'Reservation', 'ZZZ Unknown Event', 'Z', 'Nobody', 100, '', 'Crown', jobsSerial('2026-12-01'), jobsSerial('2026-12-01')]
   ]), 'Jobs');
   const jobsFile = new File([XLSX.write(jobsWb, { type: 'buffer', bookType: 'xlsx' })], 'jobs_list.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const jobsParsed = await parseJobsWorkbook(jobsFile);
   check('the jobs file parses to 5 jobs with 1 skipped (the row with no Order Id)', jobsParsed.jobs.length === 5 && jobsParsed.skipped.length === 1 && jobsParsed.skipped[0].reason.includes('Order Id'), JSON.stringify(jobsParsed.skipped));
   check('a parsed job carries its area, event, salesperson and ISO dates', (() => {
-    const cba = jobsParsed.jobs.find(j => j.orderId === '1020926');
-    return cba?.area === 'Pall' && cba?.event === 'CBA and SBV Retired Staff Christmas Lunch 2026' && cba?.salesPerson === 'Cara Coughey' && cba?.startDate === '2026-11-24' && cba?.endDate === '2026-11-24';
+    const acme = jobsParsed.jobs.find(j => j.orderId === '900001');
+    return acme?.area === 'Pall' && acme?.event === 'Zenith and Apex Retired Staff Christmas Lunch 2026' && acme?.salesPerson === 'Cora Carter' && acme?.startDate === '2026-11-24' && acme?.endDate === '2026-11-24';
   })(), JSON.stringify(jobsParsed.jobs.map(j => [j.orderId, j.area, j.event, j.startDate])));
   const jobsList = jobsParsed.jobs;
   check('a booking with one clear job gets exactly that job', (() => {
-    const c = findJobCandidates(jobsList, booking({ title: 'CBA and SBV Retired Staff Christmas Lunch 2026', date: '2026-11-24' }));
-    return c.length === 1 && c[0].job.orderId === '1020926' && c[0].score === 1 && c[0].dateOffset === 0;
-  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'CBA and SBV Retired Staff Christmas Lunch 2026', date: '2026-11-24' })).map(c => c.job.orderId)));
+    const c = findJobCandidates(jobsList, booking({ title: 'Zenith and Apex Retired Staff Christmas Lunch 2026', date: '2026-11-24' }));
+    return c.length === 1 && c[0].job.orderId === '900001' && c[0].score === 1 && c[0].dateOffset === 0;
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'Zenith and Apex Retired Staff Christmas Lunch 2026', date: '2026-11-24' })).map(c => c.job.orderId)));
   check('a multi-job event offers all its jobs, and the booking salesperson sorts first', (() => {
-    const withSp = findJobCandidates(jobsList, booking({ title: 'AI Care Conference 2026', date: '2026-11-23' }), 'Cara Coughey');
-    const withoutSp = findJobCandidates(jobsList, booking({ title: 'AI Care Conference 2026', date: '2026-11-23' }));
-    return withSp.length === 2 && withSp[0].job.orderId === '1008504' && withSp[0].salesPersonMatch === true && withSp[1].job.orderId === '1008061' && withoutSp.length === 2 && withoutSp[0].job.orderId === '1008061';
-  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'AI Care Conference 2026', date: '2026-11-23' }), 'Cara Coughey').map(c => [c.job.orderId, c.salesPersonMatch])));
+    const withSp = findJobCandidates(jobsList, booking({ title: 'Acme Care Conference 2026', date: '2026-11-23' }), 'Cora Carter');
+    const withoutSp = findJobCandidates(jobsList, booking({ title: 'Acme Care Conference 2026', date: '2026-11-23' }));
+    return withSp.length === 2 && withSp[0].job.orderId === '900003' && withSp[0].salesPersonMatch === true && withSp[1].job.orderId === '900002' && withoutSp.length === 2 && withoutSp[0].job.orderId === '900002';
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'Acme Care Conference 2026', date: '2026-11-23' }), 'Cora Carter').map(c => [c.job.orderId, c.salesPersonMatch])));
   check('a job dated a day out still shows, marked a day out — two days out does not', (() => {
-    const dayOut = findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-29' }));
-    const twoOut = findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-30' }));
-    return dayOut.length === 1 && dayOut[0].job.orderId === '977355' && dayOut[0].dateOffset === 1 && twoOut.length === 0;
-  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-29' })).map(c => [c.job.orderId, c.dateOffset])));
+    const dayOut = findJobCandidates(jobsList, booking({ title: 'Beta Health Dinner 2026', date: '2026-11-29' }));
+    const twoOut = findJobCandidates(jobsList, booking({ title: 'Beta Health Dinner 2026', date: '2026-11-30' }));
+    return dayOut.length === 1 && dayOut[0].job.orderId === '900004' && dayOut[0].dateOffset === 1 && twoOut.length === 0;
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'Beta Health Dinner 2026', date: '2026-11-29' })).map(c => [c.job.orderId, c.dateOffset])));
   check('the real event outranks a weak one-word match for the same job', (() => {
-    const real = findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-28' }));
-    const weak = findJobCandidates(jobsList, booking({ title: 'Encore Storage - LaTrobe/TLC', date: '2026-11-28' }));
+    const real = findJobCandidates(jobsList, booking({ title: 'Beta Health Dinner 2026', date: '2026-11-28' }));
+    const weak = findJobCandidates(jobsList, booking({ title: 'Sample Storage - North/Beta', date: '2026-11-28' }));
     return real.length === 1 && real[0].nameScore === 1 && weak.length === 1 && weak[0].nameScore === 0.5;
-  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'Encore Storage - LaTrobe/TLC', date: '2026-11-28' })).map(c => c.nameScore)));
-  check('a booking nothing matches gets no candidates', findJobCandidates(jobsList, booking({ title: 'Frankston Valedictory Dinner', date: '2026-11-25' })).length === 0);
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'Sample Storage - North/Beta', date: '2026-11-28' })).map(c => c.nameScore)));
+  check('a booking nothing matches gets no candidates', findJobCandidates(jobsList, booking({ title: 'Sample Valedictory Dinner', date: '2026-11-25' })).length === 0);
   check('the jobs list survives a board file round-trip, and an old file without one loads empty', await (async () => {
-    const file = createSharedFile([booking({ id: 'b1', title: 'CBA and SBV Retired Staff Christmas Lunch 2026', date: '2026-11-24' })], 10, [], null, jobsList, '2026-11-23T00:00:00.000Z');
+    const file = createSharedFile([booking({ id: 'b1', title: 'Zenith and Apex Retired Staff Christmas Lunch 2026', date: '2026-11-24' })], 10, [], null, jobsList, '2026-11-23T00:00:00.000Z');
     const back = await parseSharedFile(await serializeSharedFile(file));
     const old = await parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, revision: 1, exportedAt: '2026-11-20T00:00:00.000Z', bookings: [], markup: [], editorLock: null }));
     return back.jobs?.length === 5 && back.jobsImportedAt === '2026-11-23T00:00:00.000Z' && (old.jobs || []).length === 0;
@@ -921,62 +921,62 @@ try {
   ], venue, [], false);
   check('overlapping blocks in different rooms do not split', blocks.length === 2 && blocks.every(b => b.laneCount === undefined), JSON.stringify(blocks));
   // A setup listed on one room must not push a merged block into a lane
-  // in a room where it does not overlap anything. The Carlton case: the
+  // in a room where it does not overlap anything. The Sample FC case: the
   // B booking has no timeline (19:00-22:30) while the River booking
   // carries Setup 15:00-18:30, so the merged block's union span
-  // (15:00-00:30) overlaps Mortgage Choice (16:00-18:30) in B — but in
-  // B the event is only there 19:00-22:30, after Mortgage Choice leaves,
+  // (15:00-00:30) overlaps Test Finance (16:00-18:30) in B — but in
+  // B the event is only there 19:00-22:30, after Test Finance leaves,
   // so it keeps the full width. The per-room spans say so; the union
   // span does not. (Rooms are the test venue's B, River 1, River 2 with
   // both walls operable, standing in for Palladium B, C1, C2, C3.)
   blocks = blocksFor([
-    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30' }),
-    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }, { label: 'Teardown', start: '22:30', end: '00:30' }] }),
-    booking({ id: 'c', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '16:00', endTime: '18:30' })
+    booking({ id: 'a', title: 'Sample FC', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30' }),
+    booking({ id: 'b', title: 'Sample FC', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }, { label: 'Teardown', start: '22:30', end: '00:30' }] }),
+    booking({ id: 'c', title: 'Test Finance', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '16:00', endTime: '18:30' })
   ], venue, [], false, [], ['Palladium B', 'River Room 1']);
-  const carlton = blocks.find(b => b.title === 'Carlton');
-  check('a setup on one room does not lane a merged block in another room', blocks.length === 2 && carlton && carlton.rooms.length === 3 && carlton.laneCount === undefined
-    && spanInRoom(carlton, 1).start === 1140 && spanInRoom(carlton, 1).end === 1350
-    && spanInRoom(carlton, 2).start === 900 && spanInRoom(carlton, 2).end === 1470, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, start: b.start, end: b.end, lane: b.lane, laneCount: b.laneCount, roomSpans: b.roomSpans }))));
+  const sampleFc = blocks.find(b => b.title === 'Sample FC');
+  check('a setup on one room does not lane a merged block in another room', blocks.length === 2 && sampleFc && sampleFc.rooms.length === 3 && sampleFc.laneCount === undefined
+    && spanInRoom(sampleFc, 1).start === 1140 && spanInRoom(sampleFc, 1).end === 1350
+    && spanInRoom(sampleFc, 2).start === 900 && spanInRoom(sampleFc, 2).end === 1470, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, start: b.start, end: b.end, lane: b.lane, laneCount: b.laneCount, roomSpans: b.roomSpans }))));
   // ... and a real overlap in the same room still splits the width.
   blocks = blocksFor([
-    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30' }),
-    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }] }),
-    booking({ id: 'c', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '18:00', endTime: '20:00' })
+    booking({ id: 'a', title: 'Sample FC', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30' }),
+    booking({ id: 'b', title: 'Sample FC', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }] }),
+    booking({ id: 'c', title: 'Test Finance', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '18:00', endTime: '20:00' })
   ], venue, [], false, [], ['Palladium B', 'River Room 1']);
-  const carlton2 = blocks.find(b => b.title === 'Carlton');
-  check('a real overlap with the merged block in its own room still splits', blocks.length === 2 && carlton2 && carlton2.laneCount === 2, JSON.stringify(blocks.map(b => ({ title: b.title, lane: b.lane, laneCount: b.laneCount }))));
+  const sampleFc2 = blocks.find(b => b.title === 'Sample FC');
+  check('a real overlap with the merged block in its own room still splits', blocks.length === 2 && sampleFc2 && sampleFc2.laneCount === 2, JSON.stringify(blocks.map(b => ({ title: b.title, lane: b.lane, laneCount: b.laneCount }))));
   // --- Notes gate the width merge ---
   // Two bookings with the same title and times but different Notes are
-  // different things and must not merge across rooms. The Carlton B
-  // booking ("FRR - increase numbers") must not merge into the C
+  // different things and must not merge across rooms. The Sample FC B
+  // booking ("ABC - increase numbers") must not merge into the C
   // booking ("Dinner") just because the title and times match. The
   // three rooms of the one C booking (same Notes) still merge.
-  check('notes match when equal or when one side has none', notesMatch('Dinner', 'Dinner') && notesMatch('Dinner', '') && notesMatch('', 'Dinner') && notesMatch(undefined, 'Dinner') && !notesMatch('Dinner', 'FRR - increase numbers') && !notesMatch('FRR - increase numbers', 'Dinner'));
+  check('notes match when equal or when one side has none', notesMatch('Dinner', 'Dinner') && notesMatch('Dinner', '') && notesMatch('', 'Dinner') && notesMatch(undefined, 'Dinner') && !notesMatch('Dinner', 'ABC - increase numbers') && !notesMatch('ABC - increase numbers', 'Dinner'));
   blocks = blocksFor([
-    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30', notes: 'FRR - increase numbers' }),
-    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', notes: 'Dinner', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }] })
+    booking({ id: 'a', title: 'Sample FC', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30', notes: 'ABC - increase numbers' }),
+    booking({ id: 'b', title: 'Sample FC', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', notes: 'Dinner', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }] })
   ], venue, [], false, [], ['Palladium B', 'River Room 1']);
-  const carlB = blocks.find(b => b.title === 'Carlton' && b.rooms.length === 1);
-  const carlR = blocks.find(b => b.title === 'Carlton' && b.rooms.length === 2);
-  check('bookings with different Notes do not merge across rooms', blocks.length === 2 && carlB && carlB.notes === 'FRR - increase numbers' && carlR && carlR.notes === 'Dinner' && carlR.rooms.length === 2, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, notes: b.notes }))));
+  const sampleB = blocks.find(b => b.title === 'Sample FC' && b.rooms.length === 1);
+  const sampleR = blocks.find(b => b.title === 'Sample FC' && b.rooms.length === 2);
+  check('bookings with different Notes do not merge across rooms', blocks.length === 2 && sampleB && sampleB.notes === 'ABC - increase numbers' && sampleR && sampleR.notes === 'Dinner' && sampleR.rooms.length === 2, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, notes: b.notes }))));
   blocks = blocksFor([
-    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30', notes: 'Dinner' }),
-    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', notes: 'Dinner' })
+    booking({ id: 'a', title: 'Sample FC', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30', notes: 'Dinner' }),
+    booking({ id: 'b', title: 'Sample FC', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', notes: 'Dinner' })
   ], venue, [], false, [], ['Palladium B', 'River Room 1']);
   check('bookings with the same Notes still merge across rooms', blocks.length === 1 && blocks[0].rooms.length === 3 && blocks[0].notes === 'Dinner', JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, notes: b.notes }))));
   // The Notes gate only applies to single-booking blocks. A block
   // height-merged from many sessions carries only its first session's
   // Note, which does not describe the block, so it must not block a
-  // merge: the Mortgage Choice day is many sessions with many different
+  // merge: the Test Finance day is many sessions with many different
   // Notes in each room, and its A and B blocks still merge.
   blocks = blocksFor([
-    booking({ id: 'a1', title: 'Mortgage Choice', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '06:00', endTime: '09:30', notes: 'Setup' }),
-    booking({ id: 'a2', title: 'Mortgage Choice', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '16:00', notes: 'Plenary' }),
-    booking({ id: 'a3', title: 'Mortgage Choice', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '16:00', endTime: '18:30', notes: 'Teardown' }),
-    booking({ id: 'b1', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '06:00', endTime: '08:30', notes: 'Setup Exhibition' }),
-    booking({ id: 'b2', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '08:00', endTime: '14:30', notes: 'Coffee cart' }),
-    booking({ id: 'b3', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '16:00', endTime: '18:30', notes: 'Teardown Exhibition' })
+    booking({ id: 'a1', title: 'Test Finance', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '06:00', endTime: '09:30', notes: 'Setup' }),
+    booking({ id: 'a2', title: 'Test Finance', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '16:00', notes: 'Plenary' }),
+    booking({ id: 'a3', title: 'Test Finance', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '16:00', endTime: '18:30', notes: 'Teardown' }),
+    booking({ id: 'b1', title: 'Test Finance', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '06:00', endTime: '08:30', notes: 'Setup Exhibition' }),
+    booking({ id: 'b2', title: 'Test Finance', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '08:00', endTime: '14:30', notes: 'Coffee cart' }),
+    booking({ id: 'b3', title: 'Test Finance', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '16:00', endTime: '18:30', notes: 'Teardown Exhibition' })
   ], venue, [], false, [], ['Palladium A']);
   check('height-merged blocks still merge across rooms despite different Notes', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].ids.length === 6, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, ids: b.ids, notes: b.notes }))));
 
@@ -987,8 +987,8 @@ try {
   check('unavailable booking block is flagged unavailable and grey', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'unavailable' })], venue, palette, false);
   check('legacy unavailable salesperson still flags the block', blocks.length === 1 && blocks[0].unavailable === true && blocks[0].colour === '#9aa0a6', JSON.stringify(blocks));
-  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1', jobNumber: '1022948' })], venue, palette, false);
-  check('block carries the salesperson initials', blocks.length === 1 && blocks[0].initials === 'AL' && blocks[0].jobNumber === '1022948', JSON.stringify(blocks));
+  blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1', jobNumber: '900099' })], venue, palette, false);
+  check('block carries the salesperson initials', blocks.length === 1 && blocks[0].initials === 'AL' && blocks[0].jobNumber === '900099', JSON.stringify(blocks));
   // The salesperson filter dims every block that is not that person's:
   // it reads the salesperson id off the block, so a block must carry
   // the id of the booking that sets its colour.
@@ -1276,7 +1276,7 @@ try {
     booking({ id: 'b-xmas', title: 'Christmas Lunch 2026', date: '2026-10-06', roomId: 'Room A', roomIds: ['Room A', 'Room B'], timeline: [{ label: 'Bump In', start: '08:00', end: '11:45' }] }),
   ];
   const wnOrphanMarkup = [
-    { id: 'n-orphan', type: 'text', x: 0, y: 0, text: 'SU 06:30', time: '06:30', date: '2026-10-06', roomId: 'Room A', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-06|Room A|set up|1020926 - pall | christmas lunch 2|' },
+    { id: 'n-orphan', type: 'text', x: 0, y: 0, text: 'SU 06:30', time: '06:30', date: '2026-10-06', roomId: 'Room A', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-06|Room A|set up|900001 - pall | christmas lunch 2|' },
   ];
   const wnOrphanItems = collectOvernightItems(wnOrphanBookings, wnOrphanMarkup, wnMapVenue, wnMon);
   check('an orphaned purple note is matched back to its booking by date, room and event', wnOrphanItems.length === 1 && wnOrphanItems[0].title === 'Christmas Lunch 2026' && wnOrphanItems[0].roomName === 'Palladium' && JSON.stringify(wnOrphanItems[0].timeLines) === JSON.stringify(['SU 06:30']) && wnOrphanItems[0].bookingId === 'b-xmas', JSON.stringify(wnOrphanItems));

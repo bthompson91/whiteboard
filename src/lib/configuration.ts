@@ -8,8 +8,8 @@ export interface Salesperson { id:string; name:string; colour:string; shortName?
 export const UNAVAILABLE_SALESPERSON: Salesperson = { id: 'unavailable', name: 'Unavailable', colour: '#9aa0a6' };
 // The two-letter tag shown on a block next to the job number. It is the
 // salesperson's short name when one is set (so two people who would
-// otherwise derive the same initials can be told apart — M Carrasco
-// and Cara Coughey would both be "CC"), and otherwise the first
+// otherwise derive the same initials can be told apart — Cecilia Cole
+// and Cora Carter would both be "CC"), and otherwise the first
 // letters of the first and last names ("Alex Lee" -> "AL"), or the
 // first two letters when there is only one name ("Alex" -> "AL").
 export function salespersonInitials(person: Salesperson): string {

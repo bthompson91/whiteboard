@@ -192,14 +192,14 @@ export function spanInRoom(b: Block, room: number): { start: number; end: number
 
 // Two blocks' Notes are compatible for a width merge when they say the
 // same thing, or when one side has none. Two bookings with the same
-// title and times but different Notes are different things — the Carlton
-// B booking ("FRR - increase numbers") must not merge into the C booking
+// title and times but different Notes are different things — the Sample FC
+// B booking ("ABC - increase numbers") must not merge into the C booking
 // ("Dinner") just because the title and times match. A manual merge
 // (mergeGroup) is an explicit user choice and is not gated by Notes.
 // The gate only applies when both blocks come from a single booking:
 // a block height-merged from many sessions carries only its first
 // session's Note, which does not describe the block, so it must not
-// block a merge — the Mortgage Choice day is many sessions with many
+// block a merge — the Test Finance day is many sessions with many
 // different Notes in each room, and its A and B blocks still merge.
 export function notesMatch(a?: string, b?: string): boolean {
   const x = (a || '').trim(), y = (b || '').trim();

@@ -343,29 +343,29 @@ render at their exact times with no snapping.
   to the block's overall span when a room has none). `assignLanes`
   decides overlap room by room on those spans: a setup listed on one
   room does not push a merged block into a lane in a room where it does
-  not overlap anything. The Carlton case: the B booking has no timeline
+  not overlap anything. The Sample FC case: the B booking has no timeline
   (19:00-22:30) while the C booking carries Setup 15:00-18:30, so the
-  merged block's union span (15:00-00:30) overlapped Mortgage Choice
+  merged block's union span (15:00-00:30) overlapped Test Finance
   (16:00-18:30) in B and the block was squeezed to half width in the
   right lane, starting at the C1/C2 boundary — but in B the event is
-  only there 19:00-22:30, after Mortgage Choice leaves, so it now keeps
+  only there 19:00-22:30, after Test Finance leaves, so it now keeps
   the full width. A real overlap in the block's own room still splits
   it. (The block still renders as one rectangle on its union span, so
-  in B it covers 15:00-18:30 where Mortgage Choice sits — a 16px
+  in B it covers 15:00-18:30 where Test Finance sits — a 16px
   overlap at the bottom of that block in column B that hides no text;
   a single rectangle cannot have a different top per room.)
 - **Notes gate the width merge.** Two blocks merge across rooms only
   when their Notes are compatible (`notesMatch` in `blocks.ts`: the
   same after trimming, or one side has none). Two bookings with the same
   title and times but different Notes are different things — the
-  Carlton B booking ("FRR - increase numbers") must not merge into the
+  Sample FC B booking ("ABC - increase numbers") must not merge into the
   C booking ("Dinner") just because the title and times match, even
   though the inspector rightly says the C booking is in 3 rooms. A
   manual merge (mergeGroup) is an explicit user choice and is not
   gated. The gate only applies when both blocks come from a single
   booking: a block height-merged from many sessions carries only its
   first session's Note, which does not describe the block, so it must
-  not block a merge — the Mortgage Choice day is many sessions with
+  not block a merge — the Test Finance day is many sessions with
   many different Notes in each room, and its A and B blocks still
   merge into one.
 - **Night compression.** `timeFraction(minutesOfDay)` maps time to a
@@ -475,9 +475,9 @@ renaming or recolouring a salesperson repaints their blocks.
 
 - **Initials.** `salespersonInitials` uses `shortName` when set (edited in
   the palette table next to the name), else derives initials from the name.
-  This is how two people who would derive the same initials (M Carrasco
-  and Cara Coughey would both be CC) are told apart. The block tag reads
-  `Title | AL 1022948` (initials + job number after a pipe; either part
+  This is how two people who would derive the same initials (Cecilia Cole
+  and Cora Carter would both be CC) are told apart. The block tag reads
+  `Title | AL 900001` (initials + job number after a pipe; either part
   omitted when missing).
 - **Unavailable.** A booking that is not unavailable colours the whole
   block. An unavailable booking colours only the left times strip grey
@@ -928,17 +928,17 @@ cleared without re-importing.
 - **Candidates** (`findJobCandidates`): a job is offered for a booking
   when its event name overlaps the booking title (word-overlap >= 0.5,
   generic words like dinner/lunch/christmas/2026 dropped first, so a
-  one-word match like "TLC" alone only scores 0.5) and its dates cover
+  one-word match like "Beta" alone only scores 0.5) and its dates cover
   the booking — a day either side, because the two systems can disagree
-  by a day (the TLC dinner is dated the 28th in the sales system and
-  the 29th on the board; Omega Chemicals the 27th vs the 28th). The
+  by a day (the Beta Health dinner is dated the 28th in the sales system and
+  the 29th on the board; Acme Chemicals the 27th vs the 28th). The
   salesperson lifts a candidate by 0.1 and breaks ties, so a multi-job
   event's several jobs sort with the booking's salesperson on top — but
-  only when the jobs have different salespeople; the AI Care jobs are
-  all Lana Richards', so their Area (Prom 1 & 2, M1&2, Prom 3) is what
+  only when the jobs have different salespeople; the Acme Care jobs are
+  all Riley Morgan's, so their Area (Prom 1 & 2, M1&2, Prom 3) is what
   tells them apart. Salesperson names match by full name, by initial
-  ("C. Coughey"), or by last name only; a contradicting initial
-  ("M Carrasco" vs "Cecilia Carrasco") does not match.
+  ("C. Carter"), or by last name only; a contradicting initial
+  ("M Cole" vs "Cecilia Cole") does not match.
 - **Inspector** (`BookingGrid.tsx`): under the Job number field, a
   "Possible jobs" list shows each candidate's Order Id, Area, event,
   salesperson (with a ✓ when it matches the booking's salesperson) and
@@ -1049,9 +1049,8 @@ the file out.
   before that field existed has its time read back out of its text.
   A note with no booking is matched back to one before it is listed:
   by the event name in its TimeTarget key (the import's match strips a
-  job/area prefix and allows a truncated event, so "1020926 - pall |
-  cba and sbv retired staff christmas lunch 2" still finds "CBA and
-  SBV Retired Staff Christmas Lunch 2026"), and otherwise by the
+  job/area prefix and allows a truncated event, so "999999 - sample |
+  test staff christmas lunch 2" still finds "Test Staff Christmas Lunch 2026"), and otherwise by the
   closest session start after its time in its room — so an orphaned
   note exports with its event's title and combined room, not as a
   nameless setup in one room. A note that matches nothing is still a

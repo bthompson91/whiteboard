@@ -114,8 +114,8 @@ export async function parseJobsWorkbook(file: File): Promise<JobsParsed> {
 // The name score: how much of the shorter name's meaningful words the
 // longer one shares. Generic words (dinner, lunch, christmas, 2026)
 // carry no signal, so they are dropped before comparing — otherwise
-// "TLC Healthcare Dinner" and "Encore Storage - LaTrobe/TLC" look
-// like a match on "TLC" alone. A score of 1 means every meaningful
+// "Beta Health Dinner" and "Sample Storage - North/Beta" look
+// like a match on "Beta" alone. A score of 1 means every meaningful
 // word of one name is in the other; 0.5 is the weakest score the
 // inspector will show.
 const STOP_WORDS = new Set(['the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'to', 'with', '2026', '2027', 'dinner', 'lunch', 'breakfast', 'conference', 'event', 'events', 'function', 'party', 'celebration', 'ceremony', 'reception', 'meeting', 'awards', 'award', 'night', 'day', 'christmas', 'xmas', 'annual', 'end', 'year', 'new', 'member', 'members']);
@@ -135,9 +135,9 @@ export function jobNameScore(jobEventName: string, title: string): number {
 // Two salesperson names are the same person when the full names agree
 // after normalising, or when the last names agree and the first names
 // agree (or one side is only a first initial that matches the other's
-// first letter, or only a last name). "Cara Coughey" matches "Cara
-// Coughey" and "C. Coughey"; "M Carrasco" does not match "Cecilia
-// Carrasco", because the initial contradicts the first name.
+// first letter, or only a last name). "Cora Carter" matches "Cora
+// Carter" and "C. Carter"; "M Cole" does not match "Cecilia
+// Cole", because the initial contradicts the first name.
 export function salesPersonMatches(a: string, b: string): boolean {
   const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
   const A = norm(a);
