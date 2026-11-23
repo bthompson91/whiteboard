@@ -78,7 +78,21 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
   const [draft, setDraft] = useState<Extract<MarkupItem, { type: 'arrow' }> | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  // The edit box's width, measured from the note when editing starts:
+  // the note is centred on its anchor, so a box of a different width
+  // shifts the text sideways. Giving the box the note's own width
+  // keeps the text exactly where it was.
+  const [editWidth, setEditWidth] = useState<number | null>(null);
   const editRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Switching tools drops any selection: a note selected in text mode
+  // is not still selected (and deletable, or showing its Edit button)
+  // after switching to arrows, or to no tool.
+  useEffect(() => {
+    setSelected(null);
+    setEditing(null);
+    setEditWidth(null);
+  }, [mode]);
 
   // The anchor layout, read from the rendered grid: the days shown
   // (data-date rows) and the rooms shown (data-room headers), with their
@@ -304,7 +318,12 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName)) return;
-      if (editingEnabled && selected && (event.key === 'Delete' || event.key === 'Backspace')) {
+      // Delete only removes a selected item whose own tool is active:
+      // a text note selected in text mode is not deleted after the
+      // user has switched to arrows.
+      const selectedItem = selected ? markup.find(m => m.id === selected) : undefined;
+      const toolFor = selectedItem?.type === 'text' ? 'text' : selectedItem?.type === 'arrow' ? 'arrow' : null;
+      if (editingEnabled && selected && toolFor && mode === toolFor && (event.key === 'Delete' || event.key === 'Backspace')) {
         event.preventDefault();
         onChange(markup.filter((item) => item.id !== selected));
         setSelected(null);
@@ -314,11 +333,21 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selected, markup, onChange, editingEnabled]);
+  }, [selected, markup, onChange, editingEnabled, mode]);
 
   // Inline note editing: type straight into the note, no pop-up. The
-  // box grows to fit what is typed.
+  // box grows to fit what is typed. Only in text-notes mode: a note
+  // is not editable while arrows (or no tool) is selected.
   const startEdit = (item: Extract<MarkupItem, { type: 'text' }>) => {
+    if (!editingEnabled || mode !== 'text') return;
+    // Measure the note's rendered width first: the note is centred on
+    // its anchor (translateX(-50%)), so an edit box of a different
+    // width shifts the text sideways the moment editing starts. The
+    // box is given the note's own content width (its width less the
+    // 2px padding each side), so the text stays exactly where it was.
+    const el = root.current?.querySelector<HTMLElement>(`[data-note-id="${item.id}"]`);
+    const rect = el?.getBoundingClientRect();
+    setEditWidth(rect ? Math.max(24, rect.width - 4) : null);
     setSelected(item.id);
     setEditing(item.id);
     setEditValue(item.text);
@@ -366,8 +395,20 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
   // button then removed it from their board. The gate is the role,
   // not the board lock: the editor can annotate without unlocking
   // the board for booking edits.
+  //
+  // A note or arrow is also only editable when its own tool is
+  // selected in the top bar: a text box with arrows (or no tool)
+  // selected is inert, and an arrow with text notes selected is
+  // inert — it cannot be dragged, edited or deleted. The pointer
+  // event is still stopped, so the background handler does not
+  // create a new note or arrow on top of the one just clicked.
   const begin = (event: PE, item: MarkupItem, part: Drag['part'] = 'move') => {
     if (!editingEnabled) return;
+    const toolFor = item.type === 'text' ? 'text' : 'arrow';
+    if (mode !== toolFor) {
+      event.stopPropagation();
+      return;
+    }
     event.stopPropagation();
     setSelected(item.id);
     // The drag starts from where the item renders, not from its stored
@@ -548,7 +589,7 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
                 autoFocus
                 rows={1}
                 aria-label="Note text"
-                style={{ width: 220, minHeight: 24, resize: 'none', overflow: 'hidden', font: 'inherit', color: 'inherit', background: 'transparent', border: 'none', outline: 'none', padding: 0, display: 'block' }}
+                style={{ width: editWidth ?? 220, minHeight: 24, resize: 'none', overflow: 'hidden', font: 'inherit', color: 'inherit', background: 'transparent', border: 'none', outline: 'none', padding: 0, display: 'block' }}
               />
             ) : (
               item.text

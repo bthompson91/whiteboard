@@ -497,6 +497,7 @@ try {
   throws('TimeTarget import refuses a file without the Area column', () => findTimetargetColumns(['Date', 'Start Time', 'Function', 'Event']));
   check('a TimeTarget area resolves through timetarget_areas, a room name, and an alias', resolveTimetargetRoom('Crown Melbourne - Garden Room 3', ttVenue) === 'Garden Room 3' && resolveTimetargetRoom('M9', ttVenue) === 'M9' && resolveTimetargetRoom('M Nine', ttVenue) === 'M9' && resolveTimetargetRoom('Nowhere', ttVenue) === null);
   check('an event name matches a board title loosely, one containing the other', eventMatchesEvent('2026 Carji Greeves Medal Dinner', '2026 Carji Greeves Medal') && eventMatchesEvent('Gala', 'Annual Gala Dinner') && !eventMatchesEvent('Gala', 'Dinner') && !eventMatchesEvent('', 'Dinner'));
+  check('an event with a job/area prefix and cut short still matches its title', eventMatchesEvent('1020926 - Pall | CBA and SBV Retired Staff Christmas Lunch 2026', 'CBA and SBV Retired Staff Christmas Lunch 2026') && eventMatchesEvent('1020926 - pall | cba and sbv retired staff christmas lunch 2', 'CBA and SBV Retired Staff Christmas Lunch 2026') && !eventMatchesEvent('1020926 - pall | cba and sbv retired staff christmas lunch 2', 'Wantirna College Valedictory Dinner 2026'));
   const ttBookings = [
     booking({ id: 'b-carji', title: '2026 Carji Greeves Medal', date: '2026-10-01', roomId: 'Garden Room 3', roomIds: ['Garden Room 3'], startTime: '17:00', endTime: '23:00' }),
     booking({ id: 'b-carlisle', title: '2026 Carlisle Homes Supplier of the Year Awards', date: '2026-10-02', roomId: 'Crown Aviary', roomIds: ['Crown Aviary'], startTime: '11:00', endTime: '15:00' }),
@@ -1112,6 +1113,19 @@ try {
   check('the same purple time in two rooms of one block is one line', JSON.stringify(wnMulti?.timeLines) === JSON.stringify(['Set Up 18:00']), JSON.stringify(wnMulti));
   const wnNoteOnly = wnItems.find(i => i.roomId === 'Room C');
   check('a purple note with no booking is a setup on its own', wnNoteOnly?.title === '' && JSON.stringify(wnNoteOnly?.timeLines) === JSON.stringify(['Pack Down 05:00']) && wnNoteOnly?.functionLabel === 'PD', JSON.stringify(wnNoteOnly));
+  // An orphaned purple note — imported before its TimeTarget row
+  // matched a booking, so it carries no bookingId and its key's event
+  // has a job prefix and is cut short — is matched back to its booking
+  // by date, room and event, so it exports with the title and the
+  // combined room instead of as a nameless setup in one room.
+  const wnOrphanBookings = [
+    booking({ id: 'b-xmas', title: 'Christmas Lunch 2026', date: '2026-10-06', roomId: 'Room A', roomIds: ['Room A', 'Room B'], timeline: [{ label: 'Bump In', start: '08:00', end: '11:45' }] }),
+  ];
+  const wnOrphanMarkup = [
+    { id: 'n-orphan', type: 'text', x: 0, y: 0, text: 'SU 06:30', time: '06:30', date: '2026-10-06', roomId: 'Room A', fx: 0.5, fy: 0.5, source: 'timetarget', timetargetKey: '2026-10-06|Room A|set up|1020926 - pall | christmas lunch 2|' },
+  ];
+  const wnOrphanItems = collectOvernightItems(wnOrphanBookings, wnOrphanMarkup, wnMapVenue, wnMon);
+  check('an orphaned purple note is matched back to its booking by date, room and event', wnOrphanItems.length === 1 && wnOrphanItems[0].title === 'Christmas Lunch 2026' && wnOrphanItems[0].roomName === 'Palladium' && JSON.stringify(wnOrphanItems[0].timeLines) === JSON.stringify(['SU 06:30']) && wnOrphanItems[0].bookingId === 'b-xmas', JSON.stringify(wnOrphanItems));
   // --- The .docx writer ---
   const dx = buildDocx({
     title: 'Test & <Doc>',

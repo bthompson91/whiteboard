@@ -96,8 +96,26 @@ export function resolveTimetargetRoom(area: string, venue: ParsedVenueConfig): s
 // loose: one name contains the other once both are normalised. The
 // date and room already pin the booking down, so this cannot reach
 // across to another event.
+//
+// The event may also carry a job/area prefix ("1020926 - pall | CBA
+// and SBV Retired Staff Christmas Lunch 2026") and may be cut short by
+// the export's field length, so the prefix is stripped first and the
+// match then allows either name to be a prefix of the other — a
+// truncated event is still a prefix of the full title. Without the
+// strip, the prefix and the missing tail both break the contains
+// check, the row matches no booking, and the note is orphaned (no
+// booking, no title in the overnight notes).
+function eventCore(eventName: string): string {
+  let e = normalizeIdentity(eventName);
+  // "job - area | event name" — the event name is after the last bar.
+  const bar = e.lastIndexOf('|');
+  if (bar >= 0) e = e.slice(bar + 1).trim();
+  else e = e.replace(/^\d+\s*[-–]\s*/, '').trim();
+  return e;
+}
+
 export function eventMatchesEvent(eventName: string, title: string): boolean {
-  const e = normalizeIdentity(eventName);
+  const e = eventCore(eventName);
   const t = normalizeIdentity(title);
   if (!e || !t) return false;
   return e === t || e.includes(t) || t.includes(e);

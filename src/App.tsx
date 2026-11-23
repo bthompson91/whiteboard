@@ -193,8 +193,12 @@ export default function App() {
   const openPrintDialog = () => {
     const dates = bookings.map(b => b.date).sort();
     const today = format(new Date(), 'yyyy-MM-dd');
-    setPrintStart(dates[0] || today);
-    setPrintEnd(dates[dates.length - 1] || format(addDays(new Date(), 6), 'yyyy-MM-dd'));
+    const start = dates[0] || today;
+    const last = dates[dates.length - 1] || format(addDays(new Date(), 6), 'yyyy-MM-dd');
+    // The printout is one sheet, so the range is at most two weeks.
+    const maxEnd = format(addDays(new Date(`${start}T12:00:00`), 13), 'yyyy-MM-dd');
+    setPrintStart(start);
+    setPrintEnd(last > maxEnd ? maxEnd : last);
     setPrintDialogOpen(true);
   };
   const [saving, setSaving] = useState(false);
@@ -892,14 +896,14 @@ export default function App() {
             <header>
               <h2>Print board</h2>
               <p>
-                Export the board for a date range as a printout. Rooms run across as many landscape sheets as needed, dates run down the pages, and your notes and arrows print too. Block colours print at 50% so the printout does not eat printer ink. Use Print / Save as PDF in the print view to make the PDF.
+                Export the board for a date range as one landscape sheet: every room across and the whole range down, with your notes and arrows. Block colours print at 50% so the printout does not eat printer ink. Use Print / Save as PDF in the print view to make the PDF. At most two weeks at a time, so the sheet stays readable.
               </p>
             </header>
             <label>From <input type="date" value={printStart} onChange={e => setPrintStart(e.target.value)} /></label>{' '}
-            <label>To <input type="date" value={printEnd} onChange={e => setPrintEnd(e.target.value)} /></label>
+            <label>To <input type="date" value={printEnd} max={printStart ? format(addDays(new Date(`${printStart}T12:00:00`), 13), 'yyyy-MM-dd') : undefined} onChange={e => setPrintEnd(e.target.value)} /></label>
             <footer>
               <button onClick={() => setPrintDialogOpen(false)}>Cancel</button>
-              <button className="primary" disabled={!printStart || !printEnd || printEnd < printStart} onClick={() => { setPrintRange({ start: printStart, end: printEnd }); setPrintDialogOpen(false); }}>Show print view</button>
+              <button className="primary" disabled={!printStart || !printEnd || printEnd < printStart} onClick={() => { const maxEnd = format(addDays(new Date(`${printStart}T12:00:00`), 13), 'yyyy-MM-dd'); setPrintRange({ start: printStart, end: printEnd > maxEnd ? maxEnd : printEnd }); setPrintDialogOpen(false); }}>Show print view</button>
             </footer>
           </section>
         </div>

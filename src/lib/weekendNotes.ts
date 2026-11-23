@@ -27,7 +27,7 @@ import type { Booking, MarkupItem } from '../types';
 import type { ParsedVenueConfig } from './venueConfig';
 import { buildDocx } from './docx';
 import type { DocxBlock, DocxParagraph } from './docx';
-import { shortFunctionName } from './timetargetImport';
+import { shortFunctionName, eventMatchesEvent } from './timetargetImport';
 
 export interface OvernightWindow {
   kind: 'weekend' | 'weeknight';
@@ -167,6 +167,7 @@ interface PurpleNote {
   text: string;
   functionLabel: string;
   bookingId?: string;
+  timetargetKey?: string;
 }
 
 // The purple notation: the text notes the TimeTarget import made. They
@@ -181,7 +182,7 @@ function purpleNotes(markup: MarkupItem[]): PurpleNote[] {
     if (!time) continue;
     const minutes = parseHhmm(time);
     if (minutes === null) continue;
-    notes.push({ id: m.id, date: m.date, roomId: m.roomId, time, startMs: toMs(m.date, minutes), text: m.text, functionLabel: functionFromNoteText(m.text), bookingId: m.bookingId });
+    notes.push({ id: m.id, date: m.date, roomId: m.roomId, time, startMs: toMs(m.date, minutes), text: m.text, functionLabel: functionFromNoteText(m.text), bookingId: m.bookingId, timetargetKey: m.timetargetKey });
   }
   return notes;
 }
@@ -266,12 +267,52 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
     }
   }
   // The purple notes: the only source of times. A note with no booking
-  // is a setup on its own.
+  // is a setup on its own — unless it can be matched to one. A note
+  // imported before its TimeTarget row matched a booking carries no
+  // bookingId (the row's event had a job prefix and was cut short, so
+  // the match failed), and without a booking the note exports with no
+  // title and only its one room. So an orphaned note is matched back
+  // to a booking on its date in its room: by the event name in its
+  // TimeTarget key when there is one, and otherwise by the closest
+  // session start after its time — a setup precedes its session.
+  // The date and room already pin it down, so this cannot reach
+  // across to another event.
+  const eventOfNote = (note: PurpleNote): string => {
+    const key = note.timetargetKey ?? '';
+    if (!key) return '';
+    const parts = key.split('|');
+    if (parts.length < 5) return '';
+    return parts.slice(3, -1).join('|');
+  };
+  const minutesOf = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const bookingForOrphanNote = (note: PurpleNote): Booking | undefined => {
+    const sameDay = bookings.filter(b => b.date === note.date && (b.roomIds?.includes(note.roomId) || b.roomId === note.roomId));
+    if (!sameDay.length) return undefined;
+    const event = eventOfNote(note);
+    const byEvent = event ? sameDay.filter(b => eventMatchesEvent(event, b.title)) : [];
+    const pool = byEvent.length ? byEvent : sameDay;
+    const noteMinutes = parseHhmm(note.time) ?? 0;
+    return pool.reduce((best, b) => {
+      const gap = (t: string) => minutesOf(t) - noteMinutes;
+      const bestGap = gap(best.startTime);
+      const thisGap = gap(b.startTime);
+      // The closest session at or after the note's time wins; a session
+      // before it only wins when nothing follows it.
+      if (bestGap >= 0 && thisGap >= 0) return thisGap < bestGap ? b : best;
+      if (bestGap >= 0) return best;
+      if (thisGap >= 0) return b;
+      return thisGap > bestGap ? b : best;
+    });
+  };
   for (const note of notes) {
     const booking = note.bookingId ? byBooking.get(note.bookingId) : undefined;
-    const rooms = booking ? allRooms(booking) : [note.roomId];
-    const title = booking?.title ?? '';
-    fnFor(eventFor(title, note.date, rooms, booking?.id), functionDisplayName(note.functionLabel)).notes.push(note);
+    const resolved = booking ?? bookingForOrphanNote(note);
+    const rooms = resolved ? allRooms(resolved) : [note.roomId];
+    const title = resolved?.title ?? '';
+    fnFor(eventFor(title, note.date, rooms, resolved?.id), functionDisplayName(note.functionLabel)).notes.push(note);
   }
   for (const ev of events.values()) {
     const lines: { text: string; startMs: number }[] = [];
