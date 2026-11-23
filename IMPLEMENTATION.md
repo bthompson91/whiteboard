@@ -867,7 +867,15 @@ without re-importing; re-importing replaces it, and the summary dialog
 has a Clear jobs list button. Clearing the list drops it from the file
 — job numbers already set on bookings are untouched. An old board file
 with no jobs field loads with an empty list. Nothing is auto-assigned:
-the editor picks a job from the list, or types a number in.
+the editor picks a job from the list, or types a number in. The list is
+per venue, not per browser: setting up a new venue (wizard or Unlink)
+clears it, because the old venue's jobs would otherwise be offered as
+possible matches on the new venue's bookings — the list lives in
+memory, and the blank board a new venue gets is empty, but the
+in-memory list would refill it on the next auto-save. A "Clear jobs"
+button sits next to 📋 Jobs in the top bar whenever a list is loaded,
+so a board that already picked up the wrong venue's list can be
+cleared without re-importing.
 
 - **Columns** (`src/lib/jobsImport.ts`): matched case-insensitively
   (Order Id also answers to Order/Order No/Id, Sales Person to

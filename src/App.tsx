@@ -331,6 +331,14 @@ export default function App() {
     const venueConfig = parseVenueConfig(text);
     localStorage.setItem(VENUE_YAML_KEY, text);
     setYamlText(text);
+    // A new venue is a new venue: the old venue's jobs list does not
+    // carry over. Without this, the Crown jobs list stays in memory and
+    // the auto-save writes it into the new venue's board, so the MCG
+    // inspector offers Crown jobs as possible matches. The blank board
+    // below is empty, but the in-memory list would refill it.
+    setJobs([]);
+    setJobsImportedAt(null);
+    setJobsResult(null);
     setError(null);
     setSetupWizardOpen(false);
     setWelcomeOpen(false);
@@ -822,6 +830,7 @@ export default function App() {
         onImportTimes={importTimetargetTimes}
         onImportJobs={importJobs}
         jobsCount={jobs.length}
+        onClearJobs={clearJobs}
         onExportWeekendNotes={exportWeekendNotes}
         weekendNotesTitle={overnightWindow(new Date()).title}
       />
