@@ -54,7 +54,7 @@ try {
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
   const { findTimetargetColumns, resolveTimetargetRoom, resolveTimetargetRooms, shortFunctionName, eventMatchesEvent, timetargetNoteKey, timetargetNoteText, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
-  const { overnightWindow, headerRangeLabel, headerTableDays, parseHhmm, roomDisplayName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
+  const { overnightWindow, headerRangeLabel, headerTableDays, parseHhmm, roomDisplayName, roomGroupName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
   const { placeNote } = await import(pathToFileURL(join(dir, 'notePlacement.js')).href);
   const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
 
@@ -1067,12 +1067,12 @@ try {
   // --- Weekend / overnight notes ---
   const wnVenue = parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Room A', 'Room B', 'Room C']\n`);
   const wnFri = overnightWindow(new Date(2026, 9, 2, 10, 0));
-  check('a Friday opens the weekend window, 5pm Friday to 7am Monday', wnFri.kind === 'weekend' && wnFri.start.getDay() === 5 && wnFri.start.getDate() === 2 && wnFri.start.getHours() === 17 && wnFri.end.getDay() === 1 && wnFri.end.getDate() === 5 && wnFri.end.getHours() === 7 && wnFri.title === 'Weekend Notes' && wnFri.rangeLabel === 'Friday Oct 2 - Sunday Oct 4' && wnFri.filename.startsWith('Weekend Notes ') && wnFri.filename.endsWith('.docx'), JSON.stringify(wnFri));
+  check('a Friday opens the weekend window, Friday to 7am Monday', wnFri.kind === 'weekend' && wnFri.start.getDay() === 5 && wnFri.start.getDate() === 2 && wnFri.start.getHours() === 0 && wnFri.end.getDay() === 1 && wnFri.end.getDate() === 5 && wnFri.end.getHours() === 7 && wnFri.title === 'Weekend Notes' && wnFri.rangeLabel === 'Friday Oct 2 - Sunday Oct 4' && wnFri.filename.startsWith('Weekend Notes ') && wnFri.filename.endsWith('.docx') && JSON.stringify(wnFri.fullDays) === JSON.stringify(['2026-10-02', '2026-10-03', '2026-10-04']), JSON.stringify(wnFri));
   const wnSat = overnightWindow(new Date(2026, 9, 3, 10, 0));
   const wnSun = overnightWindow(new Date(2026, 9, 4, 10, 0));
   check('Saturday and Sunday open the same weekend window', wnSat.start.getTime() === wnFri.start.getTime() && wnSat.end.getTime() === wnFri.end.getTime() && wnSun.start.getTime() === wnFri.start.getTime() && wnSun.end.getTime() === wnFri.end.getTime(), JSON.stringify([wnSat, wnSun]));
   const wnMon = overnightWindow(new Date(2026, 9, 5, 10, 0));
-  check('a Monday opens that night, 5pm to 7am Tuesday', wnMon.kind === 'weeknight' && wnMon.start.getDay() === 1 && wnMon.start.getDate() === 5 && wnMon.start.getHours() === 17 && wnMon.end.getDay() === 2 && wnMon.end.getDate() === 6 && wnMon.end.getHours() === 7 && wnMon.title === 'Overnight Notes' && wnMon.rangeLabel === 'Monday Oct 5 - Tuesday Oct 6', JSON.stringify(wnMon));
+  check('a Monday opens that night plus all of Tuesday, 5pm to 11:59pm Tuesday', wnMon.kind === 'weeknight' && wnMon.start.getDay() === 1 && wnMon.start.getDate() === 5 && wnMon.start.getHours() === 17 && wnMon.end.getDay() === 2 && wnMon.end.getDate() === 6 && wnMon.end.getHours() === 23 && wnMon.end.getMinutes() === 59 && wnMon.title === 'Overnight Notes' && wnMon.rangeLabel === 'Monday Oct 5 - Tuesday Oct 6' && JSON.stringify(wnMon.fullDays) === JSON.stringify(['2026-10-06']), JSON.stringify(wnMon));
   check('parseHhmm reads 24-hour times and rejects the rest', parseHhmm('06:30') === 390 && parseHhmm('23:59') === 1439 && parseHhmm('24:00') === null && parseHhmm('6.30') === null);
   const wnBookings = [
     booking({ id: 'b-setup-in', title: 'Setup In', date: '2026-10-02', roomId: 'Room A', roomIds: ['Room A'], timeline: [{ label: 'Setup', start: '15:00', end: '22:00' }] }),
@@ -1101,8 +1101,8 @@ try {
   const wnMapVenue = parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Room A', 'Room B', 'Room C', 'Room D']\n  room_mappings:\n    Palladium: ['Room A', 'Room B']\n`);
   check('a merged block prints under its combined name, and a long list shortens', roomDisplayName(wnMapVenue, ['Room A', 'Room B']) === 'Palladium' && roomDisplayName(wnMapVenue, ['Room A']) === 'Room A' && roomDisplayName(wnMapVenue, ['Room B', 'Room C']) === 'Room B, Room C' && roomDisplayName(wnMapVenue, ['Room A', 'Room B', 'Room C', 'Room D']) === 'Room A + 3 more', JSON.stringify([roomDisplayName(wnMapVenue, ['Room A', 'Room B']), roomDisplayName(wnMapVenue, ['Room A', 'Room B', 'Room C', 'Room D'])]));
   const wnItems = collectOvernightItems(wnBookings, wnMarkup, wnVenue, wnFri);
-  check('all events in the window are listed, with no hotel times', wnItems.length === 8 && wnItems.some(i => i.title === 'Setup In') && wnItems.some(i => i.title === 'Teardown') && !wnItems.some(i => ['Setup Out', 'Mon Late'].includes(i.title)), JSON.stringify(wnItems.map(i => `${i.roomId} ${i.date} ${i.title}`)));
-  check('items print by day, then by room, then chronologically', JSON.stringify(wnItems.map(i => i.title)) === JSON.stringify(['Setup In', 'Multi Room', 'Noted Setup', 'Twin Event', 'Teardown', 'Sat Early', '', 'Sun Setup']), JSON.stringify(wnItems.map(i => `${i.date} ${i.roomId} ${i.title}`)));
+  check('all events in the window are listed, with no hotel times', wnItems.length === 9 && wnItems.some(i => i.title === 'Setup In') && wnItems.some(i => i.title === 'Setup Out') && wnItems.some(i => i.title === 'Teardown') && !wnItems.some(i => i.title === 'Mon Late'), JSON.stringify(wnItems.map(i => `${i.roomId} ${i.date} ${i.title}`)));
+  check('items print by room, then by day, then chronologically', JSON.stringify(wnItems.map(i => i.title)) === JSON.stringify(['Setup Out', 'Setup In', 'Multi Room', 'Noted Setup', 'Twin Event', 'Sun Setup', 'Teardown', 'Sat Early', '']), JSON.stringify(wnItems.map(i => `${i.date} ${i.roomId} ${i.title}`)));
   check('a multi-room setup is listed once, under its rooms', wnItems.filter(i => i.title === 'Multi Room').length === 1 && wnItems.find(i => i.title === 'Multi Room')?.roomName === 'Room A, Room B', JSON.stringify(wnItems.filter(i => i.title === 'Multi Room')));
   check('a booking with no purple note is listed with its function, not a hotel time', JSON.stringify(wnItems.find(i => i.title === 'Setup In')?.timeLines) === JSON.stringify(['SU']) && JSON.stringify(wnItems.find(i => i.title === 'Teardown')?.timeLines) === JSON.stringify(['PD']), JSON.stringify(wnItems.filter(i => ['Setup In', 'Teardown'].includes(i.title))));
   const wnNoted = wnItems.find(i => i.title === 'Noted Setup');
@@ -1126,6 +1126,18 @@ try {
   ];
   const wnOrphanItems = collectOvernightItems(wnOrphanBookings, wnOrphanMarkup, wnMapVenue, wnMon);
   check('an orphaned purple note is matched back to its booking by date, room and event', wnOrphanItems.length === 1 && wnOrphanItems[0].title === 'Christmas Lunch 2026' && wnOrphanItems[0].roomName === 'Palladium' && JSON.stringify(wnOrphanItems[0].timeLines) === JSON.stringify(['SU 06:30']) && wnOrphanItems[0].bookingId === 'b-xmas', JSON.stringify(wnOrphanItems));
+  // A booking on a full day with no timeline entries and no purple
+  // notes is still listed — the notes list ALL the events for the
+  // next day, not just the ones with work recorded — with no time
+  // lines, so the crew writes the times in. A booking on the
+  // window's start day with no work is not listed.
+  const wnNoWorkBookings = [
+    booking({ id: 'b-nowork', title: 'No Work Event', date: '2026-10-06', roomId: 'Room A', roomIds: ['Room A'] }),
+    booking({ id: 'b-nowork-mon', title: 'Monday No Work', date: '2026-10-05', roomId: 'Room A', roomIds: ['Room A'] }),
+  ];
+  const wnNoWorkItems = collectOvernightItems(wnNoWorkBookings, [], wnMapVenue, wnMon);
+  check('a full-day event with no work recorded is listed with no time lines, a start-day event with no work is not', wnNoWorkItems.length === 1 && wnNoWorkItems[0].title === 'No Work Event' && wnNoWorkItems[0].timeLines.length === 0, JSON.stringify(wnNoWorkItems));
+  check('a room section is headed by its combined name, however many of its rooms an event uses', roomGroupName(wnMapVenue, 'Room A') === 'Palladium' && roomGroupName(wnMapVenue, 'Room B') === 'Palladium' && roomGroupName(wnMapVenue, 'Room C') === 'Room C', JSON.stringify([roomGroupName(wnMapVenue, 'Room A'), roomGroupName(wnMapVenue, 'Room B'), roomGroupName(wnMapVenue, 'Room C')]));
   // --- The .docx writer ---
   const dx = buildDocx({
     title: 'Test & <Doc>',
@@ -1171,9 +1183,9 @@ try {
   const wnResult = buildWeekendNotesDocx(wnBookings, wnMarkup, wnVenue, new Date(2026, 9, 2, 10, 0));
   const wnText = new TextDecoder().decode(wnResult.bytes);
   const wnBullets = wnText.split('<w:t xml:space="preserve">- </w:t>').length - 1;
-  check('the DOCX follows the samples: Calibri, header title, duty-manager table, day sections, Event/Room headings, dash bullets, no hotel times', wnResult.items === 8 && wnResult.days === 3 && wnResult.filename.endsWith('.docx') && wnResult.bytes[0] === 0x50 && wnResult.bytes[1] === 0x4b && wnText.includes('Weekend Notes Fri, 2 Oct - Sun, 4 Oct') && wnText.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnText.includes('Duty Manager') && wnText.includes('After Hours Contact: 0427 421 821') && wnText.includes('Saturday') && wnText.includes('Sunday') && wnText.lastIndexOf('>Saturday</w:t>') < wnText.lastIndexOf('>Sunday</w:t>') && wnText.includes('Setup In/Room A') && wnText.includes('Multi Room/Room A, Room B') && wnText.includes('Noted Setup/Room A') && wnText.includes('Twin Event/Room A') && wnText.includes('Teardown/Room B') && wnText.includes('Sat Early/Room B') && wnText.includes('PD/Room C') && wnText.includes('Sun Setup/Room A') && wnText.includes('Set Up 18:00') && wnText.includes('Set Up 18:30') && wnText.includes('Pack Down 23:00') && wnText.includes('Set Up 19:00') && wnText.includes('Pack Down 23:30') && wnText.includes('Set Up 06:00') && wnText.includes('Pack Down 05:00') && wnText.includes('Set Up 10:00') && wnText.includes('>SU</w:t>') && wnText.includes('>PD</w:t>') && !wnText.includes('Setup 09:00') && !wnText.includes('Setup 15:00') && !wnText.includes('Setup 19:00') && !wnText.includes('Teardown 23:00') && !wnText.includes(' PD/') && wnText.includes(' PAGE ') && wnText.includes(' NUMPAGES ') && wnBullets === 24, `bullets ${wnBullets}`);
+  check('the DOCX follows the samples: Calibri, header title, duty-manager table, room sections, date — title headings, dash bullets, no hotel times', wnResult.items === 9 && wnResult.days === 3 && wnResult.filename.endsWith('.docx') && wnResult.bytes[0] === 0x50 && wnResult.bytes[1] === 0x4b && wnText.includes('Weekend Notes Fri, 2 Oct - Sun, 4 Oct') && wnText.includes('Weekend Notes Friday Oct 2 - Sunday Oct 4') && wnText.includes('Duty Manager') && wnText.includes('After Hours Contact: 0427 421 821') && wnText.includes('Saturday') && wnText.includes('Sunday') && wnText.lastIndexOf('>Saturday</w:t>') < wnText.lastIndexOf('>Sunday</w:t>') && wnText.indexOf('>Room A</w:t>') < wnText.indexOf('>Room B</w:t>') && wnText.indexOf('>Room B</w:t>') < wnText.indexOf('>Room C</w:t>') && wnText.includes('Fri, 2 Oct — Setup In') && wnText.includes('Fri, 2 Oct — Setup Out') && wnText.includes('Fri, 2 Oct — Multi Room') && wnText.includes('Fri, 2 Oct — Noted Setup') && wnText.includes('Fri, 2 Oct — Twin Event') && wnText.includes('Fri, 2 Oct — Teardown') && wnText.includes('Sat, 3 Oct — Sat Early') && wnText.includes('Sat, 3 Oct — PD') && wnText.includes('Sun, 4 Oct — Sun Setup') && wnText.includes('Set Up 18:00') && wnText.includes('Set Up 18:30') && wnText.includes('Pack Down 23:00') && wnText.includes('Set Up 19:00') && wnText.includes('Pack Down 23:30') && wnText.includes('Set Up 06:00') && wnText.includes('Pack Down 05:00') && wnText.includes('Set Up 10:00') && wnText.includes('>SU</w:t>') && wnText.includes('>PD</w:t>') && !wnText.includes('Setup 09:00') && !wnText.includes('Setup 15:00') && !wnText.includes('Setup 19:00') && !wnText.includes('Teardown 23:00') && !wnText.includes('Setup In/Room A') && wnText.includes(' PAGE ') && wnText.includes(' NUMPAGES ') && wnBullets === 27, `bullets ${wnBullets}`);
   // A weeknight's overnight notes have no duty-manager table — the body
-  // starts straight at the day sections — but the footer still names the
+  // starts straight at the room sections — but the footer still names the
   // After Hours Contact.
   const wnOvernight = buildWeekendNotesDocx(wnBookings, wnMarkup, wnVenue, new Date(2026, 9, 5, 10, 0));
   const wnOvernightText = new TextDecoder().decode(wnOvernight.bytes);

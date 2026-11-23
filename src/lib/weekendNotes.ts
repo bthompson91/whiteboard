@@ -18,10 +18,13 @@
 // The title follows the day of generation: Friday, Saturday or Sunday
 // gives "Weekend Notes", Monday to Thursday gives "Overnight Notes".
 //
-// The window: on a non-Friday weekday it is 5pm today to 7am tomorrow;
-// on a weekend it is 5pm Friday to 7am Monday. The date decides the
-// window, not the time of day — opening it on a Saturday still gives
-// that weekend's window.
+// The window: on a non-Friday weekday it is 5pm today to the end of
+// tomorrow, so it lists ALL of tomorrow's events, not just the
+// overnight work; on a weekend it is Friday to Monday 7am, so it lists
+// ALL of the weekend's events. The date decides the window, not the
+// time of day — opening it on a Saturday still gives that weekend's
+// window. The events print by room in board order, then by date:
+// all the Palladiums, then all the Rivers, then all the Gardens.
 
 import type { Booking, MarkupItem } from '../types';
 import type { ParsedVenueConfig } from './venueConfig';
@@ -36,6 +39,10 @@ export interface OvernightWindow {
   title: string;
   rangeLabel: string;
   filename: string;
+  // The days listed in full: every event on one of these days is
+  // listed, even one with no setup or pack-down recorded. A weeknight
+  // lists tomorrow; a weekend lists Friday, Saturday and Sunday.
+  fullDays: string[];
 }
 
 export interface OvernightItem {
@@ -71,10 +78,16 @@ const weekdayLong = (d: Date) => new Intl.DateTimeFormat('en-AU', { weekday: 'lo
 const monthShort = (d: Date) => new Intl.DateTimeFormat('en-AU', { month: 'short' }).format(d);
 const fmtTitleDate = (d: Date) => `${weekdayLong(d)} ${monthShort(d)} ${d.getDate()}`;
 const fmtShort = (d: Date) => new Intl.DateTimeFormat('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // The overnight window for a date. Friday, Saturday and Sunday all give
-// the same weekend window (Friday 17:00 to Monday 07:00); Monday to
-// Thursday give that night (17:00 to 07:00 tomorrow).
+// the same weekend window (Friday 00:00 to Monday 07:00); Monday to
+// Thursday give that night plus the whole next day (17:00 to 23:59
+// tomorrow). The notes list ALL the events in the window — the whole
+// next day, or the whole weekend — not just the work in the overnight
+// hours, so the crew coming on sees everything they are setting up
+// for, including daytime setups. The weekend runs to Monday 07:00 so
+// a Sunday event's pack-down past midnight is still in it.
 export function overnightWindow(now: Date): OvernightWindow {
   const day = now.getDay(); // 0 Sunday .. 6 Saturday
   if (day === 5 || day === 6 || day === 0) {
@@ -83,21 +96,23 @@ export function overnightWindow(now: Date): OvernightWindow {
     const sunday = addDays(friday, 2);
     return {
       kind: 'weekend',
-      start: atTime(friday, 17, 0),
+      start: atTime(friday, 0, 0),
       end: atTime(monday, 7, 0),
       title: 'Weekend Notes',
       rangeLabel: `${fmtTitleDate(friday)} - ${fmtTitleDate(sunday)}`,
       filename: `Weekend Notes ${fmtShort(friday)} - ${fmtShort(sunday)}.docx`,
+      fullDays: [isoDate(friday), isoDate(addDays(friday, 1)), isoDate(sunday)],
     };
   }
   const tomorrow = addDays(now, 1);
   return {
     kind: 'weeknight',
     start: atTime(now, 17, 0),
-    end: atTime(tomorrow, 7, 0),
+    end: atTime(tomorrow, 23, 59),
     title: 'Overnight Notes',
     rangeLabel: `${fmtTitleDate(now)} - ${fmtTitleDate(tomorrow)}`,
     filename: `Overnight Notes ${fmtShort(now)} - ${fmtShort(tomorrow)}.docx`,
+    fullDays: [isoDate(tomorrow)],
   };
 }
 
@@ -205,9 +220,18 @@ export function roomDisplayName(venue: ParsedVenueConfig, roomIds: string[]): st
   return `${nameOf(roomIds[0])} + ${roomIds.length - 1} more`;
 }
 
-// The items in the order they print: by day, then by room in board
-// order (the event's first room), then chronologically within the room.
-//
+// The room a section is headed by: the combined name when the room
+// belongs to one of the venue's room mappings (Palladium A, B, C1, C2,
+// C3 are all "Palladium"), otherwise the room's own name. This is
+// what groups the notes by room area — every Palladium event under
+// one heading, however many of the Palladium rooms it uses.
+export function roomGroupName(venue: ParsedVenueConfig, roomId: string): string {
+  for (const [combined, rooms] of Object.entries(venue.mappings ?? {})) {
+    if (rooms.includes(roomId)) return combined;
+  }
+  return venue.rooms.find(r => r.id === roomId)?.name ?? roomId;
+}
+
 // Every event in the window is listed — a booking with no purple note
 // is still an item. But a time is only ever a purple TimeTarget note's
 // own time: the hotel's timeline times are never shown. A function
@@ -235,14 +259,22 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
     date: string;
     rooms: string[];
     bookingId?: string;
+    // The earliest start of any booking in the event, for ordering an
+    // event that has no lines (a full-day event with no work recorded).
+    firstStartMs: number;
     functions: Map<string, { notes: PurpleNote[]; entries: { startMs: number; endMs: number }[] }>;
   }
   const events = new Map<string, EventWork>();
   const eventFor = (title: string, date: string, rooms: string[], bookingId?: string): EventWork => {
     const key = `${title}|${date}|${[...rooms].sort().join(',')}`;
     let ev = events.get(key);
-    if (!ev) { ev = { title, date, rooms, bookingId, functions: new Map() }; events.set(key, ev); }
+    if (!ev) { ev = { title, date, rooms, bookingId, firstStartMs: Number.MAX_SAFE_INTEGER, functions: new Map() }; events.set(key, ev); }
     if (!ev.bookingId) ev.bookingId = bookingId;
+    const booking = bookingId ? byBooking.get(bookingId) : undefined;
+    if (booking) {
+      const start = parseHhmm(booking.startTime);
+      if (start !== null) ev.firstStartMs = Math.min(ev.firstStartMs, toMs(booking.date, start));
+    }
     return ev;
   };
   const fnFor = (ev: EventWork, fn: string) => {
@@ -314,6 +346,14 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
     const title = resolved?.title ?? '';
     fnFor(eventFor(title, note.date, rooms, resolved?.id), functionDisplayName(note.functionLabel)).notes.push(note);
   }
+  // Every booking on a full day gets an event, even one with no
+  // timeline entries and no purple notes — the notes list ALL the
+  // events for the next day (or the weekend), not just the ones with
+  // work recorded. An event with no functions is listed with no time
+  // lines, so the crew writes the times in.
+  for (const b of bookings) {
+    if (window.fullDays.includes(b.date)) eventFor(b.title, b.date, allRooms(b), b.id);
+  }
   for (const ev of events.values()) {
     const lines: { text: string; startMs: number }[] = [];
     for (const [fn, f] of ev.functions) {
@@ -330,35 +370,54 @@ export function collectOvernightItems(bookings: Booking[], markup: MarkupItem[],
         lines.push({ text: fn, startMs: entriesIn[0].startMs });
       }
     }
-    if (!lines.length) continue;
+    // An event with no lines in the window is only listed when it is
+    // on a full day — a booking on the window's start day (or past
+    // midnight on its end day) is listed only for work in the window.
+    if (!lines.length && !window.fullDays.includes(ev.date)) continue;
     lines.sort((a, b) => a.startMs - b.startMs);
     const first = lines[0];
-    items.push({ roomId: ev.rooms[0], roomName: ev.title ? roomDisplayName(venue, ev.rooms) : roomName(ev.rooms[0]), date: ev.date, startMs: first.startMs, title: ev.title, timeLines: lines.map(l => l.text), functionLabel: functionDisplayName(functionFromNoteText(first.text)), bookingId: ev.bookingId });
+    const startMs = first ? first.startMs : ev.firstStartMs;
+    const functionLabel = first ? functionDisplayName(functionFromNoteText(first.text)) : '';
+    items.push({ roomId: ev.rooms[0], roomName: ev.title ? roomDisplayName(venue, ev.rooms) : roomName(ev.rooms[0]), date: ev.date, startMs, title: ev.title, timeLines: lines.map(l => l.text), functionLabel, bookingId: ev.bookingId });
   }
 
+  // The items in the order they print: by room in board order, then by
+  // day, then chronologically within the room — all the Palladiums by
+  // date, then all the Rivers, then all the Gardens. The room is the
+  // event's first room: rooms of one area sit next to each other in
+  // the board order, so every event in that area sorts together.
   const orderOf = (roomId: string) => (roomOrder.has(roomId) ? roomOrder.get(roomId)! : Number.MAX_SAFE_INTEGER);
-  items.sort((a, b) => a.date.localeCompare(b.date) || orderOf(a.roomId) - orderOf(b.roomId) || a.startMs - b.startMs || a.title.localeCompare(b.title));
+  items.sort((a, b) => orderOf(a.roomId) - orderOf(b.roomId) || a.date.localeCompare(b.date) || a.startMs - b.startMs || a.title.localeCompare(b.title));
   return items;
 }
 
 // The document itself, in the samples' shape: Calibri on A4, the title
 // in the header (24pt bold, centred — as in the samples, where the
 // title lives in the header and the body starts with the table), the
-// duty-manager header table on a weekend window only, then a section per day — "Event/Room"
-// headings, each of the event's functions on its own line (with its
-// purple time when there is one, otherwise just the function name), and
-// three empty "- " bullets to write in. An empty window still produces
-// a file, so the crew can see there is nothing overnight instead of
-// wondering whether the export failed. The footer names the after-hours contact from Configuration.
+// duty-manager header table on a weekend window only, then a section
+// per room — all the Palladiums by date, then all the Rivers, then
+// all the Gardens — each event headed by its date and title, each of
+// the event's functions on its own line (with its purple time when
+// there is one, otherwise just the function name), and three empty
+// "- " bullets to write in. An empty window still produces a file, so
+// the crew can see there is nothing overnight instead of wondering
+// whether the export failed. The footer names the after-hours contact
+// from Configuration.
 export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[], venue: ParsedVenueConfig, now = new Date()): WeekendNotesResult {
   const window = overnightWindow(now);
   const items = collectOvernightItems(bookings, markup, venue, window);
-  const days: { date: string; items: OvernightItem[] }[] = [];
+  // Sections by room area, in the order the items already print in
+  // (room, then date): consecutive items in one room area share a
+  // heading, so every Palladium event is under "Palladium" however
+  // many of the Palladium rooms it uses.
+  const sections: { room: string; items: OvernightItem[] }[] = [];
   for (const item of items) {
-    const last = days[days.length - 1];
-    if (last && last.date === item.date) last.items.push(item);
-    else days.push({ date: item.date, items: [item] });
+    const room = roomGroupName(venue, item.roomId);
+    const last = sections[sections.length - 1];
+    if (last && last.room === room) last.items.push(item);
+    else sections.push({ room, items: [item] });
   }
+  const days = new Set(items.map(i => i.date)).size;
   const title = `${window.title} ${window.rangeLabel}`;
   const blank: DocxParagraph = { runs: [], size: 28 };
   const body: DocxBlock[] = [];
@@ -390,11 +449,14 @@ export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[],
   if (!items.length) {
     body.push({ type: 'paragraph', paragraph: { runs: [{ text: 'No setups in this window.' }], size: 28 } });
   }
-  for (const [dayIndex, day] of days.entries()) {
-    if (dayIndex > 0) body.push({ type: 'paragraph', paragraph: blank });
-    body.push({ type: 'paragraph', paragraph: { runs: [{ text: weekdayLong(new Date(`${day.date}T12:00:00`)) }], bold: true, size: 28 } });
-    for (const item of day.items) {
-      const heading = item.title ? `${item.title}/${item.roomName}` : `${item.functionLabel}/${item.roomName}`;
+  for (const [sectionIndex, section] of sections.entries()) {
+    if (sectionIndex > 0) body.push({ type: 'paragraph', paragraph: blank });
+    body.push({ type: 'paragraph', paragraph: { runs: [{ text: section.room }], bold: true, size: 28 } });
+    for (const item of section.items) {
+      // The room is the section heading now, so the event heading
+      // carries its date instead: "Tue, 24 Nov — Title".
+      const dateLabel = fmtShort(new Date(`${item.date}T12:00:00`));
+      const heading = item.title ? `${dateLabel} — ${item.title}` : `${dateLabel} — ${item.functionLabel}`;
       body.push({ type: 'paragraph', paragraph: { runs: [{ text: heading }], bold: true, size: 36 } });
       for (const line of item.timeLines) body.push({ type: 'paragraph', paragraph: { runs: [{ text: line }], size: 28 } });
       for (let i = 0; i < 3; i++) body.push({ type: 'paragraph', paragraph: { runs: [{ text: '- ' }], size: 28 } });
@@ -409,5 +471,5 @@ export function buildWeekendNotesDocx(bookings: Booking[], markup: MarkupItem[],
     ],
     body,
   });
-  return { bytes, filename: window.filename, window, days: days.length, items: items.length };
+  return { bytes, filename: window.filename, window, days, items: items.length };
 }

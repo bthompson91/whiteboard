@@ -1,9 +1,11 @@
 /* Print view: a paper-friendly board for Save as PDF. On screen it is a
 full-screen overlay like Configuration; in print only the board itself
-prints, landscape, with the app chrome hidden. The sheet is sized to
-one landscape page (every room across, the whole date range down), so
-it must not carry any extra margin or padding in print — even a few
-pixels over the printable height would spill onto a blank second page. */
+prints, landscape, with the app chrome hidden. The height is one page
+(the whole date range down each sheet); the width may split across
+sheets, so each sheet breaks after itself — except the last, which
+must not force a blank sheet after it. A sheet must not carry any
+extra margin or padding in print — even a few pixels over the
+printable height would spill onto a blank second page. */
 .print-view{position:fixed;inset:0;z-index:4000;display:flex;flex-direction:column;background:#fff;color:#141414;font-size:14px;overflow:auto}
 .print-view-header{flex:none;padding:14px 20px;border-bottom:2px solid #141414;background:#f6f0e3}
 .print-view-header h1{font-size:19px;margin:0 0 6px}
@@ -46,7 +48,8 @@ win in the cascade and clip the printout to a single page. */
   .app>*:not(.print-view){display:none!important}
   .print-view{position:static!important;overflow:visible!important;display:block!important}
   .print-view-header{display:none!important}
-  .print-chunk{margin:0;padding:0;page-break-after:avoid;break-after:avoid}
+  .print-chunk{margin:0;padding:0;page-break-after:always;break-after:page}
+  .print-chunk:last-child{page-break-after:auto;break-after:auto}
   .print-row{break-inside:avoid;page-break-inside:avoid}
   .print-block{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .print-date-cell{-webkit-print-color-adjust:exact;print-color-adjust:exact}
