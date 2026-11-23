@@ -796,7 +796,13 @@ the editor picks a job from the list, or types a number in.
   salesperson (with a ✓ when it matches the booking's salesperson) and
   its dates when it is a day out; the row already set on the booking is
   marked Selected. Clicking Select fills the job number field (the
-  booking's level number; per-room numbers are still typed in by hand).
+  booking's level number; per-room numbers are still typed in by hand)
+  and, when the job's salesperson matches someone in the palette
+  (`jobSalesperson` in `jobsImport.ts`, the same name matching as the
+  ✓), selects that salesperson too — overriding the booking's current
+  one. A job with no salesperson, or one the palette does not have,
+  leaves the salesperson alone. The number and the salesperson land in
+  one draft update, so neither clobbers the other.
   With no jobs list loaded the inspector shows a hint to use 📋 Jobs;
   with a list loaded but no match it says so.
 - **Measured against the real export** (23 Nov–31 Dec, 132 board
@@ -918,7 +924,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-293 checks covering matching tiers and weights, booking identity, height and
+294 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
@@ -928,7 +934,8 @@ placement and the drag-from-rendered-position fix, SU/PD short names, the
 overnight-notes button title, the weekend-only duty-manager table and the
 After Hours Contact footer, and the Jobs import (column finding, area/event
 splitting, name scores, salesperson matching, candidate ranking with the
-salesperson tiebreak and the ±1 day window, and the board-file round-trip
+salesperson tiebreak and the ±1 day window, the job-to-salesperson
+resolution used when a job is selected, and the board-file round-trip
 with the jobs list). Run it before pushing;
 the build (`npm run build`) must also be green.
 

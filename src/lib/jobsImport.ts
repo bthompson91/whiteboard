@@ -11,6 +11,7 @@
 // room gets told apart.
 import * as XLSX from 'xlsx';
 import { Booking, JobEntry } from '../types';
+import type { Salesperson } from './configuration';
 import { readWorkbook, sheetRecords } from './bookingImport';
 import { dateValue } from './dateTime';
 import { normalizeIdentity } from './bookingIdentity';
@@ -164,6 +165,16 @@ function addDaysIso(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+// The board salesperson a job belongs to, by name — or undefined when
+// the job has no salesperson or the palette does not have them. The
+// same name matching as the candidate ✓, so a ticked candidate always
+// resolves, and a job whose salesperson is not in the palette resolves
+// to nothing instead of inventing one.
+export function jobSalesperson(job: JobEntry, salespeople: Salesperson[]): Salesperson | undefined {
+  if (!job.salesPerson) return undefined;
+  return salespeople.find(p => salesPersonMatches(p.name, job.salesPerson));
 }
 
 export interface JobCandidate {

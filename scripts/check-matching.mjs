@@ -55,7 +55,7 @@ try {
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
   const { findTimetargetColumns, resolveTimetargetRoom, resolveTimetargetRooms, shortFunctionName, eventMatchesEvent, timetargetNoteKey, timetargetNoteText, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
-  const { findJobsColumns, jobArea, jobEvent, jobNameScore, salesPersonMatches, findJobCandidates, parseJobsWorkbook } = await import(pathToFileURL(join(dir, 'jobsImport.js')).href);
+  const { findJobsColumns, jobArea, jobEvent, jobNameScore, salesPersonMatches, jobSalesperson, findJobCandidates, parseJobsWorkbook } = await import(pathToFileURL(join(dir, 'jobsImport.js')).href);
   const { overnightWindow, headerRangeLabel, headerTableDays, parseHhmm, roomDisplayName, roomGroupName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
   const { placeNote } = await import(pathToFileURL(join(dir, 'notePlacement.js')).href);
   const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
@@ -587,6 +587,15 @@ try {
   throws('Jobs import refuses a file without the Order Id column', () => findJobsColumns(['Description', 'Sales Person', 'Start Date', 'End Date']));
   check('the name score is 1 for an exact match and 0 when nothing overlaps', jobNameScore('CBA and SBV Retired Staff Christmas Lunch 2026', 'CBA and SBV Retired Staff Christmas Lunch 2026') === 1 && jobNameScore('AI.CARE Conference 2026', 'AI Care Conference 2026') === 1 && jobNameScore('Dekoda Bell-Pickett & Nick Colley Wedding', "Dekoda & Nick's Wedding") > 0.5 && jobNameScore('TLC Healthcare Dinner 2026', 'Encore Storage - LaTrobe/TLC') === 0.5 && jobNameScore('Crown Christmas Trivia', 'Crown Conference Centre Carpet Upgrade') === 0.5 && jobNameScore('Frankston Valedictory', 'CPA Australia Dinner') === 0, JSON.stringify([jobNameScore('Dekoda Bell-Pickett & Nick Colley Wedding', "Dekoda & Nick's Wedding"), jobNameScore('TLC Healthcare Dinner 2026', 'Encore Storage - LaTrobe/TLC')]));
   check('a salesperson matches by full name, by initial, or by last name only — but a contradicting initial does not match', salesPersonMatches('Cara Coughey', 'Cara Coughey') && salesPersonMatches('C. Coughey', 'Cara Coughey') && salesPersonMatches('Coughey', 'Cara Coughey') && salesPersonMatches('cara coughey', 'Cara Coughey') && !salesPersonMatches('M Carrasco', 'Cecilia Carrasco') && !salesPersonMatches('Cara Coughey', 'Cecilia Carrasco') && !salesPersonMatches('', 'Cara Coughey') && !salesPersonMatches('Cara Coughey', ''));
+  check('a job resolves to its board salesperson by name, and to nothing when the palette does not have them', (() => {
+    const palette = [{ id: 'sp-cara', name: 'Cara Coughey', colour: '#e67e22' }, { id: 'sp-cecilia', name: 'Cecilia Carrasco', colour: '#2980b9' }];
+    const job = (salesPerson) => ({ orderId: '1', description: 'X | Y', area: 'X', event: 'Y', salesPerson, company: '', startDate: '2026-11-24', endDate: '2026-11-24' });
+    return jobSalesperson(job('Cecilia Carrasco'), palette)?.id === 'sp-cecilia'
+      && jobSalesperson(job('C. Carrasco'), palette)?.id === 'sp-cecilia'
+      && jobSalesperson(job('Brayan Mera'), palette) === undefined
+      && jobSalesperson(job(''), palette) === undefined
+      && jobSalesperson(job('M Carrasco'), palette) === undefined;
+  })());
   const jobsSerial = (iso) => Math.round((new Date(`${iso}T00:00:00Z`).getTime() - Date.UTC(1899, 11, 30)) / 86400000);
   const jobsWb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(jobsWb, XLSX.utils.aoa_to_sheet([

@@ -5,7 +5,7 @@ import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
 import { Block, blocksFor, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { applyJobNumberEdits } from '../lib/reviewApply';
-import { findJobCandidates } from '../lib/jobsImport';
+import { findJobCandidates, jobSalesperson, salesPersonMatches, JobCandidate } from '../lib/jobsImport';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
@@ -319,12 +319,24 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
     if(value)jobNumbers[room]=value;else delete jobNumbers[room];
     setDraft({...draft,jobNumbers});
   };
-  const setJobField=(value:string)=>{
+  // Setting the job number. The optional salesperson is set in the same
+  // draft update, so selecting a job never clobbers the number (or the
+  // salesperson) with a stale draft — both land in one setDraft.
+  const setJobField=(value:string, salesperson?:Salesperson)=>{
     if(!draft)return;
-    if((draft.roomIds?.length||0)<=1){setDraft({...draft,jobNumber:value});return;}
+    const base={...draft,...(salesperson?{salespersonId:salesperson.id,colour:salesperson.colour}:{})};
+    if((draft.roomIds?.length||0)<=1){setDraft({...base,jobNumber:value});return;}
     const jobNumbers={...(draft.jobNumbers||{})};
     for(const room of inspectorRooms){if(value)jobNumbers[room]=value;else delete jobNumbers[room];}
-    setDraft({...draft,jobNumbers});
+    setDraft({...base,jobNumbers});
+  };
+  // Selecting a job from Possible jobs sets the job number and, when
+  // the job's salesperson matches someone in the palette, that
+  // salesperson too. The same name matching as the ✓, so a ticked
+  // candidate always resolves; a job with no salesperson, or one the
+  // palette does not have, leaves the salesperson alone.
+  const selectJob=(c:JobCandidate)=>{
+    setJobField(c.job.orderId,jobSalesperson(c.job,salespeople));
   };
   const jobField=draft?((inspectorRooms.length?blockJobNumber(draft,inspectorRooms):draft.jobNumber)||''):'';
   // Possible jobs for the booking being edited: the jobs list filtered
@@ -433,7 +445,7 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
                             {c.job.event}{c.job.salesPerson?` — ${c.job.salesPerson}`:''}{c.salesPersonMatch?' ✓':''}{c.dateOffset!==0?` · job ${start}${start===end?'':`–${end}`}`:''}
                           </span>
                         </span>
-                        <button onClick={()=>setJobField(c.job.orderId)} disabled={selected} style={{flexShrink:0}}>{selected?'Selected':'Select'}</button>
+                        <button onClick={()=>selectJob(c)} disabled={selected} style={{flexShrink:0}}>{selected?'Selected':'Select'}</button>
                       </div>
                     );
                   })}
