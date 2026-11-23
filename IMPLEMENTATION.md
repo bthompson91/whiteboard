@@ -458,7 +458,7 @@ measure() re-rendered on every one of those DOM mutations because it
 set fresh state objects even when nothing moved, so the page never
 settled and the duplicated note count grew until it died. measure()
 now only sets size/layout when the numbers actually changed (fixed
-2026-11-23, harness 278 checks).
+2026-11-23, harness 280 checks).
 
 ## Roles and the editor lock
 
@@ -593,16 +593,23 @@ min/max booking dates on the board (or today → today+6 when there are no
 bookings), capped at two weeks — and "Show print view" renders a
 print-friendly board on one landscape sheet.
 
-- **Layout.** One landscape sheet: every room across, scaled to the
-  printable width (A4 landscape, 1047px at 10mm margins, with a small
-  margin kept back), and the whole date range down, the day height
-  scaling so all the dates fit (a short range gets tall days, a
-  two-week range gets short ones). The range is capped at two weeks,
-  in the picker (the To date cannot pass start + 13 days) and in the
-  view itself. Room widths are the board base widths clamped to
-  110–180px, then scaled together to fit, never below 12px. The sheet
-  carries no extra margin or padding in print, so it never spills onto
-  a blank second page.
+- **Layout.** The height is one page: the whole date range fits down
+  every sheet, the day height scaling so all the dates fit (a short
+  range gets tall days, a two-week range gets short ones). The width
+  may split across landscape sheets: rooms flow across as many sheets
+  as they need, each sheet carrying the date column and a run of
+  rooms, and a block spanning a sheet boundary prints its part on
+  each sheet it touches. The range is capped at two weeks, in the
+  picker (the To date cannot pass start + 13 days) and in the view
+  itself. Room widths are the board base widths clamped to
+  110–180px; a room with no bookings in the range is an empty column,
+  shrunk to just the width its name needs at a readable size (never
+  below 40px, never above its natural width). Every room name is
+  autofitted to its column: the header font scales down from its
+  base size so a long name in a narrow column still fits. The sheets
+  carry no extra margin or padding in print, so a sheet never spills
+  onto a blank second page, and each sheet breaks after itself
+  except the last.
 - **Blocks.** `blocksFor` runs with `showHidden: true`, so hidden bookings
   print (faded, dashed) and nothing is silently missing. Blocks running
   past midnight are split into per-day segments and clipped to the range.
@@ -610,7 +617,9 @@ print-friendly board on one landscape sheet.
   board. Blocks are normal grid items (`gridColumn` / `gridRow` +
   `marginTop`), not absolutely positioned — Chrome's print layout misplaces
   absolutely positioned blocks onto the wrong sheet, so this is what makes
-  each block land on the sheet. Short blocks (under 30px tall) render
+  each block land on its sheet. A block spanning a sheet boundary is
+  clipped to each sheet it touches, so its part prints on both. Short
+  blocks (under 30px tall) render
   one compact line (title + time) so the text stays inside the block.
 - **Colours.** Block backgrounds print at 50% opacity (`hexToRgba(hex,
   0.5)`) so the printout does not kill printer ink; text stays full
@@ -618,11 +627,12 @@ print-friendly board on one landscape sheet.
   the paper colour at 50%. Date cells use the same past/today/future colours
   as the board, and today's row keeps the canary highlight.
 - **Annotations.** Anchored notes and arrows render from their anchors
-  (via `pointFromAnchor` with an `AnchorLayout` built for the sheet: row
-  tops are `i × dayHeight`, room lefts are the cumulative widths). Text
-  notes print at their anchor (highlighted ones on yellow); arrows render
-  in an SVG overlay (`#7a1f1f`, 3px, arrowhead marker) only when both ends
-  resolve on the sheet. Legacy unanchored markup cannot be positioned, so
+  (via `pointFromAnchor` with an `AnchorLayout` built for each sheet:
+  row tops are `i × dayHeight`, room lefts are the cumulative widths
+  of that sheet's rooms). Text notes print at their anchor
+  (highlighted ones on yellow); arrows render in an SVG overlay
+  (`#7a1f1f`, 3px, arrowhead marker) only when both ends resolve on
+  the same sheet. Legacy unanchored markup cannot be positioned, so
   it is skipped in print.
 - **Printing.** The print view is a fixed full-screen overlay (z 4000) with
   "🖨️ Print / Save as PDF" (`window.print()`) and "Back to board" buttons.
@@ -732,7 +742,7 @@ against is `test-data/timetarget-sample.xlsx`, made by
   grouped by date once, so a large file applies in linear time: a
   20,000-row file took 55 seconds and hung the page when every row
   rescanned the whole board, and now applies in 108ms with identical
-  notes (fixed 2026-11-23, harness 278 checks).
+  notes (fixed 2026-11-23, harness 280 checks).
 - **Still to do on Brendan's side:** fill in the Timetarget Area Name
   column in Configuration for the rooms (the Crown YAML has none yet),
   and lay out the real export in the sample's format.
@@ -755,10 +765,11 @@ event to write in. No file picker, no linking — the button just spits
 the file out.
 
 - **The window** (`src/lib/weekendNotes.ts`, `overnightWindow`): on a
-  non-Friday weekday it is 5pm today to 7am tomorrow; on a weekend it
-  is 5pm Friday to 7am Monday. The date decides the window, not the
-  time of day, so opening it on a Saturday still gives that weekend's
-  window. The file is titled "Weekend Notes Friday Oct 2 - Sunday Oct
+  non-Friday weekday it is 5pm today to the end of tomorrow, so it
+  lists ALL of tomorrow's events; on a weekend it is Friday to 7am
+  Monday, so it lists ALL of the weekend's events. The date decides
+  the window, not the time of day, so opening it on a Saturday still
+  gives that weekend's window. The file is titled "Weekend Notes Friday Oct 2 - Sunday Oct
   4" for a weekend window and "Overnight Notes Tuesday Oct 6 -
   Wednesday Oct 7" for a weeknight one.
 - **The format follows Brendan's own weekend notes**
@@ -801,16 +812,20 @@ the file out.
   MCG calls them Bump In/Bump Out) and any TimeTarget note in the
   window. A setup that starts before 5pm and runs past it is in; a
   pack-down past midnight is in (an end at or before its start is read
-  as the next day). **One event is one entry, however many functions
+  as the next day). And every booking on a full day in the window is
+  listed even when it has no setup or pack-down recorded — the notes
+  list ALL the events for the next day (or the weekend), so an event
+  with no work is listed with no time lines and the crew writes the
+  times in. **One event is one entry, however many functions
   it has** — the notes for one event on one day combine into one item,
   each function a line under the one heading, earliest first. A setup
-  and its pack-down are two lines under "Copeland/Palladium", not two
-  entries, and the " PD" heading suffix is gone. The heading's room is
-  the combined name when the rooms match a room mapping exactly, the
-  rooms joined when they do not, and the first room plus a count when
-  the list is long ("Long Room + 60 more"). Items print by day, then by
-  room in board order (the event's first room), then chronologically
-  within the room.
+  and its pack-down are two lines under one heading, not two
+  entries. Items print by room in board order (the event's first
+  room), then by day, then chronologically within the room: all the
+  Palladiums by date, then all the Rivers, then all the Gardens. The
+  document is sectioned by room area — a Palladium event in one room
+  and a full-Palladium event share a "Palladium" heading — and each
+  event is headed by its date and title ("Tue, 24 Nov — Title").
 - **The times:** a time on a line is always a purple TimeTarget note's
   own time ("SU 06:30", "PD 22:30"). The hotel's timeline
   times are never shown. A function with no purple note in the window
