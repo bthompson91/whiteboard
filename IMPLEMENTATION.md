@@ -629,7 +629,18 @@ Operable wall | Reorder | Remove**:
   between the rooms of a combination are filled in as operable (see
   Operable walls above); an operable wall merges
   separate bookings, it does not expand one booking, so the mapping is
-  still what turns a combined export name into board rooms.
+  still what turns a combined export name into board rooms. Typing a
+  combined room name works: the row key is the row index, not the name
+  (keying on the name unmounted the row on every keystroke and dropped
+  focus after one character), renaming and removing a row each update
+  the mapping and the TimeTarget area in a single change (two separate
+  changes cloned the same draft, so the second overwrote the first and
+  the name edit was lost and Remove left the row in place), and
+  `change()` rebuilds the YAML from the latest text via a functional
+  updater so a keystroke that lands before React re-renders cannot
+  clone a stale draft and drop the edit that just landed. Browser-
+  verified on the real Crown YAML: Add then type a full name, rename
+  an existing entry, and Remove, all keeping focus and the right value.
 
 Salespeople are edited in their own table (Name, Short name, Colour), and
 the YAML can be exported with a save-location prompt. All three tables

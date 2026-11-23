@@ -79,25 +79,22 @@ function StringList({ values, onChange, label }: { values:string[]; onChange:(ne
 // area of a combined room, so a combination has its own rostering area
 // the same way a single room does. Renaming a key moves its extra value
 // with it, and removing a row drops it.
-function MappingEditor({ map, onChange, keyLabel, valueLabel, extraLabel, extra, onExtraChange }: { map:Record<string,string[]>; onChange:(next:Record<string,string[]>)=>void; keyLabel:string; valueLabel:string; extraLabel?:string; extra?:Record<string,string>; onExtraChange?:(next:Record<string,string>)=>void }) {
+function MappingEditor({ map, onChange, onRenameKey, onRemoveKey, keyLabel, valueLabel, extraLabel, extra, onExtraChange }: { map:Record<string,string[]>; onChange:(next:Record<string,string[]>)=>void; onRenameKey:(oldKey:string,newKey:string)=>void; onRemoveKey:(key:string)=>void; keyLabel:string; valueLabel:string; extraLabel?:string; extra?:Record<string,string>; onExtraChange?:(next:Record<string,string>)=>void }) {
   const rows = Object.entries(map);
-  const renameExtra = (oldKey: string, newKey: string) => {
-    if (!extra || !onExtraChange) return;
-    const next: Record<string, string> = {};
-    for (const [k, v] of Object.entries(extra)) next[k === oldKey ? newKey : k] = v;
-    onExtraChange(next);
-  };
-  const dropExtra = (key: string) => {
-    if (!extra || !onExtraChange) return;
-    const next: Record<string, string> = {};
-    for (const [k, v] of Object.entries(extra)) if (k !== key) next[k] = v;
-    onExtraChange(next);
-  };
-  return <div>{rows.map(([key,values])=><div key={key} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-    <input aria-label={keyLabel} value={key} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k===key?e.target.value:k]=v;onChange(next);renameExtra(key,e.target.value);}} />
+  // The row key is the row index, not the combined room name: the name
+  // input edits that name, so keying on it unmounts the row on every
+  // keystroke and the field loses focus after one character. The inputs
+  // are controlled, so the index stays stable while a name is typed.
+  // Renaming a key and removing a row each touch the map AND the extra
+  // (the TimeTarget area moves with its combined room), so they go
+  // through one change each: two separate change() calls clone the same
+  // draft, the second overwrites the first, and the map edit is lost —
+  // typing a name left it unchanged, and Remove left the row in place.
+  return <div>{rows.map(([key,values],i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+    <input aria-label={keyLabel} value={key} onChange={e=>onRenameKey(key,e.target.value)} />
     <input aria-label={valueLabel} value={values.join(', ')} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k]=k===key?e.target.value.split(',').map(s=>s.trim()).filter(Boolean):v;onChange(next);}} />
     {extraLabel && extra && onExtraChange && <input aria-label={`${extraLabel} for ${key}`} placeholder={extraLabel} title={`${extraLabel} for this combined room, for the TimeTarget import`} value={extra[key] || ''} onChange={e=>{const value=e.target.value;const next={...extra};if(value.trim())next[key]=value;else delete next[key];onExtraChange(next);}} />}
-    <button onClick={()=>{const next:Record<string,string[]>={};for(const [k,v] of rows)if(k!==key)next[k]=v;onChange(next);dropExtra(key);}}>Remove</button>
+    <button onClick={()=>onRemoveKey(key)}>Remove</button>
   </div>)}
   <button onClick={()=>onChange({ ...map, '': [] })}>Add</button></div>;
 }
@@ -114,7 +111,13 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
   let doc:ConfigDocument|null=null,validation='';
   try{doc=readConfiguration(text,false);}catch(e){validation=e instanceof Error?e.message:String(e);}
   const settings=doc?boardSettings(doc):null;
-  const change=(fn:(d:ConfigDocument)=>void)=>{if(!doc)return;const next=structuredClone(doc);fn(next);setText(writeConfiguration(next));setMessage('');};
+  // change() rebuilds the YAML from the latest text, not from the doc
+  // this render closed over: a keystroke that lands before React has
+  // re-rendered would otherwise clone a stale draft and drop the edit
+  // that just landed (typing a new combined room name lost the row
+  // after the first character). The functional updater runs each change
+  // against the text the previous change produced, so rapid edits compose.
+  const change=(fn:(d:ConfigDocument)=>void)=>{setText(current=>{try{const currentDoc=readConfiguration(current,false);const next=structuredClone(currentDoc);fn(next);return writeConfiguration(next);}catch{return current;}});setMessage('');};
   const updateSettings=(fn:(s:ReturnType<typeof boardSettings>)=>void)=>change(d=>{const s=boardSettings(d);fn(s);d.whiteboard={...(d.whiteboard||{}),...s};});
   const importFile=async(e:ChangeEvent<HTMLInputElement>)=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(!file)return;try{const next=await file.text();readConfiguration(next);renamesRef.current={};setText(next);setMessage('YAML loaded into draft. Apply it to update the board.');}catch(error){setMessage(error instanceof Error?error.message:String(error));}};
   // Save trims stray whitespace from names and mappings, then validates
@@ -174,7 +177,7 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
         </section>
         <section><h2>Combined rooms</h2><p>Each name on the left is a name the venue&apos;s export file uses for a combination of rooms; it expands to the rooms on its right. Add one entry per spelling the venue uses — “Palladium A &amp; B”, “Palladium AB” and “Palladium A and B” are three different names, so each needs its own entry. The walls between the rooms in each combination are filled in as operable, so a combined booking renders as one wide block — untick a wall in the room table above if two rooms in a combination should never merge. The TimeTarget area column holds the area name TimeTarget uses for the whole combination — the rostering import matches it the same way it matches a single room&apos;s area, so a “Palladium” row lands on the merged block instead of being skipped. Excluded rooms are not edited here: they stay in the YAML (<code>rooms.exclude</code>) and still skip rooms at import.</p>
-          <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" extraLabel="TimeTarget area" extra={(doc.rooms.timetarget_areas as Record<string,string>)||{}} onExtraChange={next=>change(d=>{d.rooms.timetarget_areas=next;})} onChange={next=>change(d=>{d.rooms.room_mappings=next;})} />
+          <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" extraLabel="TimeTarget area" extra={(doc.rooms.timetarget_areas as Record<string,string>)||{}} onExtraChange={next=>change(d=>{d.rooms.timetarget_areas=next;})} onChange={next=>change(d=>{d.rooms.room_mappings=next;})} onRenameKey={(oldKey,newKey)=>change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};const next:Record<string,string[]>={};for(const [k,v] of Object.entries(map))next[k===oldKey?newKey:k]=v;d.rooms.room_mappings=next;const extra={...((d.rooms.timetarget_areas as Record<string,string>)||{})};const nextExtra:Record<string,string>={};for(const [k,v] of Object.entries(extra))nextExtra[k===oldKey?newKey:k]=v;d.rooms.timetarget_areas=nextExtra;})} onRemoveKey={key=>change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};delete map[key];d.rooms.room_mappings=map;const extra={...((d.rooms.timetarget_areas as Record<string,string>)||{})};delete extra[key];d.rooms.timetarget_areas=extra;})} />
         </section>
         <section><h2>Timeline items</h2><p>Rows such as Setup and Teardown are folded into their booking instead of shown as bookings of their own.</p>
           <StringList label="Timeline item" values={Array.isArray(doc.timeline_items)?(doc.timeline_items as string[]):[]} onChange={next=>change(d=>{d.timeline_items=next;})} />
