@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import yaml from 'js-yaml';
-import { Booking, BookingSnapshot, ImportHistoryEntry, ImportSource } from '../types';
+import { Booking, BookingSnapshot, ImportSource } from '../types';
 import { ImportComparison, compareImports } from './importComparison';
 import { ParsedVenueConfig, resolveRooms } from './venueConfig';
 import { dateValue, timeValue } from './dateTime';
@@ -13,7 +13,6 @@ export interface ImportResult {
 import { identityKey, bookingId } from './bookingIdentity';
 const text = (v: unknown) => v == null ? '' : String(v).trim();
 const PREVIOUS_IMPORT_KEY = 'whiteboard-previous-import';
-const IMPORT_HISTORY_KEY = 'whiteboard-import-history';
 const hashBytes = (bytes: Uint8Array) => {
   let hash = 5381;
   for (let i = 0; i < bytes.length; i++) hash = ((hash << 5) + hash + bytes[i]) >>> 0;
@@ -50,37 +49,6 @@ export function savePreviousImport(bookings: Booking[]) {
   } catch {
     /* The import remains usable even if this browser cannot retain the snapshot. */
   }
-}
-export function readImportHistory(): ImportHistoryEntry[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(IMPORT_HISTORY_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-export function saveImportHistory(entry: ImportHistoryEntry) {
-  let history = [entry, ...readImportHistory()].slice(0, 10);
-  // Each entry holds a full board snapshot, so a long history can
-  // exceed this browser's storage. Drop the oldest entries until it
-  // fits instead of losing the whole history.
-  while (history.length) {
-    try {
-      localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
-      return;
-    } catch {
-      history = history.slice(0, -1);
-    }
-  }
-  try {
-    localStorage.setItem(IMPORT_HISTORY_KEY, '[]');
-  } catch {
-    /* Import history is a convenience cache and must not prevent publishing. */
-  }
-}
-export function revertToImport(entry: ImportHistoryEntry): Booking[] {
-  savePreviousImport(entry.bookings);
-  return entry.bookings;
 }
 export async function readWorkbook(file: File): Promise<{ workbook: XLSX.WorkBook; fingerprint: string }> {
   const buffer = await file.arrayBuffer();

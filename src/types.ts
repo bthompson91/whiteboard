@@ -67,18 +67,12 @@ export interface ImportSource {
   importedAt: string;
 }
 
-export interface ImportHistoryEntry extends ImportSource {
-  id: string;
-  bookings: Booking[];
-}
-
 export interface SharedBoardFile {
   format: 'whiteboard-shared-board';
   version: 1;
   revision: number;
   exportedAt: string;
   bookings: Booking[];
-  history: ImportHistoryEntry[];
   markup: MarkupItem[];
   editorLock?: EditorLock | null;
 }

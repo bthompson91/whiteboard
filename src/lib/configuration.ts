@@ -138,14 +138,18 @@ export function boardSettings(d:ConfigDocument):BoardSettings {
   // the rooms of each combined room are operable — a combination only
   // exists because those rooms can be opened into one space, so a
   // combined booking renders as one wide block without the venue
-  // having to tick every wall by hand. An explicit list, even an empty
-  // one, always wins: unticking a wall in Configuration writes it back
-  // and the derivation stops applying. Only walls between rooms that
-  // sit next to each other in the board order count; a combination
-  // naming rooms that are not adjacent, or a room that is not on the
-  // board, contributes nothing.
+  // having to tick every wall by hand. An explicit non-empty list
+  // wins: unticking a wall in Configuration writes it back and the
+  // derivation stops applying. An explicit EMPTY list is treated as
+  // unset, not as "no walls": before the derivation existed, any
+  // config save wrote operable_walls: [] into the YAML (that was all
+  // boardSettings returned), and that stale empty list would block
+  // every merge even though nobody chose to remove a wall. Only walls
+  // between rooms that sit next to each other in the board order
+  // count; a combination naming rooms that are not adjacent, or a room
+  // that is not on the board, contributes nothing.
   let operable_walls:string[];
-  if(w.operable_walls!==undefined){
+  if(Array.isArray(w.operable_walls)&&w.operable_walls.length>0){
     operable_walls=[...w.operable_walls];
   }else{
     const order=((d.rooms?.order||[]) as string[]).map(r=>typeof r==='string'?r.trim():'').filter(Boolean);

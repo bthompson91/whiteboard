@@ -1,11 +1,10 @@
-import { Booking, EditorLock, ImportHistoryEntry, MarkupItem, SharedBoardFile } from '../types';
+import { Booking, EditorLock, MarkupItem, SharedBoardFile } from '../types';
 
 const SHARED_FILE_FORMAT = 'whiteboard-shared-board';
 
 export function createSharedFile(
   bookings: Booking[],
   revision: number,
-  history: ImportHistoryEntry[],
   markup: MarkupItem[],
   editorLock?: EditorLock | null
 ): SharedBoardFile {
@@ -15,13 +14,39 @@ export function createSharedFile(
     revision,
     exportedAt: new Date().toISOString(),
     bookings,
-    history,
     markup,
     editorLock: editorLock ?? null
   };
 }
 
-export function parseSharedFile(text: string): SharedBoardFile {
+// The board file is gzipped JSON, not pretty text: the history is gone
+// but a 1,500-booking board is still ~500KB of JSON, and gzip takes it
+// to ~150KB. The bytes are self-describing — gzip starts with 0x1f
+// 0x8b — so parseSharedFile still reads an old plain .json file too.
+const GZIP_MAGIC = [0x1f, 0x8b];
+const isGzip = (bytes: Uint8Array): boolean =>
+  bytes.length >= 2 && bytes[0] === GZIP_MAGIC[0] && bytes[1] === GZIP_MAGIC[1];
+async function gzipBytes(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function gunzipBytes(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+export function parseSharedFile(text: string): SharedBoardFile;
+export function parseSharedFile(data: ArrayBuffer | Uint8Array): Promise<SharedBoardFile>;
+export function parseSharedFile(data: string | ArrayBuffer | Uint8Array): SharedBoardFile | Promise<SharedBoardFile> {
+  // A plain string is an old uncompressed board file, read as text.
+  // Bytes are the current format: gzip when they start with the gzip
+  // magic, otherwise plain JSON (an old .json read as bytes).
+  if (typeof data === 'string') return parseBoardText(data);
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (!isGzip(bytes)) return parseBoardText(new TextDecoder().decode(bytes));
+  return gunzipBytes(bytes).then(b => parseBoardText(new TextDecoder().decode(b)));
+}
+function parseBoardText(text: string): SharedBoardFile {
   const parsed = JSON.parse(text) as SharedBoardFile;
   if (parsed?.format !== SHARED_FILE_FORMAT || parsed.version !== 1) {
     throw new Error('This file is not a compatible Whiteboard published-board file.');
@@ -41,17 +66,20 @@ export function parseSharedFile(text: string): SharedBoardFile {
     seen.add(m.id);
     return true;
   });
+  // An old board file still carries its import history; it is dropped
+  // on load, not carried into the new file (createSharedFile never
+  // writes it), so the history leaves the board for good.
+  const { history: _droppedHistory, ...rest } = parsed as SharedBoardFile & { history?: unknown };
   return {
-    ...parsed,
+    ...rest,
     revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
-    history: Array.isArray(parsed.history) ? parsed.history : [],
     markup,
     editorLock: parsed.editorLock && typeof parsed.editorLock === 'object' && typeof parsed.editorLock.id === 'string' && typeof parsed.editorLock.at === 'number' ? parsed.editorLock : null
   };
 }
 
-function downloadJson(data: unknown, filename: string) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+function downloadBytes(data: Uint8Array, filename: string, mime: string) {
+  const blob = new Blob([data as BlobPart], { type: mime });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -60,8 +88,8 @@ function downloadJson(data: unknown, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function downloadSharedFile(file: SharedBoardFile) {
-  downloadJson(file, `whiteboard-published-rev${file.revision}-${new Date().toISOString().slice(0, 10)}.json`);
+export async function downloadSharedFile(file: SharedBoardFile) {
+  downloadBytes(await serializeSharedFile(file), `whiteboard-published-rev${file.revision}-${new Date().toISOString().slice(0, 10)}.json.gz`, 'application/gzip');
 }
 
 // The File System Access API (desktop Chrome/Edge) lets the app write
@@ -130,14 +158,21 @@ export async function writeLinkedFile(handle: LinkedFileHandle, text: string, mi
   await writable.write(new Blob([text], { type: mime }));
   await writable.close();
 }
-export async function readLinkedFile(handle: LinkedFileHandle): Promise<string> {
-  return await (await handle.getFile()).text();
+async function writeLinkedBytes(handle: LinkedFileHandle, bytes: Uint8Array, mime = 'application/gzip'): Promise<void> {
+  const writable = await handle.createWritable();
+  await writable.write(new Blob([bytes as BlobPart], { type: mime }));
+  await writable.close();
 }
-export function serializeSharedFile(file: SharedBoardFile): string {
-  return JSON.stringify(file, null, 2);
+export async function readLinkedFile(handle: LinkedFileHandle): Promise<ArrayBuffer> {
+  return await (await handle.getFile()).arrayBuffer();
+}
+// The board file as gzipped bytes: compact JSON (no pretty-printing,
+// it is not meant to be read by hand) through gzip.
+export async function serializeSharedFile(file: SharedBoardFile): Promise<Uint8Array> {
+  return gzipBytes(new TextEncoder().encode(JSON.stringify(file)));
 }
 export async function writeSharedFileToHandle(handle: LinkedFileHandle, file: SharedBoardFile): Promise<void> {
-  await writeLinkedFile(handle, serializeSharedFile(file));
+  await writeLinkedBytes(handle, await serializeSharedFile(file));
 }
 export async function readSharedFileFromHandle(handle: LinkedFileHandle): Promise<SharedBoardFile> {
   return parseSharedFile(await readLinkedFile(handle));

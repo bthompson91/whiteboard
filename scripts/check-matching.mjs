@@ -46,7 +46,7 @@ try {
   const { applyReview, changeKey, mergeMatchedBooking, applyJobNumberEdits } = await import(pathToFileURL(join(dir, 'reviewApply.js')).href);
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
-  const { createSharedFile, parseSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
+  const { createSharedFile, parseSharedFile, serializeSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
   const { blocksFor, blockJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
@@ -276,27 +276,39 @@ try {
   // travels in the board file, which the editor auto-writes and every
   // device re-reads on refresh.
   const sampleMarkup = [{ id: 'm1', type: 'text', text: 'Turn here', x: 10, y: 20, w: 120, h: 40, highlight: true }];
-  const boardText = JSON.stringify(createSharedFile([], 1, [], sampleMarkup));
+  const boardText = JSON.stringify(createSharedFile([], 1, sampleMarkup));
   const parsedBoard = parseSharedFile(boardText);
   check('markup round-trips through the shared board file', parsedBoard.markup.length === 1 && parsedBoard.markup[0].text === 'Turn here' && parsedBoard.markup[0].highlight === true, boardText);
   check('a board file written before markup default to no markup', parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })).markup.length === 0);
+  // The board file is gzipped JSON, not pretty text: serialize it and
+  // parse the bytes back, and confirm an old plain .json still reads.
+  // A board with no import history at all (the history is gone) must
+  // still round-trip, and the gzipped form is far smaller than the text.
+  const gzBoard = await serializeSharedFile(createSharedFile([{ id: 'b1', title: 'Gala', date: '2026-11-20', roomId: 'Palladium A', startTime: '18:00', endTime: '23:00' }], 4, sampleMarkup));
+  check('the board file serializes to gzip bytes', gzBoard instanceof Uint8Array && gzBoard.length >= 2 && gzBoard[0] === 0x1f && gzBoard[1] === 0x8b, `bytes ${gzBoard.length}`);
+  const gzParsed = await parseSharedFile(gzBoard);
+  check('a gzipped board file parses back to the same bookings and markup', gzParsed.bookings.length === 1 && gzParsed.bookings[0].title === 'Gala' && gzParsed.markup.length === 1 && gzParsed.markup[0].text === 'Turn here' && gzParsed.revision === 4 && !('history' in gzParsed), JSON.stringify(gzParsed).slice(0, 200));
+  const gzJson = JSON.stringify(createSharedFile([{ id: 'b1', title: 'Gala', date: '2026-11-20', roomId: 'Palladium A', startTime: '18:00', endTime: '23:00' }], 4, sampleMarkup));
+  check('the gzipped board is smaller than the same JSON as text', gzBoard.length < gzJson.length, `gzip ${gzBoard.length} vs text ${gzJson.length}`);
+  check('an old plain .json board file still parses', parseSharedFile(gzJson).bookings.length === 1 && parseSharedFile(gzJson).revision === 4, gzJson.slice(0, 100));
+  check('an old plain .json read as bytes still parses', (await parseSharedFile(new TextEncoder().encode(gzJson))).bookings.length === 1, gzJson.slice(0, 100));
   // A board file can carry two notes with the same id (a TimeTarget
   // import that ran before the import deduped by key). Loading it must
   // keep the first copy and drop the rest, or React's keyed
   // reconciliation duplicates the note on every render and the page
-  // never settles. Bookings and history are untouched.
+  // never settles. Bookings are untouched.
   const dupMarkup = [
     { id: 'dup', type: 'text', text: 'first', x: 0, y: 0 },
     { id: 'other', type: 'text', text: 'other', x: 1, y: 1 },
     { id: 'dup', type: 'text', text: 'second', x: 2, y: 2 }
   ];
-  const dupBoard = parseSharedFile(JSON.stringify(createSharedFile([{ id: 'b1' }], 3, [{ id: 'h1' }], dupMarkup)));
-  check('loading a board file drops a duplicate markup id, keeping the first', dupBoard.markup.length === 2 && dupBoard.markup[0].text === 'first' && dupBoard.markup[1].text === 'other' && dupBoard.bookings.length === 1 && dupBoard.history.length === 1 && dupBoard.revision === 3, JSON.stringify(dupBoard.markup));
+  const dupBoard = parseSharedFile(JSON.stringify(createSharedFile([{ id: 'b1' }], 3, dupMarkup)));
+  check('loading a board file drops a duplicate markup id, keeping the first', dupBoard.markup.length === 2 && dupBoard.markup[0].text === 'first' && dupBoard.markup[1].text === 'other' && dupBoard.bookings.length === 1 && dupBoard.revision === 3, JSON.stringify(dupBoard.markup));
   // --- The editor lock rides in the board file too, so only one editor ---
   // holds it at a time. A lock round-trips; a board file written before
   // the lock defaults to no lock.
   const lock = { name: 'Alex', id: 'session-1', at: Date.now() };
-  const lockedBoard = parseSharedFile(JSON.stringify(createSharedFile([], 1, [], [], lock)));
+  const lockedBoard = parseSharedFile(JSON.stringify(createSharedFile([], 1, [], lock)));
   check('the editor lock round-trips through the shared board file', lockedBoard.editorLock?.name === 'Alex' && lockedBoard.editorLock?.id === 'session-1' && typeof lockedBoard.editorLock?.at === 'number', JSON.stringify(lockedBoard.editorLock));
   check('a board file written before the lock defaults to no lock', parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })).editorLock === null);
   check('assigned salesperson colour comes from the palette', bookingColour({ salespersonId: 'sp-1', colour: '#ff0000' }, palette) === '#3366cc');
@@ -630,7 +642,7 @@ try {
   // those rooms can be opened into one space. An explicit list, even
   // an empty one, always wins over the derivation.
   check('operable walls are derived from combined rooms when none are set', JSON.stringify(boardSettings({ rooms: { order: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'River Room 1', 'River Room 2'], room_mappings: { Palladium: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2'], 'River Room': ['River Room 1', 'River Room 2'] } }, whiteboard: {} }).operable_walls) === JSON.stringify(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1']));
-  check('an explicit empty operable walls list is not derived from', boardSettings({ rooms: { order: ['Palladium A', 'Palladium B'], room_mappings: { Palladium: ['Palladium A', 'Palladium B'] } }, whiteboard: { operable_walls: [] } }).operable_walls.length === 0);
+  check('an explicit empty operable walls list is treated as unset, so it derives', JSON.stringify(boardSettings({ rooms: { order: ['Palladium A', 'Palladium B'], room_mappings: { Palladium: ['Palladium A', 'Palladium B'] } }, whiteboard: { operable_walls: [] } }).operable_walls) === JSON.stringify(['Palladium A']));
   check('an explicit operable walls list wins over the derivation', JSON.stringify(boardSettings({ rooms: { order: ['Palladium A', 'Palladium B'], room_mappings: { Palladium: ['Palladium A', 'Palladium B'] } }, whiteboard: { operable_walls: ['Palladium B'] } }).operable_walls) === JSON.stringify(['Palladium B']));
   check('a combination naming rooms that are not next to each other derives no wall', boardSettings({ rooms: { order: ['Palladium A', 'Palladium B', 'Palladium C1'], room_mappings: { Odd: ['Palladium A', 'Palladium C1'] } }, whiteboard: {} }).operable_walls.length === 0);
   check('a combination naming a room that is not on the board derives nothing', boardSettings({ rooms: { order: ['Palladium A', 'Palladium B'], room_mappings: { Ghost: ['Palladium A', 'No Such Room'] } }, whiteboard: {} }).operable_walls.length === 0);

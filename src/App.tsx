@@ -1,20 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format } from 'date-fns';
 import BookingGrid from './components/BookingGrid';
-import ImportHistoryPanel from './components/ImportHistoryPanel';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import MarkupLayer from './components/MarkupLayer';
 import PrintView from './components/PrintView';
 import SetupWizard from './components/SetupWizard';
 import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
-import { BoardRole, Booking, EditorLock, ImportHistoryEntry, MarkupItem } from './types';
+import { BoardRole, Booking, EditorLock, MarkupItem } from './types';
 import {
   ImportResult,
   parseBookingWorkbook,
-  readImportHistory,
-  revertToImport,
-  saveImportHistory,
   savePreviousImport
 } from './lib/bookingImport';
 import { BookingChange, compareImports } from './lib/importComparison';
@@ -52,7 +48,6 @@ const EDITOR_LOCK_TTL_MS = 120000;
 const EDITOR_LOCK_HEARTBEAT_MS = 30000;
 const BOARD_CACHE_KEY = 'whiteboard-board-cache';
 const REVISION_KEY = 'whiteboard-board-revision';
-const HISTORY_KEY = 'whiteboard-import-history';
 function startup() {
   try {
     const text = localStorage.getItem(VENUE_YAML_KEY) || '';
@@ -121,8 +116,6 @@ export default function App() {
   const [pendingReview, setPendingReview] = useState<ImportResult | null>(null);
   const [linkHistory, setLinkHistory] = useState<ImportResult[]>([]);
   const [revision, setRevision] = useState<number>(() => Number(localStorage.getItem(REVISION_KEY)) || 1);
-  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(readImportHistory);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [markup, setMarkup] = useState<MarkupItem[]>(storedMarkup);
   const [editingEnabled, setEditingEnabled] = useState(false);
   const [markupMode, setMarkupMode] = useState<'none' | 'text' | 'arrow'>('none');
@@ -269,22 +262,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(REVISION_KEY, String(revision));
   }, [revision]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(importHistory));
-    } catch {
-      // Each history entry holds a full board snapshot, so a long
-      // history can exceed this browser's storage. Drop the oldest
-      // entry and try again on the next render, so the history shrinks
-      // to fit instead of failing entirely. Only report an error when
-      // even an empty history cannot be saved (storage unavailable).
-      if (importHistory.length > 0) {
-        setImportHistory(current => current.slice(0, -1));
-      } else {
-        setError('Import history could not be saved in this browser.');
-      }
-    }
-  }, [importHistory]);
   // Constantly write the board back to its linked file. The editor owns
   // the board file, so only the editor auto-writes it. Debounced, so
   // dragging a colour across several bookings does not write on every
@@ -296,12 +273,12 @@ export default function App() {
     const handle = boardHandleRef.current;
     if (!handle || role !== 'editor') return;
     const timer = window.setTimeout(() => {
-      writeSharedFileToHandle(handle, createSharedFile(bookings, revision, importHistory, markup, editorLock)).catch(e => {
+      writeSharedFileToHandle(handle, createSharedFile(bookings, revision, markup, editorLock)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [bookings, revision, importHistory, markup, editorLock, role]);
+  }, [bookings, revision, markup, editorLock, role]);
   const saveConfiguration = (text: string, renames: Record<string,string> = {}) => {
     readConfiguration(text);
     parseVenueConfig(text);
@@ -371,31 +348,12 @@ export default function App() {
     savePreviousImport(approved);
     setRevision(current => current + 1);
     if (result) {
-      const entry: ImportHistoryEntry = {
-        id: `import-${result.source.importedAt}-${result.source.fingerprint}`,
-        ...result.source,
-        bookings: approved
-      };
-      setImportHistory(current => [entry, ...current].slice(0, 10));
       setLastImport(result);
     }
     setPendingReview(null);
     setLinkHistory([]);
   };
   const applyImport = (approved: Booking[]) => publish(approved, pendingReview);
-  const revertLastImport = () => {
-    const [current, previous] = importHistory;
-    if (!current || !previous) return;
-    restoreImport(previous);
-  };
-  const restoreImport = (entry: ImportHistoryEntry) => {
-    const restored = revertToImport(entry);
-    setBookings(restored);
-    const entryIndex = importHistory.findIndex(item => item.id === entry.id);
-    if (entryIndex >= 0) setImportHistory(importHistory.slice(entryIndex));
-    setRevision(current => current + 1);
-    setHistoryOpen(false);
-  };
   const linkMatch = (change: BookingChange) => {
     if (!pendingReview || !change.match || !venue) return;
     // Capture the match first: narrowing on change.match is lost inside
@@ -437,7 +395,7 @@ export default function App() {
     if (role === 'editor' && next !== 'editor') {
       setEditorLock(null);
       if (boardHandleRef.current) {
-        writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, null)).catch(() => {});
+        writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, null)).catch(() => {});
       }
     }
     setRole(next);
@@ -465,7 +423,7 @@ export default function App() {
     setEditorLock(claimed);
     setRole('editor');
     if (boardHandleRef.current) {
-      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, claimed)).catch(e => {
+      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, claimed)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }
@@ -484,7 +442,7 @@ export default function App() {
     setEditorLock(claimed);
     setRole('editor');
     if (boardHandleRef.current) {
-      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, claimed)).catch(e => {
+      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, claimed)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }
@@ -507,14 +465,13 @@ export default function App() {
     setBookings(next);
   };
   const exportPublishedBoard = () => downloadSharedFile(
-    createSharedFile(bookings, revision, importHistory, markup, editorLock)
-  );
+    createSharedFile(bookings, revision, markup, editorLock)
+  ).catch(e => setError(e instanceof Error ? e.message : String(e)));
   const importPublishedBoard = async (file: File) => {
     try {
-      const shared = parseSharedFile(await file.text());
+      const shared = await parseSharedFile(await file.arrayBuffer());
       setBookings(shared.bookings);
       setRevision(shared.revision);
-      setImportHistory(shared.history);
       setMarkup(shared.markup || []);
       setEditorLock(shared.editorLock ?? null);
       setError(null);
@@ -559,7 +516,7 @@ export default function App() {
   const linkBoardFile = async () => {
     if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
     try {
-      const handle = await pickLinkedFile({ types: [{ description: 'Whiteboard board', accept: { 'application/json': ['.json'] } }] });
+      const handle = await pickLinkedFile({ types: [{ description: 'Whiteboard board', accept: { 'application/gzip': ['.json.gz'], 'application/json': ['.json'] } }] });
       if (!handle) return;
       const shared = await readSharedFileFromHandle(handle);
       boardHandleRef.current = handle;
@@ -567,7 +524,6 @@ export default function App() {
       await saveLinkedHandle('board', handle);
       setBookings(shared.bookings);
       setRevision(shared.revision);
-      setImportHistory(shared.history);
       setMarkup(shared.markup || []);
       setEditorLock(shared.editorLock ?? null);
       setError(null);
@@ -578,12 +534,12 @@ export default function App() {
   const linkBoardFileAsNew = async () => {
     if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
     try {
-      const handle = await pickLinkedFileToSave(`whiteboard-published-rev${revision}-${new Date().toISOString().slice(0, 10)}.json`, 'Whiteboard board');
+      const handle = await pickLinkedFileToSave(`whiteboard-published-rev${revision}-${new Date().toISOString().slice(0, 10)}.json.gz`, 'Whiteboard board', { 'application/gzip': ['.json.gz'] });
       if (!handle) return;
       boardHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, board: handle.name }));
       await saveLinkedHandle('board', handle);
-      await writeSharedFileToHandle(handle, createSharedFile(bookings, revision, importHistory, markup, editorLock));
+      await writeSharedFileToHandle(handle, createSharedFile(bookings, revision, markup, editorLock));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -696,7 +652,6 @@ export default function App() {
       const shared = await readSharedFileFromHandle(boardHandleRef.current);
       setBookings(shared.bookings);
       setRevision(shared.revision);
-      setImportHistory(shared.history);
       setMarkup(shared.markup || []);
       setEditorLock(shared.editorLock ?? null);
     }
@@ -714,7 +669,7 @@ export default function App() {
     try {
       if (role !== 'viewer') {
         if (boardHandleRef.current && role === 'editor') {
-          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, importHistory, markup, editorLock));
+          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, editorLock));
         }
         if (yamlHandleRef.current) {
           await writeLinkedFile(yamlHandleRef.current, yamlText, 'text/yaml');
@@ -826,7 +781,7 @@ export default function App() {
       {pendingReview && (
         <ImportReviewPanel
           result={pendingReview}
-          hasDuplicate={!!importHistory[0] && importHistory[0].fingerprint === pendingReview.source.fingerprint}
+          hasDuplicate={!!lastImport && lastImport.source.fingerprint === pendingReview.source.fingerprint}
           canUndoLink={linkHistory.length > 0}
           onApply={applyImport}
           onLinkMatch={linkMatch}
@@ -835,13 +790,6 @@ export default function App() {
             setPendingReview(null);
             setLinkHistory([]);
           }}
-        />
-      )}
-      {historyOpen && (
-        <ImportHistoryPanel
-          history={importHistory}
-          onRestore={restoreImport}
-          onClose={() => setHistoryOpen(false)}
         />
       )}
       {linkFilesOpen && (
@@ -855,11 +803,10 @@ export default function App() {
             <table><thead><tr><th>File</th><th>Linked</th><th></th></tr></thead><tbody>
               <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Link</button> <button onClick={importEventsFile} disabled={!venue}>Import</button></td></tr>
               <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Save as</button></td></tr>
-              <tr><td>Board (.json)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Open</button> <button onClick={linkBoardFileAsNew} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
+              <tr><td>Board (.json.gz)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Open</button> <button onClick={linkBoardFileAsNew} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
             </tbody></table>
             <p>Linking the bookings export lets Refresh re-read it. The board file is written automatically whenever the editor changes the board.</p>
             <p><button onClick={() => { setSetupWizardOpen(true); setLinkFilesOpen(false); }}>Set up a new venue</button></p>
-            {role === 'editor' && <p><button onClick={() => { setHistoryOpen(true); setLinkFilesOpen(false); }}>Import history</button> <button onClick={revertLastImport} disabled={importHistory.length <= 1}>Revert last import</button></p>}
             <footer>
               <button onClick={() => setLinkFilesOpen(false)}>Done</button>
             </footer>
