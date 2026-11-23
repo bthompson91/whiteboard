@@ -48,7 +48,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile, serializeSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour, spanInRoom, notesMatch, headerGroups, memberShortName, configTableRows } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour, spanInRoom, notesMatch, headerGroups, memberShortName, configTableRows, boardRoomOrder } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
@@ -1350,11 +1350,20 @@ try {
   // The two-row board header: a combined room spans its member columns
   // on the top row with the members underneath; a room in no combined
   // room spans both rows. A mapping that names one room, or rooms that
-  // are not on the board, makes no group. The combined name itself,
-  // when it is also a room on the board, stays a standalone column.
+  // are not on the board, makes no group.
   const hg = headerGroups(['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'Palladium C3', 'River Room 1', 'River Room 2'], { Palladium: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'Palladium C3'], 'River Room 1 & 2': ['River Room 1', 'River Room 2'], Single: ['Palladium A'], Missing: ['No Such Room', 'Also Missing'] });
   check('header groups span their member columns', hg.groups.length === 2 && hg.groups[0].name === 'Palladium' && hg.groups[0].start === 0 && hg.groups[0].end === 4 && hg.groups[0].members.join(',') === '0,1,2,3,4' && hg.groups[1].name === 'River Room 1 & 2' && hg.groups[1].start === 5 && hg.groups[1].end === 6 && hg.memberOf.join(',') === '0,0,0,0,0,1,1', JSON.stringify(hg));
   check('member short names drop the combined name', memberShortName('Palladium', 'Palladium C1') === 'C1' && memberShortName('Olympic Room', 'Olympic Room A') === 'A' && memberShortName('Olympic Room', 'Olympic Room') === 'Olympic Room' && memberShortName('Palladium', 'River Room 1') === 'River Room 1' && memberShortName('Jim Stynes Grill', 'Jim Stynes A') === 'A');
+  // The board display order: a combined room's members sit together and
+  // alphabetically, and the combined name itself gets no column when it
+  // is also a room. The MCG order interleaves members (Jim Stynes B,
+  // Olympic Room A, Olympic Room B, Jim Stynes A, ...), which made the
+  // group spans overlap and the headers pile up.
+  const mcgOrder = boardRoomOrder(
+    ['Members Dining Room', 'Olympic Room', 'Jim Stynes Grill', 'Dillbabiik Room', 'Long Room', 'Committee Room', 'Hans Ebeling Room', 'HCA Harrison Room', 'Jack Ryder Room', 'Lindsay Hassett Room', 'Keith Miller Room', 'Legends Room', 'AFL Dining Room', 'Change Room 1', 'Change Room 2', 'Australian Sports Museum', 'Corporate Suite 3-79-81', 'Jim Stynes B', 'Olympic Room A', 'Olympic Room B', 'Jim Stynes A', 'HCA Harrison Room B', 'Jack Ryder Room A', 'HCA Harrison Room A', 'Jack Ryder Room B', 'Legends Room B', 'Jack Ryder Room C', 'Legends Room A', 'Unassigned'],
+    { OTHER: ['Betty Cuthbert Lounge', 'Unassigned'], 'Olympic Room': ['Olympic Room A', 'Olympic Room B'], 'Jim Stynes Grill': ['Jim Stynes A', 'Jim Stynes B'], 'HCA Harrison Room': ['HCA Harrison Room A', 'HCA Harrison Room B'], 'Jack Ryder Room': ['Jack Ryder Room A', 'Jack Ryder Room B', 'Jack Ryder Room C'], 'Legends Room': ['Legends Room A', 'Legends Room B'] });
+  check('board order groups MCG members together, alphabetical, no duplicate combined names', mcgOrder.join('|') === ['Members Dining Room', 'Dillbabiik Room', 'Long Room', 'Committee Room', 'Hans Ebeling Room', 'Lindsay Hassett Room', 'Keith Miller Room', 'AFL Dining Room', 'Change Room 1', 'Change Room 2', 'Australian Sports Museum', 'Corporate Suite 3-79-81', 'Jim Stynes A', 'Jim Stynes B', 'Olympic Room A', 'Olympic Room B', 'HCA Harrison Room A', 'HCA Harrison Room B', 'Jack Ryder Room A', 'Jack Ryder Room B', 'Jack Ryder Room C', 'Legends Room A', 'Legends Room B', 'Unassigned'].join('|'), mcgOrder.join('|'));
+  check('board order keeps a lone combined-name member standalone', boardRoomOrder(['Room A', 'Room B', 'Unassigned'], { OTHER: ['Unassigned'] }).join('|') === 'Room A|Room B|Unassigned');
   // The Configuration rooms table groups combined rooms: a parent room
   // row followed by its member rows, a group header row when the
   // combined name is not a room, and members only as children (never

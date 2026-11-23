@@ -391,10 +391,55 @@ export function assignLanes(blocks: Block[]): void {
 // groups in room order, each with its member room indices, and memberOf
 // naming, for every room index, the group it belongs to (the first group
 // that claims it) or null. A mapping whose members are not rooms on the
-// board, or that names a single room, makes no group. The combined room
-// name itself, when it is also a room on the board, is a standalone
-// column: the group spans its members only.
+// board, or that names a single room, makes no group.
+//
+// The room order a venue hands over is not guaranteed to keep a
+// combined room's members together — the MCG export lists its member
+// rooms interleaved (Jim Stynes B, Olympic Room A, Olympic Room B,
+// Jim Stynes A, ...), so a group's min..max span overlaps the next
+// group's and the headers pile on top of each other. boardRoomOrder()
+// is the display order the board renders: each group's members are
+// contiguous and alphabetical (A, B, C), emitted where the group's
+// first member appears, and the combined room name itself gets no
+// column of its own — bookings in it expand to its members on import,
+// so the column would be empty, and the name would read twice (once
+// as a standalone room, once as the group header above its members).
+// A room in no group keeps its place; a room that is a member of more
+// than one group goes with the first group that claims it, as in
+// headerGroups().
 export interface RoomHeaderGroup { name: string; start: number; end: number; members: number[]; }
+export function boardRoomOrder(roomNames: string[], mappings: Record<string, string[]>): string[] {
+  const groups: { name: string; members: string[] }[] = [];
+  const memberOf = new Map<string, number>();
+  for (const [name, members] of Object.entries(mappings)) {
+    const onBoard = members.filter(m => roomNames.includes(m));
+    if (onBoard.length < 2) continue;
+    const gi = groups.length;
+    groups.push({ name, members: onBoard });
+    for (const m of onBoard) if (!memberOf.has(m)) memberOf.set(m, gi);
+  }
+  // The combined room name itself, when it is also a room on the board,
+  // is absorbed: no column of its own, the group header is its name.
+  const absorbed = new Set<string>();
+  for (const g of groups) if (roomNames.includes(g.name)) absorbed.add(g.name);
+  const emittedGroups = new Set<number>();
+  const emittedRooms = new Set<string>();
+  const result: string[] = [];
+  const emitGroup = (gi: number) => {
+    if (emittedGroups.has(gi)) return;
+    emittedGroups.add(gi);
+    const sorted = [...new Set(groups[gi].members)].sort((a, b) => a.localeCompare(b));
+    for (const m of sorted) { result.push(m); emittedRooms.add(m); }
+  };
+  for (const name of roomNames) {
+    if (absorbed.has(name) || emittedRooms.has(name)) continue;
+    const gi = memberOf.get(name);
+    if (gi !== undefined) { emitGroup(gi); continue; }
+    result.push(name);
+    emittedRooms.add(name);
+  }
+  return result;
+}
 export function headerGroups(roomNames: string[], mappings: Record<string, string[]>): { groups: RoomHeaderGroup[]; memberOf: (number | null)[] } {
   const memberOf: (number | null)[] = roomNames.map(() => null);
   const groups: RoomHeaderGroup[] = [];

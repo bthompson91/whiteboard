@@ -1,9 +1,9 @@
-import { CSSProperties, MutableRefObject, useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { CSSProperties, MutableRefObject, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking, JobEntry } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, blockHasJobNumber, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, headerGroups, isBlockHidden, likeBookings, memberShortName, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, blockHasJobNumber, blockJobNumber, blockSegments, boardRoomOrder, clock, eventColour, fitFontSize, headerGroups, isBlockHidden, likeBookings, memberShortName, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { applyJobNumberEdits } from '../lib/reviewApply';
 import { findJobCandidates, jobSalesperson, salesPersonMatches, JobCandidate } from '../lib/jobsImport';
 import { dayKind } from '../lib/dateTime';
@@ -155,6 +155,18 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
   // The rooms of the block the inspector was opened from: hiding hides
   // this block only, not every room the booking is in.
   const [inspectorRooms,setInspectorRooms]=useState<string[]>([]);
+  // The board renders rooms in display order: each combined room's
+  // members sit together and alphabetically (boardRoomOrder), and a
+  // combined room name that is itself a room gets no column of its own
+  // — bookings in it expand to its members on import, so the column
+  // would be empty and the name would read twice. Every room-index
+  // lookup below uses this venue, never the raw venue order.
+  const displayVenue = useMemo(() => {
+    if (!venue) return null;
+    const order = boardRoomOrder(venue.rooms.map(r => r.name), venue.mappings || {});
+    const byName = new Map(venue.rooms.map(r => [r.name, r]));
+    return { ...venue, rooms: order.map(name => byName.get(name)).filter((r): r is NonNullable<typeof r> => Boolean(r)) };
+  }, [venue]);
   // Job numbers are per room — jobs differ per room, only the colour is
   // shared across the whole event — so the inspector edits the number
   // for the block clicked. There is no one-shot for one number in every
@@ -239,13 +251,13 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
   // the same title; otherwise the greatest overlap. Null when there is
   // no room that way or no booking in it to merge with.
   const mergeTarget=(direction:'left'|'right'):Booking|null=>{
-    if(!venue||!draft)return null;
+    if(!displayVenue||!draft)return null;
     const toMinutes=(t:string)=>{const m=/^(\d{1,2}):(\d{2})/.exec(t);return m?Number(m[1])*60+Number(m[2]):0;};
     const roomIds=draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId];
-    const indices=roomIds.map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0);
+    const indices=roomIds.map(id=>displayVenue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0);
     if(!indices.length)return null;
     const targetIndex=direction==='right'?Math.max(...indices)+1:Math.min(...indices)-1;
-    if(targetIndex<0||targetIndex>=venue.rooms.length)return null;
+    if(targetIndex<0||targetIndex>=displayVenue.rooms.length)return null;
     // A strong border is a hard separator, and a fixed wall is too:
     // a manual merge never crosses either one, and the Merge buttons
     // are greyed out next to both.
@@ -253,7 +265,7 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
     if(direction==='left'&&strongAfter[targetIndex])return null;
     if(direction==='right'&&!wallOperable[Math.max(...indices)])return null;
     if(direction==='left'&&!wallOperable[targetIndex])return null;
-    const targetRoom=venue.rooms[targetIndex].id;
+    const targetRoom=displayVenue.rooms[targetIndex].id;
     const start=toMinutes(draft.startTime),end=toMinutes(draft.endTime);
     const overlap=(b:Booking)=>{const s=toMinutes(b.startTime),e=toMinutes(b.endTime);return Math.max(0,Math.min(end,e)-Math.max(start,s));};
     const sameTitle=(a:string,b:string)=>a.trim().replace(/\s+/g,' ').toLowerCase()===b.trim().replace(/\s+/g,' ').toLowerCase();
@@ -289,28 +301,28 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
     const measure=()=>{const day=Math.max(1,(parent.clientHeight-(header.current?.offsetHeight||0))/7);const availableWidth=Math.max(0,parent.clientWidth-160);setSize(old=>old.day===day&&old.availableWidth===availableWidth?old:{day,availableWidth});};
     measure();const observer=new ResizeObserver(measure);observer.observe(parent);if(header.current)observer.observe(header.current);return()=>observer.disconnect();
   },[venue]);
-  if(!venue)return <div className="empty-state">Open Configuration to load a venue YAML file.</div>;
-  const baseWidths=venue.rooms.map((_,i)=>Math.max(roomWidthMin,roomBaseWidths?.[i]||150));
+  if(!venue||!displayVenue)return <div className="empty-state">Open Configuration to load a venue YAML file.</div>;
+  const baseWidths=displayVenue.rooms.map(r=>{const origIndex=venue.rooms.findIndex(o=>o.id===r.id);return Math.max(roomWidthMin,roomBaseWidths?.[origIndex]||150);});
   const total=baseWidths.reduce((sum,width)=>sum+width,0);
   const scale=Math.max(1,size.availableWidth/Math.max(1,total));
   const widths=baseWidths.map(width=>width*scale);
-  const blocks=blocksFor(bookings,venue,salespeople,editingEnabled||showHidden,roomBorders,operableWalls,randomEventColours);
-  const strongAfter=strongBorders(venue.rooms.map(r=>r.id),roomBorders);
-  const wallOperable=operableWallAfter(venue.rooms.map(r=>r.id),operableWalls);
+  const blocks=blocksFor(bookings,displayVenue,salespeople,editingEnabled||showHidden,roomBorders,operableWalls,randomEventColours);
+  const strongAfter=strongBorders(displayVenue.rooms.map(r=>r.id),roomBorders);
+  const wallOperable=operableWallAfter(displayVenue.rooms.map(r=>r.id),operableWalls);
   const segments=blocks.flatMap(b=>blockSegments(b).map(s=>({block:b,...s})));
   const sourceDates=[...new Set(segments.map(s=>s.date))].sort();
   const dates=sourceDates.length?eachDayOfInterval({start:parseISO(sourceDates[0]),end:parseISO(sourceDates[sourceDates.length-1])}).map(d=>format(d,'yyyy-MM-dd')):[];
   const columns=`160px ${widths.map(width=>`${width}px`).join(' ')}`;
   const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+widths.reduce((sum,width)=>sum+width,0)} as CSSProperties;
-  const roomFontSizes=roomNameFontSizes(venue.rooms.map(r=>r.name),widths);
+  const roomFontSizes=roomNameFontSizes(displayVenue.rooms.map(r=>r.name),widths);
   // The header is two rows: a combined room gets a merged cell on the
   // top row spanning its member columns, with each member listed
   // underneath; a room in no combined room gets one cell spanning both
   // rows, vertically centred. The group header fits its name across the
   // spanned width; a member fits its short name in its own column.
-  const headerLayout=headerGroups(venue.rooms.map(r=>r.name),venue.mappings||{});
+  const headerLayout=headerGroups(displayVenue.rooms.map(r=>r.name),displayVenue.mappings||{});
   const groupFontSizes=roomNameFontSizes(headerLayout.groups.map(g=>g.name),headerLayout.groups.map(g=>g.members.reduce((sum,i)=>sum+(widths[i]||150),0)));
-  const memberFontSizes=venue.rooms.map((r,i)=>{const gi=headerLayout.memberOf[i];if(gi===null)return roomFontSizes[i];return roomNameFontSizes([memberShortName(headerLayout.groups[gi].name,r.name)],[widths[i]||150])[0];});
+  const memberFontSizes=displayVenue.rooms.map((r,i)=>{const gi=headerLayout.memberOf[i];if(gi===null)return roomFontSizes[i];return roomNameFontSizes([memberShortName(headerLayout.groups[gi].name,r.name)],[widths[i]||150])[0];});
   const today=format(new Date(),'yyyy-MM-dd');
   // The salesperson filter's focus window starts at the previous day:
   // only the filtered salesperson's blocks from yesterday onward stay
@@ -367,11 +379,11 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
   // room that way): a strong border is a hard separator, and merging
   // is only allowed over an operable wall, so a manual merge cannot
   // cross either one.
-  const draftRoomIndices=draft?((draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId]).map(id=>venue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0)):[];
+  const draftRoomIndices=draft?((draft.roomIds&&draft.roomIds.length?draft.roomIds:[draft.roomId]).map(id=>displayVenue.rooms.findIndex(r=>r.id===id)).filter(i=>i>=0)):[];
   const mergeLeftBlocked=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0||!!strongAfter[Math.min(...draftRoomIndices)-1]||!wallOperable[Math.min(...draftRoomIndices)-1];
-  const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)]||!wallOperable[Math.max(...draftRoomIndices)];
+  const mergeRightBlocked=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=displayVenue.rooms.length-1||!!strongAfter[Math.max(...draftRoomIndices)]||!wallOperable[Math.max(...draftRoomIndices)];
   const mergeLeftTitle=!draftRoomIndices.length||Math.min(...draftRoomIndices)===0?undefined:strongAfter[Math.min(...draftRoomIndices)-1]?'A strong border separates this room from the one to the left.':'The wall between these rooms is not operable, so they cannot merge.';
-  const mergeRightTitle=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=venue.rooms.length-1?undefined:strongAfter[Math.max(...draftRoomIndices)]?'A strong border separates this room from the one to the right.':'The wall between these rooms is not operable, so they cannot merge.';
+  const mergeRightTitle=!draftRoomIndices.length||Math.max(...draftRoomIndices)>=displayVenue.rooms.length-1?undefined:strongAfter[Math.max(...draftRoomIndices)]?'A strong border separates this room from the one to the right.':'The wall between these rooms is not operable, so they cannot merge.';
   // The date labels share one fitted size that fills the 160px date
   // column, the same way the room names fill theirs.
   const dateFontSizesValue=dateFontSizes(dates.map(d=>format(parseISO(d),'EEE dd MMM')),160);
@@ -406,11 +418,11 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
     scrollToToday(false);
   },[dates[0],dates[dates.length-1],today]);
   return <div className="booking-grid" ref={root} style={style}>
-    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns,gridTemplateRows:'auto auto'}}><div className="corner group-edge" style={{gridRow:'1 / 3',gridColumn:1}}>Date / time</div>{headerLayout.groups.map((g,gi)=><div className={`room-header room-header-group${strongAfter[g.end]?' group-edge':''}`} key={`group-${g.name}`} data-group={g.name} style={{gridRow:1,gridColumn:`${g.start+2} / ${g.end+3}`,fontSize:groupFontSizes[gi]}}>{g.name}</div>)}{venue.rooms.map((r,i)=>{const gi=headerLayout.memberOf[i];if(gi===null)return <div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{gridRow:'1 / 3',gridColumn:i+2,fontSize:roomFontSizes[i]}}>{r.name}</div>;return <div className={`room-header room-header-member${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{gridRow:2,gridColumn:i+2,fontSize:memberFontSizes[i]}}>{memberShortName(headerLayout.groups[gi].name,r.name)}</div>;})}</div>
+    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns,gridTemplateRows:'auto auto'}}><div className="corner group-edge" style={{gridRow:'1 / 3',gridColumn:1}}>Date / time</div>{headerLayout.groups.map((g,gi)=><div className={`room-header room-header-group${strongAfter[g.end]?' group-edge':''}`} key={`group-${g.name}`} data-group={g.name} style={{gridRow:1,gridColumn:`${g.start+2} / ${g.end+3}`,fontSize:groupFontSizes[gi]}}>{g.name}</div>)}{displayVenue.rooms.map((r,i)=>{const gi=headerLayout.memberOf[i];if(gi===null)return <div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{gridRow:'1 / 3',gridColumn:i+2,fontSize:roomFontSizes[i]}}>{r.name}</div>;return <div className={`room-header room-header-member${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{gridRow:2,gridColumn:i+2,fontSize:memberFontSizes[i]}}>{memberShortName(headerLayout.groups[gi].name,r.name)}</div>;})}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
     {dates.map((date,dateIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizesValue[dateIndex]}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
-      {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
+      {displayVenue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
       {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=>{
         // A block too short to show text legibly hides its text: even
         // the smallest title (8px) and the facts (15px) would be
@@ -427,7 +439,7 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
           // It works in editor role even while the board is locked, so
           // colour-coding is one click, not unlock-then-click.
           if(paintMode){paintBlock(b,paintSalespersonId,paintApplyAll);return;}
-          if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking,b.rooms.map(i=>venue.rooms[i].id));}
+          if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking,b.rooms.map(i=>displayVenue.rooms[i].id));}
         }}>
         {showText?<div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined)}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}<div>{clock(b.mainStart).slice(0,5)}</div><div>{clock(b.mainEnd).slice(0,5)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}</div>:<div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined),minWidth:12}} />}
         {showText&&<FitTitle text={[b.title,[b.initials,b.jobNumber].filter(Boolean).join(' ')].filter(Boolean).join(' | ') + (b.hidden ? ' — hidden' : '')} />}
