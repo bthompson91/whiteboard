@@ -4,7 +4,7 @@ import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
 import { bookingColour, isNoAv, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonId?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string; lane?:number; laneCount?:number; roomSpans?: Record<number, { start:number; end:number }> }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonId?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string; lane?:number; laneCount?:number; roomSpans?: Record<number, { start:number; end:number }>; notes?:string }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -190,6 +190,22 @@ export function spanInRoom(b: Block, room: number): { start: number; end: number
   return b.roomSpans?.[room] ?? { start: b.start, end: b.end };
 }
 
+// Two blocks' Notes are compatible for a width merge when they say the
+// same thing, or when one side has none. Two bookings with the same
+// title and times but different Notes are different things — the Carlton
+// B booking ("FRR - increase numbers") must not merge into the C booking
+// ("Dinner") just because the title and times match. A manual merge
+// (mergeGroup) is an explicit user choice and is not gated by Notes.
+// The gate only applies when both blocks come from a single booking:
+// a block height-merged from many sessions carries only its first
+// session's Note, which does not describe the block, so it must not
+// block a merge — the Mortgage Choice day is many sessions with many
+// different Notes in each room, and its A and B blocks still merge.
+export function notesMatch(a?: string, b?: string): boolean {
+  const x = (a || '').trim(), y = (b || '').trim();
+  return !x || !y || x === y;
+}
+
 function mergeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -216,7 +232,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       // (its id in the key), so it never height-merges with like bookings.
       const key=b.mergeTime===false?JSON.stringify([b.date,mergeTitle(b.title),room,b.id]):JSON.stringify([b.date,mergeTitle(b.title),room]);
       const old=groups.get(key);
-      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&roomHidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumbers?.[roomId]??b.jobNumber;const rs=old.roomSpans?.[room];if(old.roomSpans)old.roomSpans[room]=rs?{start:Math.min(rs.start,start),end:Math.max(rs.end,end)}:{start,end};}
+      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&roomHidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumbers?.[roomId]??b.jobNumber;if(!old.notes)old.notes=b.notes;const rs=old.roomSpans?.[room];if(old.roomSpans)old.roomSpans[room]=rs?{start:Math.min(rs.start,start),end:Math.max(rs.end,end)}:{start,end};}
       else {
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
@@ -239,7 +255,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         // only their colour is set aside. Unavailable stays grey.
         const colour=unavailable?bookingColour({...b,jobNumber:roomJobNumber},salespeople):randomEventColours?eventColour(b.title):bookingColour({...b,jobNumber:roomJobNumber},salespeople);
         const salespersonColour=randomEventColours?undefined:(person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:roomJobNumber,colour,salespersonId:b.salespersonId,salespersonColour,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup,roomSpans:{[room]:{start,end}}});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:roomJobNumber,colour,salespersonId:b.salespersonId,salespersonColour,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup,roomSpans:{[room]:{start,end}},notes:b.notes});
       }
     }
   }
@@ -257,7 +273,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
   for(const b of [...groups.values()].sort((a,c)=>a.rooms[0]-c.rooms[0])) {
     b.ids=[...new Set(b.ids)].sort();b.facts=[...new Set(b.facts)];
     const manualMerge=!!(b.mergeGroup&&b.mergeGroup.length);
-    const previous=spans.find(p=>p.date===b.date&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]&&wallOperable[p.rooms[p.rooms.length-1]]&&((manualMerge&&!!p.mergeGroup&&p.mergeGroup===b.mergeGroup)||(p.title===b.title&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.mergeRoom&&b.mergeRoom)));
+    const previous=spans.find(p=>p.date===b.date&&p.rooms[p.rooms.length-1]+1===b.rooms[0]&&!borderAfter[p.rooms[p.rooms.length-1]]&&wallOperable[p.rooms[p.rooms.length-1]]&&((manualMerge&&!!p.mergeGroup&&p.mergeGroup===b.mergeGroup)||(p.title===b.title&&p.mainStart===b.mainStart&&p.mainEnd===b.mainEnd&&p.mergeRoom&&b.mergeRoom&&(p.ids.length>1||b.ids.length>1||notesMatch(p.notes,b.notes)))));
     if(previous){
       previous.rooms.push(b.rooms[0]);
       previous.ids=[...new Set([...previous.ids,...b.ids])].sort();
@@ -269,6 +285,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       previous.jobNumber=previous.jobNumber||b.jobNumber;
       previous.hidden=previous.hidden&&b.hidden;
       previous.mergeRoom=previous.mergeRoom&&b.mergeRoom;
+      if(!previous.notes)previous.notes=b.notes;
       if(previous.roomSpans&&b.roomSpans){for(const [r,s] of Object.entries(b.roomSpans)){const k=Number(r);const prev=previous.roomSpans[k];previous.roomSpans[k]=prev?{start:Math.min(prev.start,s.start),end:Math.max(prev.end,s.end)}:s;}}
     } else spans.push(b);
   }

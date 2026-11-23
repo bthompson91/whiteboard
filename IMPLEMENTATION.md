@@ -304,6 +304,20 @@ render at their exact times with no snapping.
   in B it covers 15:00-18:30 where Mortgage Choice sits — a 16px
   overlap at the bottom of that block in column B that hides no text;
   a single rectangle cannot have a different top per room.)
+- **Notes gate the width merge.** Two blocks merge across rooms only
+  when their Notes are compatible (`notesMatch` in `blocks.ts`: the
+  same after trimming, or one side has none). Two bookings with the same
+  title and times but different Notes are different things — the
+  Carlton B booking ("FRR - increase numbers") must not merge into the
+  C booking ("Dinner") just because the title and times match, even
+  though the inspector rightly says the C booking is in 3 rooms. A
+  manual merge (mergeGroup) is an explicit user choice and is not
+  gated. The gate only applies when both blocks come from a single
+  booking: a block height-merged from many sessions carries only its
+  first session's Note, which does not describe the block, so it must
+  not block a merge — the Mortgage Choice day is many sessions with
+  many different Notes in each room, and its A and B blocks still
+  merge into one.
 - **Night compression.** `timeFraction(minutesOfDay)` maps time to a
   fraction of the day: night hours 00:00–06:00 render at 75% of the height
   of day hours (6 night hours = 4.5 units, 18 day hours = 18 units, 22.5
@@ -956,7 +970,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-297 checks covering matching tiers and weights, booking identity, height and
+301 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
@@ -970,7 +984,9 @@ salesperson tiebreak and the ±1 day window, the job-to-salesperson
 resolution used when a job is selected, and the board-file round-trip
 with the jobs list), and `blockHasJobNumber` (a real number counts; empty
 and NO AV do not), and per-room lane spans (a setup on one room does not
-lane a merged block in another room; a real overlap still splits). Run it before pushing;
+lane a merged block in another room; a real overlap still splits),
+and the Notes gate on the width merge (different Notes do not merge;
+same Notes do; height-merged blocks still merge). Run it before pushing;
 the build (`npm run build`) must also be green.
 
 ## Known limitations

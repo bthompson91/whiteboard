@@ -48,7 +48,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile, serializeSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour, spanInRoom } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour, spanInRoom, notesMatch } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
@@ -926,6 +926,39 @@ try {
   ], venue, [], false, [], ['Palladium B', 'River Room 1']);
   const carlton2 = blocks.find(b => b.title === 'Carlton');
   check('a real overlap with the merged block in its own room still splits', blocks.length === 2 && carlton2 && carlton2.laneCount === 2, JSON.stringify(blocks.map(b => ({ title: b.title, lane: b.lane, laneCount: b.laneCount }))));
+  // --- Notes gate the width merge ---
+  // Two bookings with the same title and times but different Notes are
+  // different things and must not merge across rooms. The Carlton B
+  // booking ("FRR - increase numbers") must not merge into the C
+  // booking ("Dinner") just because the title and times match. The
+  // three rooms of the one C booking (same Notes) still merge.
+  check('notes match when equal or when one side has none', notesMatch('Dinner', 'Dinner') && notesMatch('Dinner', '') && notesMatch('', 'Dinner') && notesMatch(undefined, 'Dinner') && !notesMatch('Dinner', 'FRR - increase numbers') && !notesMatch('FRR - increase numbers', 'Dinner'));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30', notes: 'FRR - increase numbers' }),
+    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', notes: 'Dinner', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }] })
+  ], venue, [], false, [], ['Palladium B', 'River Room 1']);
+  const carlB = blocks.find(b => b.title === 'Carlton' && b.rooms.length === 1);
+  const carlR = blocks.find(b => b.title === 'Carlton' && b.rooms.length === 2);
+  check('bookings with different Notes do not merge across rooms', blocks.length === 2 && carlB && carlB.notes === 'FRR - increase numbers' && carlR && carlR.notes === 'Dinner' && carlR.rooms.length === 2, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, notes: b.notes }))));
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30', notes: 'Dinner' }),
+    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', notes: 'Dinner' })
+  ], venue, [], false, [], ['Palladium B', 'River Room 1']);
+  check('bookings with the same Notes still merge across rooms', blocks.length === 1 && blocks[0].rooms.length === 3 && blocks[0].notes === 'Dinner', JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, notes: b.notes }))));
+  // The Notes gate only applies to single-booking blocks. A block
+  // height-merged from many sessions carries only its first session's
+  // Note, which does not describe the block, so it must not block a
+  // merge: the Mortgage Choice day is many sessions with many different
+  // Notes in each room, and its A and B blocks still merge.
+  blocks = blocksFor([
+    booking({ id: 'a1', title: 'Mortgage Choice', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '06:00', endTime: '09:30', notes: 'Setup' }),
+    booking({ id: 'a2', title: 'Mortgage Choice', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '09:00', endTime: '16:00', notes: 'Plenary' }),
+    booking({ id: 'a3', title: 'Mortgage Choice', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '16:00', endTime: '18:30', notes: 'Teardown' }),
+    booking({ id: 'b1', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '06:00', endTime: '08:30', notes: 'Setup Exhibition' }),
+    booking({ id: 'b2', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '08:00', endTime: '14:30', notes: 'Coffee cart' }),
+    booking({ id: 'b3', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '16:00', endTime: '18:30', notes: 'Teardown Exhibition' })
+  ], venue, [], false, [], ['Palladium A']);
+  check('height-merged blocks still merge across rooms despite different Notes', blocks.length === 1 && blocks[0].rooms.length === 2 && blocks[0].ids.length === 6, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, ids: b.ids, notes: b.notes }))));
 
   // --- Block colour rule: whole block unless unavailable ---
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1' })], venue, palette, false);
