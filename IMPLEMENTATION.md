@@ -540,7 +540,7 @@ planner's `output` settings and `time_slots` are not shown (both stripped
 from the YAML when a config is read or saved); `rooms.exclude` is kept in
 the YAML and still read at import, but is not edited on the page. The
 room table is
-**Order | Room | Alias | Timetarget Area Name | Type | Border after |
+**Order | Room | Alias | Timetarget Area Name | Type | Strong Border After |
 Operable wall | Reorder | Remove**:
 
 - **Room** — the name is an editable input, not fixed text. Renaming a
@@ -562,7 +562,10 @@ Operable wall | Reorder | Remove**:
 - **Type** — per-room select (`large` / `small` / `other`). The three width
   fields above the table (Small / Medium / Large) are the single place to
   set widths; the per-room "Base width" column was removed.
-- **Border after** — tick a room to draw a strong border after it.
+- **Strong Border After** — tick a room to draw a strong border after it.
+  The table draws it too: the row gets the same thick line the board
+  draws (`3px solid #141414`, the `.group-edge` line) along its bottom,
+  so the room sections read in the table the way they read on the board.
 - **Operable wall** — a tick box that straddles the border between two room
   rows (centred on the boundary, in its own column). Ticking it marks the
   wall after that room as operable, which is what allows merging across
