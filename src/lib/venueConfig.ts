@@ -85,7 +85,7 @@ export function parseVenueConfig(yamlText: string): ParsedVenueConfig {
     aliases: data.rooms.room_aliases ?? {},
     mappings: data.rooms.room_mappings ?? {},
     timetargetAreas: data.rooms.timetarget_areas ?? {},
-    afterHoursContact: data.site?.after_hours_contact?.trim() || '0427 421 821'
+    afterHoursContact: data.site?.after_hours_contact?.trim() || '0400 123 456'
   };
 }
 

@@ -995,7 +995,7 @@ the file out.
   as the samples write it) and the body starts with the duty-manager
   header table on a weekend window — a weeknight's overnight notes start
   straight at the first day section, with no table. The
-  footer carries "After Hours Contact: 0427 421 821" and "Page N of M"
+  footer carries "After Hours Contact: 0400 123 456" and "Page N of M"
   (real PAGE and NUMPAGES fields), bold 12pt, centred. The contact is
   the venue's `site.after_hours_contact` from Configuration, defaulting
   to the Crown on-call number when blank. The page is A4
@@ -1003,7 +1003,7 @@ the file out.
 - **The header table** (weekend only) is a 4-column TableGrid: "Duty
   Manager – ____" (blank — the board does not know the duty manager),
   the two days (Saturday and Sunday), blank start/end hours for each
-  day, and "After Hours Contact: 0427 421 821" from the venue setting.
+  day, and "After Hours Contact: 0400 123 456" from the venue setting.
   Event headings are bold 18pt, day
   headings bold 14pt, body 14pt, and the default paragraph spacing is
   after 200, line 1.15, as in the samples. The one deliberate
