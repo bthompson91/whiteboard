@@ -583,7 +583,12 @@ Operable wall | Reorder | Remove**:
   still what turns a combined export name into board rooms.
 
 Salespeople are edited in their own table (Name, Short name, Colour), and
-the YAML can be exported with a save-location prompt.
+the YAML can be exported with a save-location prompt. All three tables
+(field mappings, rooms, salespeople) are zebra-striped: every other body
+row gets a slightly darker background (`#efe9de`, set on the cells in
+`configuration.css` so it paints under `border-collapse`), while the
+header keeps its own colour (`#e7e1d8`), so a long list reads across
+without losing the row.
 
 ## Print view
 
