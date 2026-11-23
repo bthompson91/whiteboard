@@ -504,6 +504,30 @@ try {
   })());
   ttApplied = applyTimetargetRows(ttApplied.markup, ttParsed.rows);
   check('re-importing the same file updates the notes instead of duplicating them', ttApplied.added === 0 && ttApplied.updated === 10 && ttApplied.markup.length === 10);
+  check('a big import applies in place without duplicating or losing notes', (() => {
+    // A large TimeTarget file used to hang the page: applying it
+    // rescanned the whole board for every row. 2,000 rows over the
+    // sample rooms, applied twice, must land once each and update in
+    // place the second time. Each row carries its own booking, so no
+    // two rows share a setup key — the fallback that merges a tweaked
+    // event name only fires when exactly one note shares the setup.
+    // The last row has a setup key no other row shares, so a tweaked
+    // event name on it still updates it in place.
+    const bigRows = [];
+    for (let i = 0; i < 2000; i++) {
+      const room = ['Garden Room 3', 'M9', 'River Room 1'][i % 3];
+      const day = 1 + (i % 28);
+      bigRows.push({ date: `2026-10-${String(day).padStart(2, '0')}`, startMinutes: 420 + (i % 600), startTime: '07:00', function: i % 2 ? 'Set Up' : 'Pack Down', area: `Crown Melbourne - ${room}`, event: `Event ${i}`, roomId: room, bookingId: `b-${i}` });
+    }
+    bigRows.push({ date: '2026-12-25', startMinutes: 420, startTime: '07:00', function: 'Set Up', area: 'Crown Melbourne - Garden Room 3', event: 'Unique Event', roomId: 'Garden Room 3', bookingId: 'b-unique' });
+    const first = applyTimetargetRows([], bigRows);
+    if (first.added !== 2001 || first.markup.length !== 2001) return false;
+    const second = applyTimetargetRows(first.markup, bigRows);
+    if (second.added !== 0 || second.updated !== 2001 || second.markup.length !== 2001) return false;
+    const tweaked = bigRows.map((r, i) => (i === bigRows.length - 1 ? { ...r, event: 'Renamed Event' } : r));
+    const third = applyTimetargetRows(second.markup, tweaked);
+    return third.added === 0 && third.updated === 2001 && third.markup.length === 2001 && third.markup[third.markup.length - 1].timetargetKey.includes('renamed event');
+  })());
   check('a changed setup time moves its note instead of adding one', (() => {
     const moved = ttParsed.rows.map(r => (r.roomId === 'Garden Room 3' ? { ...r, startTime: '16:00', startMinutes: 960 } : r));
     const again = applyTimetargetRows(ttApplied.markup, moved);

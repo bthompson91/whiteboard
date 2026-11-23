@@ -127,6 +127,15 @@ export async function parseTimetargetWorkbook(file: File, venue: ParsedVenueConf
   const records = sheetRecords(workbook, 1);
   const rows: TimetargetRow[] = [];
   const skipped: TimetargetSkipped[] = [];
+  // The bookings, grouped by date once: matching a row used to scan
+  // all 1,540 bookings for every row, so a 20,000-row file spent two
+  // seconds just on the lookup. A row only ever matches its own date.
+  const byDate = new Map<string, Booking[]>();
+  for (const b of bookings) {
+    const list = byDate.get(b.date);
+    if (list) list.push(b);
+    else byDate.set(b.date, [b]);
+  }
   records.forEach((record, i) => {
     const sheetRow = i + 2; // row 1 is the header
     const get = (col: string | null) => (col === null ? '' : String(record[col] ?? '').trim());
@@ -159,7 +168,7 @@ export async function parseTimetargetWorkbook(file: File, venue: ParsedVenueConf
         return h * 60 + m;
       };
       const matches = event
-        ? bookings.filter(b => b.date === date && (b.roomIds?.some(r => roomIds.includes(r)) || roomIds.includes(b.roomId)) && eventMatchesEvent(event, b.title))
+        ? (byDate.get(date) || []).filter(b => (b.roomIds?.some(r => roomIds.includes(r)) || roomIds.includes(b.roomId)) && eventMatchesEvent(event, b.title))
         : [];
       const bookingId = matches.length
         ? matches.reduce((best, b) => (Math.abs(minutesOf(b.startTime) - startMinutes) < Math.abs(minutesOf(best.startTime) - startMinutes) ? b : best)).id
@@ -188,36 +197,59 @@ export interface TimetargetApplied {
 export function applyTimetargetRows(markup: MarkupItem[], rows: TimetargetRow[]): TimetargetApplied {
   let added = 0;
   let updated = 0;
-  let next = [...markup];
+  const next = [...markup];
+  // The existing TimeTarget notes, indexed once: the exact key, and the
+  // date+room+function+booking setup key with how many notes share it.
+  // Rescanning the whole board for every row made a big import
+  // quadratic — 20,000 rows took 55 seconds of main-thread time and
+  // hung the page. Now each row is a map lookup and an in-place update.
+  const byKey = new Map<string, number>();
+  const setupCount = new Map<string, number>();
+  const setupIndex = new Map<string, number>();
+  const setupKeyOf = (m: Extract<MarkupItem, { type: 'text' }>) => {
+    const parts = (m.timetargetKey || '').split('|');
+    return [parts[0], parts[1], parts[2], parts[4] || ''].join('|');
+  };
+  next.forEach((m, i) => {
+    if (m.type !== 'text' || m.source !== 'timetarget' || !m.timetargetKey) return;
+    byKey.set(m.timetargetKey, i);
+    const sk = setupKeyOf(m);
+    setupCount.set(sk, (setupCount.get(sk) || 0) + 1);
+    if (!setupIndex.has(sk)) setupIndex.set(sk, i);
+  });
   for (const row of rows) {
     const key = timetargetNoteKey(row.date, row.roomId, row.function, row.event, row.bookingId);
     const text = timetargetNoteText(row);
     const fy = timeFraction(row.startMinutes);
-    let existing = next.find(m => m.type === 'text' && m.source === 'timetarget' && m.timetargetKey === key);
-    if (!existing) {
+    let idx = byKey.get(key);
+    if (idx === undefined) {
       // The event name was tweaked between exports: the only note for
       // this date, room, function AND booking is the same setup under a
       // new name. The booking is part of the test on purpose — two
       // sessions of one event in one room on one day share date, room,
       // function and event, and only their bookings tell them apart,
       // so a looser fallback would merge their notes into one.
-      const sameSetup = next.filter(m => {
-        if (m.type !== 'text' || m.source !== 'timetarget') return false;
-        const parts = (m.timetargetKey || '').split('|');
-        return parts[0] === row.date && parts[1] === row.roomId && parts[2] === normalizeIdentity(row.function) && (parts[4] || '') === (row.bookingId || '');
-      });
-      if (sameSetup.length === 1) existing = sameSetup[0];
+      const sk = [row.date, row.roomId, normalizeIdentity(row.function), row.bookingId || ''].join('|');
+      if ((setupCount.get(sk) || 0) === 1) idx = setupIndex.get(sk);
     }
-    if (existing) {
-      const existingId = existing.id;
-      next = next.map(m => {
-        if (m.id !== existingId || m.type !== 'text') return m;
-        return { ...m, text, fy, time: row.startTime, bookingId: row.bookingId ?? m.bookingId, timetargetKey: key };
-      });
+    if (idx !== undefined) {
+      const existing = next[idx] as Extract<MarkupItem, { type: 'text' }>;
+      // A fallback update renames the note's key (the event name
+      // changed), so the old key must stop pointing at it.
+      if (existing.timetargetKey !== key) {
+        if (existing.timetargetKey) byKey.delete(existing.timetargetKey);
+        byKey.set(key, idx);
+      }
+      next[idx] = { ...existing, text, fy, time: row.startTime, bookingId: row.bookingId ?? existing.bookingId, timetargetKey: key };
       updated++;
     } else {
       const id = `timetarget-${key.replace(/[^a-z0-9]+/gi, '-')}`;
-      next = [...next, { id, type: 'text', x: 0, y: 0, text, time: row.startTime, bookingId: row.bookingId, date: row.date, roomId: row.roomId, fx: 0.5, fy, source: 'timetarget', timetargetKey: key }];
+      const at = next.length;
+      next.push({ id, type: 'text', x: 0, y: 0, text, time: row.startTime, bookingId: row.bookingId, date: row.date, roomId: row.roomId, fx: 0.5, fy, source: 'timetarget', timetargetKey: key });
+      byKey.set(key, at);
+      const sk = [row.date, row.roomId, normalizeIdentity(row.function), row.bookingId || ''].join('|');
+      setupCount.set(sk, (setupCount.get(sk) || 0) + 1);
+      if (!setupIndex.has(sk)) setupIndex.set(sk, at);
       added++;
     }
   }
