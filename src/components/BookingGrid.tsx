@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking, JobEntry } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, blockHasJobNumber, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { applyJobNumberEdits } from '../lib/reviewApply';
 import { findJobCandidates, jobSalesperson, salesPersonMatches, JobCandidate } from '../lib/jobsImport';
 import { dayKind } from '../lib/dateTime';
@@ -403,7 +403,17 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
     {dates.map((date,dateIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizesValue[dateIndex]}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
       {venue.rooms.map((r,i)=><div className={`room-cell${strongAfter[i]?' group-edge':''} day-edge`} key={r.id}/>)}
-      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=><div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,...laneInsets(b,strongAfter),top:timeFraction(start)*size.day,height:Math.max(1,(timeFraction(end)-timeFraction(start))*size.day),backgroundColor:b.unavailable?'#9aa0a6':(b.colour||'var(--paper)'),opacity:filterSalespersonId?(b.salespersonId===filterSalespersonId&&b.date>=yesterday?(b.hidden?0.45:undefined):0.25):(b.hidden?0.45:undefined),borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
+      {segments.filter(s=>s.date===date).map(({block:b,start,end,continuation})=>{
+        // A block too short to show text legibly hides its text: even
+        // the smallest title (8px) and the facts (15px) would be
+        // clipped to a sliver — the 1-hour teardown continuation showed
+        // as a thin strip of tiny text. The facts strip stays, empty
+        // but coloured, so the salesperson colour still shows and a
+        // block with no job number (white body) stays visible. The
+        // tooltip still carries the title and times.
+        const height=Math.max(1,(timeFraction(end)-timeFraction(start))*size.day);
+        const showText=height>=16;
+        return <div key={JSON.stringify([b.date,b.title,b.rooms,b.ids])} className={`booking-block ${editingEnabled?'editable':'locked'}${selectedBookingId&&b.ids.includes(selectedBookingId)?' selected':''}${paintMode?' painting':''}`} style={{gridColumn:`${b.rooms[0]+2} / ${b.rooms[b.rooms.length-1]+3}`,gridRow:1,...laneInsets(b,strongAfter),top:timeFraction(start)*size.day,height,backgroundColor:b.unavailable?'#9aa0a6':(blockHasJobNumber(b)?(b.colour||'var(--paper)'):'white'),opacity:filterSalespersonId?(b.salespersonId===filterSalespersonId&&b.date>=yesterday?(b.hidden?0.45:undefined):0.25):(b.hidden?0.45:undefined),borderStyle:b.hidden?'dashed':undefined,zIndex:draft&&b.ids.includes(draft.id)?3001:undefined,cursor:paintMode?'copy':undefined}} title={[b.title,`${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`,...b.facts].join('\n')} onClick={()=>{
           if(draft)return;
           // Paint mode: a click paints the block instead of opening it.
           // It works in editor role even while the board is locked, so
@@ -411,10 +421,10 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
           if(paintMode){paintBlock(b,paintSalespersonId,paintApplyAll);return;}
           if(editingEnabled){const booking=bookings.find(item=>item.id===b.ids[0]);if(booking)openInspector(booking,b.rooms.map(i=>venue.rooms[i].id));}
         }}>
-        <div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined)}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}<div>{clock(b.mainStart).slice(0,5)}</div><div>{clock(b.mainEnd).slice(0,5)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}</div>
-        <FitTitle text={[b.title,[b.initials,b.jobNumber].filter(Boolean).join(' ')].filter(Boolean).join(' | ') + (b.hidden ? ' — hidden' : '')} />
-        {continuation&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
-      </div>)}
+        {showText?<div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined)}}>{b.facts.filter(t=>/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}<div>{clock(b.mainStart).slice(0,5)}</div><div>{clock(b.mainEnd).slice(0,5)}</div>{b.facts.filter(t=>!/setup/i.test(t)).map(t=><div key={t}>{firstTime(t)}</div>)}</div>:<div className="booking-facts" style={{backgroundColor:b.unavailable?(b.salespersonColour||'#9aa0a6'):(b.colour||undefined),minWidth:12}} />}
+        {showText&&<FitTitle text={[b.title,[b.initials,b.jobNumber].filter(Boolean).join(' ')].filter(Boolean).join(' | ') + (b.hidden ? ' — hidden' : '')} />}
+        {continuation&&showText&&<span style={{position:'absolute',right:2,bottom:0,fontSize:8,pointerEvents:'none'}}>continued</span>}
+      </div>;})}
     </div>)}
     {draft&&(
       <>

@@ -48,7 +48,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile, serializeSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, blockJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
@@ -595,6 +595,13 @@ try {
       && jobSalesperson(job('Brayan Mera'), palette) === undefined
       && jobSalesperson(job(''), palette) === undefined
       && jobSalesperson(job('M Carrasco'), palette) === undefined;
+  })());
+  check('a block with a real job number has one, and a block with none or NO AV does not', (() => {
+    const blk = (jobNumber) => ({ jobNumber });
+    return blockHasJobNumber(blk('1020926')) === true
+      && blockHasJobNumber(blk(undefined)) === false
+      && blockHasJobNumber(blk('')) === false
+      && blockHasJobNumber(blk('NO AV')) === false;
   })());
   const jobsSerial = (iso) => Math.round((new Date(`${iso}T00:00:00Z`).getTime() - Date.UTC(1899, 11, 30)) / 86400000);
   const jobsWb = XLSX.utils.book_new();

@@ -20,7 +20,7 @@ import type { Booking } from '../types';
 import type { MarkupItem } from '../types';
 import type { ParsedVenueConfig } from '../lib/venueConfig';
 import type { Salesperson } from '../lib/configuration';
-import { blocksFor, clock, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { blocksFor, blockHasJobNumber, clock, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { pointFromAnchor } from '../lib/markupAnchor';
 import type { AnchorLayout } from '../lib/markupAnchor';
 import { dayKind } from '../lib/dateTime';
@@ -277,13 +277,27 @@ export default function PrintView({ venue, bookings, salespeople, roomBorders, o
                       const clipFirst = Math.max(blockFirst, firstRoom);
                       const clipLast = Math.min(blockLast, lastRoom);
                       const insets = laneInsets(b.rooms, b.lane, b.laneCount, strongAfter);
-                      const bg = b.unavailable ? printColour('#9aa0a6') : printColour(b.colour);
                       const height = Math.max(1, (timeFraction(end) - timeFraction(start)) * dayHeight);
                       // A short block cannot fit the facts strip and the
                       // title side by side: render one compact line
                       // (title + time) instead, so the text stays inside
                       // the block instead of spilling over its border.
                       const compact = height < 30;
+                      // A block with no job number prints with a white
+                      // body and only its facts strip in the
+                      // salesperson's colour, like the board. A compact
+                      // block has no strip, so it keeps its colour —
+                      // the colour is its only salesperson signal.
+                      const bg = b.unavailable ? printColour('#9aa0a6') : (blockHasJobNumber(b) || compact ? printColour(b.colour) : '#fff');
+                      // The facts strip carries the salesperson's colour
+                      // even when the body does not (no job number, or
+                      // unavailable, whose body is grey) — the board
+                      // does the same.
+                      const stripBg = b.unavailable ? printColour(b.salespersonColour || '#9aa0a6') : printColour(b.colour);
+                      // A block too short to show text legibly hides
+                      // it: the compact line (10px) would be clipped to
+                      // a sliver. The block stays as a coloured bar.
+                      const showText = height >= 12;
                       const label = `${b.title}${b.initials || b.jobNumber ? ` | ${[b.initials, b.jobNumber].filter(Boolean).join(' ')}` : ''}`;
                       return (
                         <div
@@ -302,14 +316,14 @@ export default function PrintView({ venue, bookings, salespeople, roomBorders, o
                           }}
                           title={[b.title, `${b.date} ${clock(b.mainStart)}–${clock(b.mainEnd)}`, ...b.facts].join('\n')}
                         >
-                          {compact ? (
+                          {showText && (compact ? (
                             <div className="print-block-compact">{label} · {clock(b.mainStart)}–{clock(b.mainEnd)}</div>
                           ) : (
                             <>
-                              <div className="print-block-facts">{b.facts.length ? b.facts[0] : `${clock(b.mainStart)}–${clock(b.mainEnd)}`}</div>
+                              <div className="print-block-facts" style={{backgroundColor:stripBg}}>{b.facts.length ? b.facts[0] : `${clock(b.mainStart)}–${clock(b.mainEnd)}`}</div>
                               <div className="print-block-title">{label}</div>
                             </>
-                          )}
+                          ))}
                         </div>
                       );
                     })}

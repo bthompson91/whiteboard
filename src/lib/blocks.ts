@@ -172,6 +172,14 @@ export function blockJobNumber(b: Booking, rooms: string[]): string | undefined 
   return b.jobNumber ?? values[0];
 }
 
+// Whether a block carries a real job number. NO AV is a marker, not a
+// number — but a NO AV block is already unavailable (grey), so it never
+// reaches the coloured branch. A block with no number renders with a
+// white body and only its left strip in the salesperson's colour.
+export function blockHasJobNumber(b: Block): boolean {
+  return !!b.jobNumber && !isNoAv(b.jobNumber);
+}
+
 function mergeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
 }

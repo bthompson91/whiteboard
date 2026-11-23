@@ -299,6 +299,21 @@ render at their exact times with no snapping.
   (`roomNameFontSizes`, `dateFontSizes` in BookingGrid, measured on a canvas
   with `fitFontSize`): each room name gets the biggest font that fits its
   own column, each date the biggest that fits the 160px date column.
+- **No job number.** A block with no job number (`blockHasJobNumber` in
+  `blocks.ts`: a real number set, not empty and not NO AV — NO AV is
+  already unavailable and grey) renders with a white body and only its
+  left facts strip in the salesperson's colour; a block with a job number
+  keeps the whole block in the salesperson's colour. The print view does
+  the same for blocks with a facts strip; a compact print block (no
+  strip) keeps its colour, since the colour is its only salesperson
+  signal.
+- **Very short blocks.** A block shorter than 16px hides its title and
+  facts text — even the smallest title (8px) and the facts (15px) would
+  be clipped to a sliver (a 1-hour teardown continuation showed as a thin
+  strip of tiny text). The facts strip stays, empty but coloured, so the
+  salesperson colour still shows and a no-job-number block (white body)
+  stays visible; the tooltip still carries the title and times. The print
+  view hides its text below 12px (its compact line is 10px).
 
 ## Rendering (`BookingGrid.tsx`)
 
@@ -924,7 +939,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-294 checks covering matching tiers and weights, booking identity, height and
+295 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
@@ -936,7 +951,8 @@ After Hours Contact footer, and the Jobs import (column finding, area/event
 splitting, name scores, salesperson matching, candidate ranking with the
 salesperson tiebreak and the ±1 day window, the job-to-salesperson
 resolution used when a job is selected, and the board-file round-trip
-with the jobs list). Run it before pushing;
+with the jobs list), and `blockHasJobNumber` (a real number counts; empty
+and NO AV do not). Run it before pushing;
 the build (`npm run build`) must also be green.
 
 ## Known limitations
