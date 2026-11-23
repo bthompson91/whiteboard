@@ -695,7 +695,12 @@ against is `test-data/timetarget-sample.xlsx`, made by
   event share date, room, function and event, and only their bookings
   tell them apart. A hand-typed note has no key and is never touched,
   and the import never deletes a note — a setup that drops off the
-  export keeps its note until someone deletes it.
+  export keeps its note until someone deletes it. The notes are indexed
+  once (by key, and by the setup key with a count), and the bookings are
+  grouped by date once, so a large file applies in linear time: a
+  20,000-row file took 55 seconds and hung the page when every row
+  rescanned the whole board, and now applies in 108ms with identical
+  notes (fixed 2026-11-23, harness 270 checks).
 - **Still to do on Brendan's side:** fill in the Timetarget Area Name
   column in Configuration for the rooms (the Crown YAML has none yet),
   and lay out the real export in the sample's format.
@@ -798,7 +803,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-269 checks covering matching tiers and weights, booking identity, height and
+270 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
