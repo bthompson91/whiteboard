@@ -858,8 +858,7 @@ one-off import, not a linked file: plain file picker, no refresh. Each
 row becomes a text notation on the grid at that time in that room
 ("Set Up 06:30"), editable like any other note afterwards, and it saves
 with the board like any other note. The sample file the import was built
-against is `test-data/timetarget-sample.xlsx`, made by
-`scripts/make-timetarget-sample.mjs` from real Crown bookings.
+against is `test-data/timetarget-sample.xlsx`, made from real Crown bookings.
 
 - **Columns** (`src/lib/timetargetImport.ts`): matched case-insensitively
   (Start Time also answers to Start/Time, Area to Room, Event to Event
