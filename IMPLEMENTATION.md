@@ -412,6 +412,17 @@ or an arrow end re-anchors it.
   Notes are 20px, default unhighlighted, and can be highlighted yellow.
   Existing notes edit inline (double-click / Edit → textarea; blur or Done
   saves, empty text deletes, Escape cancels).
+- **Tool gating.** A note or arrow is only editable when its own tool is
+  selected in the top bar: a text box with arrows (or no tool) selected is
+  inert, and an arrow with text notes selected is inert — it cannot be
+  dragged, edited or deleted, and clicking it does not create a new note
+  or arrow on top of it. Switching tools drops the selection, so a note
+  selected in text mode is not still selected (and deletable) after
+  switching to arrows. The text does not move when a note is highlighted
+  or edited: the Edit/Highlight/Delete buttons sit below the note
+  (absolutely positioned) instead of inside it, so they cannot widen the
+  centred note, and the edit box is given the note's own width instead of
+  a fixed 220px.
 - **Roles.** Markup is gated by role, not by the lock toggle: the editor can
   annotate without unlocking the board for booking edits, and viewers cannot
   touch markup at all (creation, Delete key, note double-click edit, and the
@@ -447,7 +458,7 @@ measure() re-rendered on every one of those DOM mutations because it
 set fresh state objects even when nothing moved, so the page never
 settled and the duplicated note count grew until it died. measure()
 now only sets size/layout when the numbers actually changed (fixed
-2026-11-23, harness 276 checks).
+2026-11-23, harness 278 checks).
 
 ## Roles and the editor lock
 
@@ -579,17 +590,19 @@ the YAML can be exported with a save-location prompt.
 `src/components/PrintView.tsx` + `src/components/printView.css`. The 🖨️
 Print button (all roles) opens a date-range picker — it defaults to the
 min/max booking dates on the board (or today → today+6 when there are no
-bookings) — and "Show print view" renders a print-friendly board.
+bookings), capped at two weeks — and "Show print view" renders a
+print-friendly board on one landscape sheet.
 
-- **Layout.** Dates in the range, one row per day. Rooms are chunked across
-  landscape A4 sheets: rooms accumulate until `DATE_COL (140px) + Σ room
-  widths > PAGE_WIDTH (1000px)`, then a new chunk starts. Each chunk is a
-  `<section>` with a page break after it, its own header row (Date/time +
-  that chunk's room names), and dates flowing down; the browser paginates
-  vertically (`break-inside: avoid` on rows). Room widths are the board base
-  widths clamped to 110–180px. Day height is 160px. The header does not
-  repeat on vertical page breaks within a chunk (the date column is on every
-  row, so the day is still identifiable).
+- **Layout.** One landscape sheet: every room across, scaled to the
+  printable width (A4 landscape, 1047px at 10mm margins, with a small
+  margin kept back), and the whole date range down, the day height
+  scaling so all the dates fit (a short range gets tall days, a
+  two-week range gets short ones). The range is capped at two weeks,
+  in the picker (the To date cannot pass start + 13 days) and in the
+  view itself. Room widths are the board base widths clamped to
+  110–180px, then scaled together to fit, never below 12px. The sheet
+  carries no extra margin or padding in print, so it never spills onto
+  a blank second page.
 - **Blocks.** `blocksFor` runs with `showHidden: true`, so hidden bookings
   print (faded, dashed) and nothing is silently missing. Blocks running
   past midnight are split into per-day segments and clipped to the range.
@@ -597,7 +610,7 @@ bookings) — and "Show print view" renders a print-friendly board.
   board. Blocks are normal grid items (`gridColumn` / `gridRow` +
   `marginTop`), not absolutely positioned — Chrome's print layout misplaces
   absolutely positioned blocks onto the wrong sheet, so this is what makes
-  each block land on its chunk's page. Short blocks (under 30px tall) render
+  each block land on the sheet. Short blocks (under 30px tall) render
   one compact line (title + time) so the text stays inside the block.
 - **Colours.** Block backgrounds print at 50% opacity (`hexToRgba(hex,
   0.5)`) so the printout does not kill printer ink; text stays full
@@ -605,12 +618,12 @@ bookings) — and "Show print view" renders a print-friendly board.
   the paper colour at 50%. Date cells use the same past/today/future colours
   as the board, and today's row keeps the canary highlight.
 - **Annotations.** Anchored notes and arrows render from their anchors
-  (via `pointFromAnchor` with an `AnchorLayout` built per chunk: row tops
-  are `i × DAY_HEIGHT`, room lefts are the cumulative widths). Text notes
-  print at their anchor (highlighted ones on yellow); arrows render in a
-  per-chunk SVG overlay (`#7a1f1f`, 3px, arrowhead marker) only when both
-  ends resolve in the same chunk. Legacy unanchored markup cannot be
-  positioned, so it is skipped in print.
+  (via `pointFromAnchor` with an `AnchorLayout` built for the sheet: row
+  tops are `i × dayHeight`, room lefts are the cumulative widths). Text
+  notes print at their anchor (highlighted ones on yellow); arrows render
+  in an SVG overlay (`#7a1f1f`, 3px, arrowhead marker) only when both ends
+  resolve on the sheet. Legacy unanchored markup cannot be positioned, so
+  it is skipped in print.
 - **Printing.** The print view is a fixed full-screen overlay (z 4000) with
   "🖨️ Print / Save as PDF" (`window.print()`) and "Back to board" buttons.
   `@page { size: landscape; margin: 10mm }` and the `@media print` rules
@@ -719,7 +732,7 @@ against is `test-data/timetarget-sample.xlsx`, made by
   grouped by date once, so a large file applies in linear time: a
   20,000-row file took 55 seconds and hung the page when every row
   rescanned the whole board, and now applies in 108ms with identical
-  notes (fixed 2026-11-23, harness 276 checks).
+  notes (fixed 2026-11-23, harness 278 checks).
 - **Still to do on Brendan's side:** fill in the Timetarget Area Name
   column in Configuration for the rooms (the Crown YAML has none yet),
   and lay out the real export in the sample's format.
@@ -806,6 +819,15 @@ the file out.
   in the notes and in the export alike. The note's time is stored on the note itself
   (`MarkupItem.time`, set by the TimeTarget import); a note made
   before that field existed has its time read back out of its text.
+  A note with no booking is matched back to one before it is listed:
+  by the event name in its TimeTarget key (the import's match strips a
+  job/area prefix and allows a truncated event, so "1020926 - pall |
+  cba and sbv retired staff christmas lunch 2" still finds "CBA and
+  SBV Retired Staff Christmas Lunch 2026"), and otherwise by the
+  closest session start after its time in its room — so an orphaned
+  note exports with its event's title and combined room, not as a
+  nameless setup in one room. A note that matches nothing is still a
+  setup on its own, by its function.
 - **The purple notation:** TimeTarget notes render in purple on the
   board (`.markup-note.timetarget`) and on the printout, so the notation
   the export reads is visible as such. A hand-typed note is never
@@ -840,8 +862,6 @@ the build (`npm run build`) must also be green.
   to disk and the board is lowlit.
 - The editor lock is only shared when the board file is linked.
 - Legacy unanchored markup does not print (it cannot be positioned).
-- The print header repeats per room chunk, not per vertical page break
-  within a chunk.
 - In the import review, the selection is re-derived when the result
   changes (e.g. after linking a match), which resets manual ticks.
 - Colours lost in a bad re-import are not recoverable — they need re-doing
