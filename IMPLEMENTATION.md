@@ -265,7 +265,14 @@ render at their exact times with no snapping.
   is "A"); a room in no combined room gets one cell spanning both rows,
   vertically centred. The Date / time corner spans both rows too. A
   mapping that names one room, or rooms that are not on the board, makes
-  no group. The board renders rooms in display order
+  no group. A venue also names bookable subsets ("Promenade 1 & 2",
+  "Palladium B & C") alongside the full room, and those subsets are for
+  resolving an export row to rooms, not for the header: a mapping only
+  becomes a header group when every one of its members is on the board
+  and not already claimed by a larger group, largest first, so the full
+  room claims its members even if the YAML lists a subset first. Without
+  that, every subset made its own header and they all piled on top of
+  the full room's. The board renders rooms in display order
   (`boardRoomOrder`): each combined room's members sit together and
   alphabetically, emitted where the group's first member appears, and
   the combined room name itself gets no column of its own when it is
@@ -279,8 +286,11 @@ render at their exact times with no snapping.
   header fits its name across the spanned width, a member fits its
   short name in its own column, and the header height is measured so
   the day height adapts. Browser-verified on the real 2–3 Dec board
-  and on the real MCG YAML (12 checks: no duplicate combined names,
-  no overlapping group headers, members A, B, C in order).
+  (Crown header is now just Palladium, River Room, Garden Room,
+  Promenade, M1 - M4, M5 - M10, M11 - M16, Conference Hall — no subset
+  headers, no overlap) and on the real MCG YAML (12 checks: no
+  duplicate combined names, no overlapping group headers, members
+  A, B, C in order).
 
 - **Height merge (tall blocks).** Same room, same title matched loosely
   (`mergeTitle` ignores case and spacing), overlapping or adjacent times:
@@ -1064,7 +1074,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-309 checks covering matching tiers and weights, booking identity, height and
+311 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,

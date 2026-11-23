@@ -408,16 +408,30 @@ export function assignLanes(blocks: Block[]): void {
 // than one group goes with the first group that claims it, as in
 // headerGroups().
 export interface RoomHeaderGroup { name: string; start: number; end: number; members: number[]; }
-export function boardRoomOrder(roomNames: string[], mappings: Record<string, string[]>): string[] {
+// The header groups, largest first: a venue names both the full combined
+// room and its bookable subsets ("Promenade" and "Promenade 1 & 2"), and
+// the subsets are for resolving an export row to rooms, not for the
+// header. A mapping only becomes a group when every one of its members
+// is on the board and not already claimed by a larger group — otherwise
+// the subset header would sit on top of the full room's header. Sorting
+// largest first means the full room claims its members even if the YAML
+// lists a subset first.
+export function headerGroupMappings(roomNames: string[], mappings: Record<string, string[]>): { name: string; members: string[] }[] {
+  const entries = Object.entries(mappings).map(([name, members]) => ({ name, members: members.filter(m => roomNames.includes(m)) })).filter(e => e.members.length >= 2);
+  entries.sort((a, b) => b.members.length - a.members.length);
+  const claimed = new Set<string>();
   const groups: { name: string; members: string[] }[] = [];
-  const memberOf = new Map<string, number>();
-  for (const [name, members] of Object.entries(mappings)) {
-    const onBoard = members.filter(m => roomNames.includes(m));
-    if (onBoard.length < 2) continue;
-    const gi = groups.length;
-    groups.push({ name, members: onBoard });
-    for (const m of onBoard) if (!memberOf.has(m)) memberOf.set(m, gi);
+  for (const e of entries) {
+    if (e.members.some(m => claimed.has(m))) continue;
+    groups.push(e);
+    for (const m of e.members) claimed.add(m);
   }
+  return groups;
+}
+export function boardRoomOrder(roomNames: string[], mappings: Record<string, string[]>): string[] {
+  const groups: { name: string; members: string[] }[] = headerGroupMappings(roomNames, mappings);
+  const memberOf = new Map<string, number>();
+  for (const [gi, g] of groups.entries()) for (const m of g.members) if (!memberOf.has(m)) memberOf.set(m, gi);
   // The combined room name itself, when it is also a room on the board,
   // is absorbed: no column of its own, the group header is its name.
   const absorbed = new Set<string>();
@@ -443,7 +457,7 @@ export function boardRoomOrder(roomNames: string[], mappings: Record<string, str
 export function headerGroups(roomNames: string[], mappings: Record<string, string[]>): { groups: RoomHeaderGroup[]; memberOf: (number | null)[] } {
   const memberOf: (number | null)[] = roomNames.map(() => null);
   const groups: RoomHeaderGroup[] = [];
-  for (const [name, members] of Object.entries(mappings)) {
+  for (const { name, members } of headerGroupMappings(roomNames, mappings)) {
     const indices = members.map(m => roomNames.indexOf(m)).filter(i => i >= 0);
     if (indices.length < 2) continue;
     const start = Math.min(...indices), end = Math.max(...indices);
