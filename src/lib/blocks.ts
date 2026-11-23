@@ -4,7 +4,7 @@ import type { ParsedVenueConfig } from './venueConfig';
 import type { Salesperson } from './configuration';
 import { bookingColour, isNoAv, resolveSalesperson, salespersonInitials, UNAVAILABLE_SALESPERSON } from './configuration';
 
-export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonId?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string; lane?:number; laneCount?:number }
+export interface Block { date:string; title:string; ids:string[]; rooms:number[]; start:number; end:number; mainStart:number; mainEnd:number; facts:string[]; jobNumber?:string; colour?:string; salespersonId?:string; salespersonColour?:string; initials?:string; unavailable?:boolean; hidden?:boolean; mergeRoom:boolean; mergeGroup?:string; lane?:number; laneCount?:number; roomSpans?: Record<number, { start:number; end:number }> }
 function minutes(s:string) { const m=/^(\d{1,2}):(\d{2})/.exec(s); return m?Number(m[1])*60+Number(m[2]):0; }
 function range(start:string,end:string) { const a=minutes(start),b=minutes(end); return [a,b<a?b+1440:b]; }
 export function clock(n:number) { return `${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}${n>=1440?' (+1 day)':''}`; }
@@ -180,6 +180,16 @@ export function blockHasJobNumber(b: Block): boolean {
   return !!b.jobNumber && !isNoAv(b.jobNumber);
 }
 
+// The span a block occupies in one of its rooms. A merged block's
+// overall span is the union across its rooms, but a room only carries
+// the bookings that are actually in it — a setup listed on the C rooms
+// does not occupy B, so it must not make the block overlap something
+// in B. Lanes are decided per room on these spans; without a per-room
+// span a block falls back to its overall span.
+export function spanInRoom(b: Block, room: number): { start: number; end: number } {
+  return b.roomSpans?.[room] ?? { start: b.start, end: b.end };
+}
+
 function mergeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -206,7 +216,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       // (its id in the key), so it never height-merges with like bookings.
       const key=b.mergeTime===false?JSON.stringify([b.date,mergeTitle(b.title),room,b.id]):JSON.stringify([b.date,mergeTitle(b.title),room]);
       const old=groups.get(key);
-      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&roomHidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumbers?.[roomId]??b.jobNumber;}
+      if(old){old.ids.push(b.id);old.start=Math.min(old.start,start);old.end=Math.max(old.end,end);old.mainStart=Math.min(old.mainStart,mainStart);old.mainEnd=Math.max(old.mainEnd,mainEnd);old.facts.push(...facts);old.hidden=old.hidden&&roomHidden;old.mergeRoom=old.mergeRoom&&b.mergeRoom!==false;if(!old.mergeGroup)old.mergeGroup=b.mergeGroup;if(!old.jobNumber)old.jobNumber=b.jobNumbers?.[roomId]??b.jobNumber;const rs=old.roomSpans?.[room];if(old.roomSpans)old.roomSpans[room]=rs?{start:Math.min(rs.start,start),end:Math.max(rs.end,end)}:{start,end};}
       else {
         // The initials follow the same booking as the colour: the first
         // booking in the group. An unavailable booking has no salesperson
@@ -229,7 +239,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
         // only their colour is set aside. Unavailable stays grey.
         const colour=unavailable?bookingColour({...b,jobNumber:roomJobNumber},salespeople):randomEventColours?eventColour(b.title):bookingColour({...b,jobNumber:roomJobNumber},salespeople);
         const salespersonColour=randomEventColours?undefined:(person&&person.id!==UNAVAILABLE_SALESPERSON.id?person.colour:undefined);
-        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:roomJobNumber,colour,salespersonId:b.salespersonId,salespersonColour,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup});
+        groups.set(key,{date:b.date,title:b.title,ids:[b.id],rooms:[room],start,end,mainStart,mainEnd,facts:[...facts],jobNumber:roomJobNumber,colour,salespersonId:b.salespersonId,salespersonColour,initials:(unavailable&&!noAv)||!person?undefined:salespersonInitials(person),unavailable,hidden:roomHidden,mergeRoom:b.mergeRoom!==false,mergeGroup:b.mergeGroup,roomSpans:{[room]:{start,end}}});
       }
     }
   }
@@ -259,6 +269,7 @@ export function blocksFor(bookings:Booking[],venue:ParsedVenueConfig,salespeople
       previous.jobNumber=previous.jobNumber||b.jobNumber;
       previous.hidden=previous.hidden&&b.hidden;
       previous.mergeRoom=previous.mergeRoom&&b.mergeRoom;
+      if(previous.roomSpans&&b.roomSpans){for(const [r,s] of Object.entries(b.roomSpans)){const k=Number(r);const prev=previous.roomSpans[k];previous.roomSpans[k]=prev?{start:Math.min(prev.start,s.start),end:Math.max(prev.end,s.end)}:s;}}
     } else spans.push(b);
   }
   // Blocks render at their exact times: start_time and end_time are
@@ -318,15 +329,20 @@ export function assignLanes(blocks: Block[]): void {
       }
     }
     const best = new Map<Block, { lane: number; laneCount: number }>();
-    for (const roomBlocks of byRoom.values()) {
-      const sorted = [...roomBlocks].sort((a, c) => a.start - c.start || a.end - c.end);
+    for (const [room, roomBlocks] of byRoom.entries()) {
+      // Lanes are decided per room on the span the block occupies in
+      // THAT room (spanInRoom), not its overall span: a setup listed on
+      // one room must not push the block into a lane in a room where it
+      // does not overlap anything.
+      const span = (b: Block) => spanInRoom(b, room);
+      const sorted = [...roomBlocks].sort((a, c) => span(a).start - span(c).start || span(a).end - span(c).end);
       // Greedy lane assignment: the lowest lane free at the block's start.
       const laneEnds: number[] = [];
       const laneOf = new Map<Block, number>();
       for (const b of sorted) {
-        let lane = laneEnds.findIndex(end => end <= b.start);
-        if (lane < 0) { lane = laneEnds.length; laneEnds.push(b.end); }
-        else laneEnds[lane] = b.end;
+        let lane = laneEnds.findIndex(end => end <= span(b).start);
+        if (lane < 0) { lane = laneEnds.length; laneEnds.push(span(b).end); }
+        else laneEnds[lane] = span(b).end;
         laneOf.set(b, lane);
       }
       // Lane count: the most blocks active at once during this block.
@@ -335,10 +351,10 @@ export function assignLanes(blocks: Block[]): void {
       // inside it is enough. A block's lane is always below its count:
       // it only takes lane k when k other blocks are active at its start.
       for (const b of sorted) {
-        const times = [b.start, ...sorted.filter(o => o !== b && o.start > b.start && o.start < b.end).map(o => o.start)];
+        const times = [span(b).start, ...sorted.filter(o => o !== b && span(o).start > span(b).start && span(o).start < span(b).end).map(o => span(o).start)];
         let count = 1;
         for (const t of times) {
-          const active = sorted.filter(o => o.start <= t && t < o.end).length;
+          const active = sorted.filter(o => span(o).start <= t && t < span(o).end).length;
           if (active > count) count = active;
         }
         const prev = best.get(b);

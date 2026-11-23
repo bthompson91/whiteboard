@@ -48,7 +48,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile, serializeSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour, spanInRoom } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
@@ -900,6 +900,32 @@ try {
     booking({ id: 'b', title: 'Room B Event', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '09:00', endTime: '12:00' })
   ], venue, [], false);
   check('overlapping blocks in different rooms do not split', blocks.length === 2 && blocks.every(b => b.laneCount === undefined), JSON.stringify(blocks));
+  // A setup listed on one room must not push a merged block into a lane
+  // in a room where it does not overlap anything. The Carlton case: the
+  // B booking has no timeline (19:00-22:30) while the River booking
+  // carries Setup 15:00-18:30, so the merged block's union span
+  // (15:00-00:30) overlaps Mortgage Choice (16:00-18:30) in B — but in
+  // B the event is only there 19:00-22:30, after Mortgage Choice leaves,
+  // so it keeps the full width. The per-room spans say so; the union
+  // span does not. (Rooms are the test venue's B, River 1, River 2 with
+  // both walls operable, standing in for Palladium B, C1, C2, C3.)
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30' }),
+    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }, { label: 'Teardown', start: '22:30', end: '00:30' }] }),
+    booking({ id: 'c', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '16:00', endTime: '18:30' })
+  ], venue, [], false, [], ['Palladium B', 'River Room 1']);
+  const carlton = blocks.find(b => b.title === 'Carlton');
+  check('a setup on one room does not lane a merged block in another room', blocks.length === 2 && carlton && carlton.rooms.length === 3 && carlton.laneCount === undefined
+    && spanInRoom(carlton, 1).start === 1140 && spanInRoom(carlton, 1).end === 1350
+    && spanInRoom(carlton, 2).start === 900 && spanInRoom(carlton, 2).end === 1470, JSON.stringify(blocks.map(b => ({ title: b.title, rooms: b.rooms, start: b.start, end: b.end, lane: b.lane, laneCount: b.laneCount, roomSpans: b.roomSpans }))));
+  // ... and a real overlap in the same room still splits the width.
+  blocks = blocksFor([
+    booking({ id: 'a', title: 'Carlton', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '19:00', endTime: '22:30' }),
+    booking({ id: 'b', title: 'Carlton', roomId: 'River Room 1', roomIds: ['River Room 1', 'River Room 2'], startTime: '19:00', endTime: '22:30', timeline: [{ label: 'Setup', start: '15:00', end: '18:30' }] }),
+    booking({ id: 'c', title: 'Mortgage Choice', roomId: 'Palladium B', roomIds: ['Palladium B'], startTime: '18:00', endTime: '20:00' })
+  ], venue, [], false, [], ['Palladium B', 'River Room 1']);
+  const carlton2 = blocks.find(b => b.title === 'Carlton');
+  check('a real overlap with the merged block in its own room still splits', blocks.length === 2 && carlton2 && carlton2.laneCount === 2, JSON.stringify(blocks.map(b => ({ title: b.title, lane: b.lane, laneCount: b.laneCount }))));
 
   // --- Block colour rule: whole block unless unavailable ---
   blocks = blocksFor([booking({ id: 'a', title: 'Gala', roomId: 'Palladium A', roomIds: ['Palladium A'], salespersonId: 'sp-1' })], venue, palette, false);

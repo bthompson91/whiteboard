@@ -287,6 +287,23 @@ render at their exact times with no snapping.
   Blocks with `laneCount > 1` render side-by-side at `1/laneCount` of the
   width in their lane; back-to-back blocks (`end == start`) do not overlap
   and still fill the full width.
+- **Lanes are per room, not per block.** A block keeps the span it
+  occupies in each of its rooms (`roomSpans` on the block, filled in by
+  `blocksFor` when groups are created and merged; `spanInRoom` falls back
+  to the block's overall span when a room has none). `assignLanes`
+  decides overlap room by room on those spans: a setup listed on one
+  room does not push a merged block into a lane in a room where it does
+  not overlap anything. The Carlton case: the B booking has no timeline
+  (19:00-22:30) while the C booking carries Setup 15:00-18:30, so the
+  merged block's union span (15:00-00:30) overlapped Mortgage Choice
+  (16:00-18:30) in B and the block was squeezed to half width in the
+  right lane, starting at the C1/C2 boundary — but in B the event is
+  only there 19:00-22:30, after Mortgage Choice leaves, so it now keeps
+  the full width. A real overlap in the block's own room still splits
+  it. (The block still renders as one rectangle on its union span, so
+  in B it covers 15:00-18:30 where Mortgage Choice sits — a 16px
+  overlap at the bottom of that block in column B that hides no text;
+  a single rectangle cannot have a different top per room.)
 - **Night compression.** `timeFraction(minutesOfDay)` maps time to a
   fraction of the day: night hours 00:00–06:00 render at 75% of the height
   of day hours (6 night hours = 4.5 units, 18 day hours = 18 units, 22.5
@@ -939,7 +956,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-295 checks covering matching tiers and weights, booking identity, height and
+297 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
@@ -952,7 +969,8 @@ splitting, name scores, salesperson matching, candidate ranking with the
 salesperson tiebreak and the ±1 day window, the job-to-salesperson
 resolution used when a job is selected, and the board-file round-trip
 with the jobs list), and `blockHasJobNumber` (a real number counts; empty
-and NO AV do not). Run it before pushing;
+and NO AV do not), and per-room lane spans (a setup on one room does not
+lane a merged block in another room; a real overlap still splits). Run it before pushing;
 the build (`npm run build`) must also be green.
 
 ## Known limitations
