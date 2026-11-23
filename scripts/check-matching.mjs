@@ -1356,13 +1356,14 @@ try {
   check('member short names drop the combined name', memberShortName('Palladium', 'Palladium C1') === 'C1' && memberShortName('Olympic Room', 'Olympic Room A') === 'A' && memberShortName('Olympic Room', 'Olympic Room') === 'Olympic Room' && memberShortName('Palladium', 'River Room 1') === 'River Room 1' && memberShortName('Jim Stynes Grill', 'Jim Stynes A') === 'A');
   // The board display order: a combined room's members sit together and
   // alphabetically, and the combined name itself gets no column when it
-  // is also a room. The MCG order interleaves members (Jim Stynes B,
-  // Olympic Room A, Olympic Room B, Jim Stynes A, ...), which made the
-  // group spans overlap and the headers pile up.
+  // is also a room. The group sits where its combined name sits in the
+  // config order — the MCG config lists the combined names early and
+  // their members interleaved late, which used to push every group to
+  // the end of the board and the headers piled up.
   const mcgOrder = boardRoomOrder(
     ['Members Dining Room', 'Olympic Room', 'Jim Stynes Grill', 'Dillbabiik Room', 'Long Room', 'Committee Room', 'Hans Ebeling Room', 'HCA Harrison Room', 'Jack Ryder Room', 'Lindsay Hassett Room', 'Keith Miller Room', 'Legends Room', 'AFL Dining Room', 'Change Room 1', 'Change Room 2', 'Australian Sports Museum', 'Corporate Suite 3-79-81', 'Jim Stynes B', 'Olympic Room A', 'Olympic Room B', 'Jim Stynes A', 'HCA Harrison Room B', 'Jack Ryder Room A', 'HCA Harrison Room A', 'Jack Ryder Room B', 'Legends Room B', 'Jack Ryder Room C', 'Legends Room A', 'Unassigned'],
     { OTHER: ['Betty Cuthbert Lounge', 'Unassigned'], 'Olympic Room': ['Olympic Room A', 'Olympic Room B'], 'Jim Stynes Grill': ['Jim Stynes A', 'Jim Stynes B'], 'HCA Harrison Room': ['HCA Harrison Room A', 'HCA Harrison Room B'], 'Jack Ryder Room': ['Jack Ryder Room A', 'Jack Ryder Room B', 'Jack Ryder Room C'], 'Legends Room': ['Legends Room A', 'Legends Room B'] });
-  check('board order groups MCG members together, alphabetical, no duplicate combined names', mcgOrder.join('|') === ['Members Dining Room', 'Dillbabiik Room', 'Long Room', 'Committee Room', 'Hans Ebeling Room', 'Lindsay Hassett Room', 'Keith Miller Room', 'AFL Dining Room', 'Change Room 1', 'Change Room 2', 'Australian Sports Museum', 'Corporate Suite 3-79-81', 'Jim Stynes A', 'Jim Stynes B', 'Olympic Room A', 'Olympic Room B', 'HCA Harrison Room A', 'HCA Harrison Room B', 'Jack Ryder Room A', 'Jack Ryder Room B', 'Jack Ryder Room C', 'Legends Room A', 'Legends Room B', 'Unassigned'].join('|'), mcgOrder.join('|'));
+  check('board order groups MCG members together, alphabetical, no duplicate combined names', mcgOrder.join('|') === ['Members Dining Room', 'Olympic Room A', 'Olympic Room B', 'Jim Stynes A', 'Jim Stynes B', 'Dillbabiik Room', 'Long Room', 'Committee Room', 'Hans Ebeling Room', 'HCA Harrison Room A', 'HCA Harrison Room B', 'Jack Ryder Room A', 'Jack Ryder Room B', 'Jack Ryder Room C', 'Lindsay Hassett Room', 'Keith Miller Room', 'Legends Room A', 'Legends Room B', 'AFL Dining Room', 'Change Room 1', 'Change Room 2', 'Australian Sports Museum', 'Corporate Suite 3-79-81', 'Unassigned'].join('|'), mcgOrder.join('|'));
   check('board order keeps a lone combined-name member standalone', boardRoomOrder(['Room A', 'Room B', 'Unassigned'], { OTHER: ['Unassigned'] }).join('|') === 'Room A|Room B|Unassigned');
   // A subset mapping (Promenade 1 & 2) is for resolving an export row to
   // rooms, not for the header: it must not make a second, overlapping

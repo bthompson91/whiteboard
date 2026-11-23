@@ -400,13 +400,14 @@ export function assignLanes(blocks: Block[]): void {
 // group's and the headers pile on top of each other. boardRoomOrder()
 // is the display order the board renders: each group's members are
 // contiguous and alphabetical (A, B, C), emitted where the group's
-// first member appears, and the combined room name itself gets no
-// column of its own — bookings in it expand to its members on import,
-// so the column would be empty, and the name would read twice (once
-// as a standalone room, once as the group header above its members).
-// A room in no group keeps its place; a room that is a member of more
-// than one group goes with the first group that claims it, as in
-// headerGroups().
+// combined name sits in the config order (or where its first member
+// sits, when the combined name is not itself a room), and the combined
+// room name itself gets no column of its own — bookings in it expand
+// to its members on import, so the column would be empty, and the name
+// would read twice (once as a standalone room, once as the group
+// header above its members). A room in no group keeps its place; a
+// room that is a member of more than one group goes with the first
+// group that claims it, as in headerGroups().
 export interface RoomHeaderGroup { name: string; start: number; end: number; members: number[]; }
 // The header groups, largest first: a venue names both the full combined
 // room and its bookable subsets ("Promenade" and "Promenade 1 & 2"), and
@@ -434,8 +435,14 @@ export function boardRoomOrder(roomNames: string[], mappings: Record<string, str
   for (const [gi, g] of groups.entries()) for (const m of g.members) if (!memberOf.has(m)) memberOf.set(m, gi);
   // The combined room name itself, when it is also a room on the board,
   // is absorbed: no column of its own, the group header is its name.
+  // The group is emitted where that name sits in the config order, not
+  // where its first member happens to sit — the MCG config lists the
+  // combined names early and their members interleaved late, so waiting
+  // for a member pushed every group to the end of the board.
   const absorbed = new Set<string>();
   for (const g of groups) if (roomNames.includes(g.name)) absorbed.add(g.name);
+  const groupByName = new Map<string, number>();
+  for (const [gi, g] of groups.entries()) groupByName.set(g.name, gi);
   const emittedGroups = new Set<number>();
   const emittedRooms = new Set<string>();
   const result: string[] = [];
@@ -446,7 +453,10 @@ export function boardRoomOrder(roomNames: string[], mappings: Record<string, str
     for (const m of sorted) { result.push(m); emittedRooms.add(m); }
   };
   for (const name of roomNames) {
-    if (absorbed.has(name) || emittedRooms.has(name)) continue;
+    if (emittedRooms.has(name)) continue;
+    const giByName = groupByName.get(name);
+    if (giByName !== undefined && absorbed.has(name)) { emitGroup(giByName); continue; }
+    if (absorbed.has(name)) continue;
     const gi = memberOf.get(name);
     if (gi !== undefined) { emitGroup(gi); continue; }
     result.push(name);
