@@ -101,6 +101,26 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     };
   };
 
+  // Two layouts are the same when every number that anchors a note
+  // matches. buildLayout() returns fresh arrays on every call, so
+  // handing its result straight to setLayout re-renders even when
+  // nothing moved — and the MutationObserver below fires on every DOM
+  // change, so an unconditional set re-renders on every one of its own
+  // updates and the page never settles. Comparing first breaks that
+  // loop: measure() only re-renders when the board actually moved.
+  const sameValues = <T,>(a: T[] | undefined, b: T[] | undefined): boolean =>
+    a === b || (!!a && !!b && a.length === b.length && a.every((v, i) => v === b[i]));
+  const layoutsEqual = (a: AnchorLayout | null, b: AnchorLayout | null): boolean => {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return a.dayHeight === b.dayHeight
+      && sameValues(a.dates, b.dates)
+      && sameValues(a.rowTops, b.rowTops)
+      && sameValues(a.roomIds, b.roomIds)
+      && sameValues(a.roomLefts, b.roomLefts)
+      && sameValues(a.roomWidths, b.roomWidths);
+  };
+
   useEffect(() => {
     const parent = root.current?.parentElement;
     if (!parent) return;
@@ -108,11 +128,14 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     let board = parent.querySelector('.booking-grid') as HTMLElement | null;
 
     const measure = () => {
-      setSize({
-        width: Math.max(parent.clientWidth, board?.scrollWidth || 0),
-        height: Math.max(parent.clientHeight, board?.scrollHeight || 0)
-      });
-      setLayout(buildLayout());
+      const width = Math.max(parent.clientWidth, board?.scrollWidth || 0);
+      const height = Math.max(parent.clientHeight, board?.scrollHeight || 0);
+      // Return the previous state object when nothing changed, so
+      // React skips the re-render. A fresh object would re-render on
+      // every observer callback even with identical numbers.
+      setSize(prev => (prev.width === width && prev.height === height ? prev : { width, height }));
+      const nextLayout = buildLayout();
+      setLayout(prev => (layoutsEqual(prev, nextLayout) ? prev : nextLayout));
     };
     const resizeObserver = new ResizeObserver(measure);
     resizeObserver.observe(parent);

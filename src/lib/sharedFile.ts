@@ -29,11 +29,23 @@ export function parseSharedFile(text: string): SharedBoardFile {
   if (!Array.isArray(parsed.bookings)) {
     throw new Error('The published-board file is missing bookings.');
   }
+  // A board file can carry two notes with the same id — a TimeTarget
+  // import that ran before the import deduped by key left one in a
+  // real board. Two notes with one id make React's keyed
+  // reconciliation duplicate the note on every render, which the
+  // MarkupLayer observer then chases forever. Keep the first copy.
+  const seen = new Set<string>();
+  const markup = (Array.isArray(parsed.markup) ? parsed.markup : []).filter(m => {
+    if (!m || typeof m.id !== 'string') return true;
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
   return {
     ...parsed,
     revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
     history: Array.isArray(parsed.history) ? parsed.history : [],
-    markup: Array.isArray(parsed.markup) ? parsed.markup : [],
+    markup,
     editorLock: parsed.editorLock && typeof parsed.editorLock === 'object' && typeof parsed.editorLock.id === 'string' && typeof parsed.editorLock.at === 'number' ? parsed.editorLock : null
   };
 }

@@ -280,6 +280,18 @@ try {
   const parsedBoard = parseSharedFile(boardText);
   check('markup round-trips through the shared board file', parsedBoard.markup.length === 1 && parsedBoard.markup[0].text === 'Turn here' && parsedBoard.markup[0].highlight === true, boardText);
   check('a board file written before markup default to no markup', parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })).markup.length === 0);
+  // A board file can carry two notes with the same id (a TimeTarget
+  // import that ran before the import deduped by key). Loading it must
+  // keep the first copy and drop the rest, or React's keyed
+  // reconciliation duplicates the note on every render and the page
+  // never settles. Bookings and history are untouched.
+  const dupMarkup = [
+    { id: 'dup', type: 'text', text: 'first', x: 0, y: 0 },
+    { id: 'other', type: 'text', text: 'other', x: 1, y: 1 },
+    { id: 'dup', type: 'text', text: 'second', x: 2, y: 2 }
+  ];
+  const dupBoard = parseSharedFile(JSON.stringify(createSharedFile([{ id: 'b1' }], 3, [{ id: 'h1' }], dupMarkup)));
+  check('loading a board file drops a duplicate markup id, keeping the first', dupBoard.markup.length === 2 && dupBoard.markup[0].text === 'first' && dupBoard.markup[1].text === 'other' && dupBoard.bookings.length === 1 && dupBoard.history.length === 1 && dupBoard.revision === 3, JSON.stringify(dupBoard.markup));
   // --- The editor lock rides in the board file too, so only one editor ---
   // holds it at a time. A lock round-trips; a board file written before
   // the lock defaults to no lock.
