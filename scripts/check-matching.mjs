@@ -31,6 +31,7 @@ try {
       join(root, 'src/lib/wizard.ts'),
       join(root, 'src/lib/bookingImport.ts'),
       join(root, 'src/lib/timetargetImport.ts'),
+      join(root, 'src/lib/jobsImport.ts'),
       join(root, 'src/lib/docx.ts'),
       join(root, 'src/lib/weekendNotes.ts'),
       join(root, 'src/lib/notePlacement.ts')
@@ -54,6 +55,7 @@ try {
   const { detectHeaderRow, headerCandidates, suggestFieldMapping, detectRoomSeparator, splitRoomValue, roomParts, dataRecords, columnValues, countInRange, buildVenueDoc, buildVenueYaml, previewRow } = await import(pathToFileURL(join(dir, 'wizard.js')).href);
   const { sheetRecords } = await import(pathToFileURL(join(dir, 'bookingImport.js')).href);
   const { findTimetargetColumns, resolveTimetargetRoom, resolveTimetargetRooms, shortFunctionName, eventMatchesEvent, timetargetNoteKey, timetargetNoteText, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
+  const { findJobsColumns, jobArea, jobEvent, jobNameScore, salesPersonMatches, findJobCandidates, parseJobsWorkbook } = await import(pathToFileURL(join(dir, 'jobsImport.js')).href);
   const { overnightWindow, headerRangeLabel, headerTableDays, parseHhmm, roomDisplayName, roomGroupName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
   const { placeNote } = await import(pathToFileURL(join(dir, 'notePlacement.js')).href);
   const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
@@ -573,6 +575,63 @@ try {
   // --- Short function names ---
   check('a setup is SU and a pack-down is PD, whatever the venue called it', shortFunctionName('Set Up') === 'SU' && shortFunctionName('Setup') === 'SU' && shortFunctionName('Bump In') === 'SU' && shortFunctionName('Pack Down') === 'PD' && shortFunctionName('Teardown') === 'PD' && shortFunctionName('Bump Out') === 'PD' && shortFunctionName('AV Check') === 'AV Check', JSON.stringify([shortFunctionName('Set Up'), shortFunctionName('Pack Down')]));
   check('the import writes the short function into the note', timetargetNoteText({ function: 'Set Up', startTime: '06:30' }) === 'SU 06:30' && timetargetNoteText({ function: 'Pack Down', startTime: '23:00' }) === 'PD 23:00', timetargetNoteText({ function: 'Set Up', startTime: '06:30' }));
+  // --- Jobs import: the sales system's list, offered in the inspector ---
+  // A job is a candidate when its event name overlaps the booking title
+  // and its dates cover the booking (a day either side); the
+  // salesperson breaks ties between jobs with the same name score.
+  check('a job description splits into area and event at the last bar', jobArea('Pall | CBA and SBV Retired Staff Christmas Lunch 2026') === 'Pall' && jobEvent('Pall | CBA and SBV Retired Staff Christmas Lunch 2026') === 'CBA and SBV Retired Staff Christmas Lunch 2026' && jobArea('1020926 - Pall | CBA Lunch') === '1020926 - Pall' && jobEvent('1020926 - Pall | CBA Lunch') === 'CBA Lunch' && jobEvent('No Bar Event') === 'No Bar Event' && jobArea('No Bar Event') === '');
+  check('the jobs columns are found case-insensitively, and a missing Order Id is refused', (() => {
+    const cols = findJobsColumns(['order id', 'DESCRIPTION', 'Sales Person', 'start date', 'END DATE']);
+    return cols.orderId === 'order id' && cols.description === 'DESCRIPTION' && cols.salesPerson === 'Sales Person' && cols.startDate === 'start date' && cols.endDate === 'END DATE';
+  })());
+  throws('Jobs import refuses a file without the Order Id column', () => findJobsColumns(['Description', 'Sales Person', 'Start Date', 'End Date']));
+  check('the name score is 1 for an exact match and 0 when nothing overlaps', jobNameScore('CBA and SBV Retired Staff Christmas Lunch 2026', 'CBA and SBV Retired Staff Christmas Lunch 2026') === 1 && jobNameScore('AI.CARE Conference 2026', 'AI Care Conference 2026') === 1 && jobNameScore('Dekoda Bell-Pickett & Nick Colley Wedding', "Dekoda & Nick's Wedding") > 0.5 && jobNameScore('TLC Healthcare Dinner 2026', 'Encore Storage - LaTrobe/TLC') === 0.5 && jobNameScore('Crown Christmas Trivia', 'Crown Conference Centre Carpet Upgrade') === 0.5 && jobNameScore('Frankston Valedictory', 'CPA Australia Dinner') === 0, JSON.stringify([jobNameScore('Dekoda Bell-Pickett & Nick Colley Wedding', "Dekoda & Nick's Wedding"), jobNameScore('TLC Healthcare Dinner 2026', 'Encore Storage - LaTrobe/TLC')]));
+  check('a salesperson matches by full name, by initial, or by last name only — but a contradicting initial does not match', salesPersonMatches('Cara Coughey', 'Cara Coughey') && salesPersonMatches('C. Coughey', 'Cara Coughey') && salesPersonMatches('Coughey', 'Cara Coughey') && salesPersonMatches('cara coughey', 'Cara Coughey') && !salesPersonMatches('M Carrasco', 'Cecilia Carrasco') && !salesPersonMatches('Cara Coughey', 'Cecilia Carrasco') && !salesPersonMatches('', 'Cara Coughey') && !salesPersonMatches('Cara Coughey', ''));
+  const jobsSerial = (iso) => Math.round((new Date(`${iso}T00:00:00Z`).getTime() - Date.UTC(1899, 11, 30)) / 86400000);
+  const jobsWb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(jobsWb, XLSX.utils.aoa_to_sheet([
+    ['Order Id', 'Status', 'Type', 'Description', 'Company', 'Sales Person', 'Amount', '', 'Site', 'Start Date', 'End Date'],
+    [1020926, 'Open', 'Reservation', 'Pall | CBA and SBV Retired Staff Christmas Lunch 2026', 'CBA', 'Cara Coughey', 100, '', 'Crown', jobsSerial('2026-11-24'), jobsSerial('2026-11-24')],
+    [1008061, 'Open', 'Reservation', 'Prom 1 & 2 | AI.CARE Conference 2026', 'AI Care', 'Barbara Thompson', 100, '', 'Crown', jobsSerial('2026-11-23'), jobsSerial('2026-11-24')],
+    [1008504, 'Open', 'Reservation', 'M1&2 | AI.Care Conference', 'AI Care', 'Cara Coughey', 100, '', 'Crown', jobsSerial('2026-11-23'), jobsSerial('2026-11-24')],
+    [977355, 'Open', 'Reservation', 'PAL | TLC Healthcare Dinner 2026', 'TLC', 'Lana Richards', 100, '', 'Crown', jobsSerial('2026-11-28'), jobsSerial('2026-11-28')],
+    ['', 'Open', 'Reservation', 'No Order Id Event', 'X', 'Cara Coughey', 100, '', 'Crown', jobsSerial('2026-11-25'), jobsSerial('2026-11-25')],
+    [999999, 'Open', 'Reservation', 'ZZZ Unknown Event', 'Z', 'Nobody', 100, '', 'Crown', jobsSerial('2026-12-01'), jobsSerial('2026-12-01')]
+  ]), 'Jobs');
+  const jobsFile = new File([XLSX.write(jobsWb, { type: 'buffer', bookType: 'xlsx' })], 'jobs_list.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const jobsParsed = await parseJobsWorkbook(jobsFile);
+  check('the jobs file parses to 5 jobs with 1 skipped (the row with no Order Id)', jobsParsed.jobs.length === 5 && jobsParsed.skipped.length === 1 && jobsParsed.skipped[0].reason.includes('Order Id'), JSON.stringify(jobsParsed.skipped));
+  check('a parsed job carries its area, event, salesperson and ISO dates', (() => {
+    const cba = jobsParsed.jobs.find(j => j.orderId === '1020926');
+    return cba?.area === 'Pall' && cba?.event === 'CBA and SBV Retired Staff Christmas Lunch 2026' && cba?.salesPerson === 'Cara Coughey' && cba?.startDate === '2026-11-24' && cba?.endDate === '2026-11-24';
+  })(), JSON.stringify(jobsParsed.jobs.map(j => [j.orderId, j.area, j.event, j.startDate])));
+  const jobsList = jobsParsed.jobs;
+  check('a booking with one clear job gets exactly that job', (() => {
+    const c = findJobCandidates(jobsList, booking({ title: 'CBA and SBV Retired Staff Christmas Lunch 2026', date: '2026-11-24' }));
+    return c.length === 1 && c[0].job.orderId === '1020926' && c[0].score === 1 && c[0].dateOffset === 0;
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'CBA and SBV Retired Staff Christmas Lunch 2026', date: '2026-11-24' })).map(c => c.job.orderId)));
+  check('a multi-job event offers all its jobs, and the booking salesperson sorts first', (() => {
+    const withSp = findJobCandidates(jobsList, booking({ title: 'AI Care Conference 2026', date: '2026-11-23' }), 'Cara Coughey');
+    const withoutSp = findJobCandidates(jobsList, booking({ title: 'AI Care Conference 2026', date: '2026-11-23' }));
+    return withSp.length === 2 && withSp[0].job.orderId === '1008504' && withSp[0].salesPersonMatch === true && withSp[1].job.orderId === '1008061' && withoutSp.length === 2 && withoutSp[0].job.orderId === '1008061';
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'AI Care Conference 2026', date: '2026-11-23' }), 'Cara Coughey').map(c => [c.job.orderId, c.salesPersonMatch])));
+  check('a job dated a day out still shows, marked a day out — two days out does not', (() => {
+    const dayOut = findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-29' }));
+    const twoOut = findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-30' }));
+    return dayOut.length === 1 && dayOut[0].job.orderId === '977355' && dayOut[0].dateOffset === 1 && twoOut.length === 0;
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-29' })).map(c => [c.job.orderId, c.dateOffset])));
+  check('the real event outranks a weak one-word match for the same job', (() => {
+    const real = findJobCandidates(jobsList, booking({ title: 'TLC Healthcare Dinner 2026', date: '2026-11-28' }));
+    const weak = findJobCandidates(jobsList, booking({ title: 'Encore Storage - LaTrobe/TLC', date: '2026-11-28' }));
+    return real.length === 1 && real[0].nameScore === 1 && weak.length === 1 && weak[0].nameScore === 0.5;
+  })(), JSON.stringify(findJobCandidates(jobsList, booking({ title: 'Encore Storage - LaTrobe/TLC', date: '2026-11-28' })).map(c => c.nameScore)));
+  check('a booking nothing matches gets no candidates', findJobCandidates(jobsList, booking({ title: 'Frankston Valedictory Dinner', date: '2026-11-25' })).length === 0);
+  check('the jobs list survives a board file round-trip, and an old file without one loads empty', await (async () => {
+    const file = createSharedFile([booking({ id: 'b1', title: 'CBA and SBV Retired Staff Christmas Lunch 2026', date: '2026-11-24' })], 10, [], null, jobsList, '2026-11-23T00:00:00.000Z');
+    const back = await parseSharedFile(await serializeSharedFile(file));
+    const old = await parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, revision: 1, exportedAt: '2026-11-20T00:00:00.000Z', bookings: [], markup: [], editorLock: null }));
+    return back.jobs?.length === 5 && back.jobsImportedAt === '2026-11-23T00:00:00.000Z' && (old.jobs || []).length === 0;
+  })());
   // --- The after-hours contact is a venue setting ---
   const cfgContact = parseVenueConfig(`site:\n  name: Test Venue\n  after_hours_contact: 0400 111 222\nrooms:\n  order: ['Room A']\n`);
   check('the after-hours contact comes from the venue, defaulting to the Crown number', cfgContact.afterHoursContact === '0400 111 222' && parseVenueConfig(`site:\n  name: Test Venue\nrooms:\n  order: ['Room A']\n`).afterHoursContact === '0427 421 821', cfgContact.afterHoursContact);

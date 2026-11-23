@@ -1,4 +1,4 @@
-import { Booking, EditorLock, MarkupItem, SharedBoardFile } from '../types';
+import { Booking, EditorLock, JobEntry, MarkupItem, SharedBoardFile } from '../types';
 
 const SHARED_FILE_FORMAT = 'whiteboard-shared-board';
 
@@ -6,7 +6,9 @@ export function createSharedFile(
   bookings: Booking[],
   revision: number,
   markup: MarkupItem[],
-  editorLock?: EditorLock | null
+  editorLock?: EditorLock | null,
+  jobs?: JobEntry[],
+  jobsImportedAt?: string | null
 ): SharedBoardFile {
   return {
     format: SHARED_FILE_FORMAT,
@@ -15,7 +17,10 @@ export function createSharedFile(
     exportedAt: new Date().toISOString(),
     bookings,
     markup,
-    editorLock: editorLock ?? null
+    editorLock: editorLock ?? null,
+    // The jobs list is only written when it is non-empty, so clearing
+    // it removes it from the file instead of leaving an empty list.
+    ...(jobs && jobs.length ? { jobs, jobsImportedAt: jobsImportedAt ?? undefined } : {})
   };
 }
 
@@ -70,11 +75,19 @@ function parseBoardText(text: string): SharedBoardFile {
   // on load, not carried into the new file (createSharedFile never
   // writes it), so the history leaves the board for good.
   const { history: _droppedHistory, ...rest } = parsed as SharedBoardFile & { history?: unknown };
+  // The jobs list, if the file carries one: keep only rows that look
+  // like a job (an Order Id, a Description and two dates), so a
+  // hand-edited file cannot smuggle a malformed entry into the
+  // inspector. An old file has no jobs field at all.
+  const jobs = Array.isArray(parsed.jobs)
+    ? (parsed.jobs as JobEntry[]).filter(j => j && typeof j.orderId === 'string' && j.orderId && typeof j.description === 'string' && typeof j.startDate === 'string' && typeof j.endDate === 'string')
+    : [];
   return {
     ...rest,
     revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
     markup,
-    editorLock: parsed.editorLock && typeof parsed.editorLock === 'object' && typeof parsed.editorLock.id === 'string' && typeof parsed.editorLock.at === 'number' ? parsed.editorLock : null
+    editorLock: parsed.editorLock && typeof parsed.editorLock === 'object' && typeof parsed.editorLock.id === 'string' && typeof parsed.editorLock.at === 'number' ? parsed.editorLock : null,
+    ...(jobs.length ? { jobs, jobsImportedAt: typeof parsed.jobsImportedAt === 'string' ? parsed.jobsImportedAt : undefined } : {})
   };
 }
 

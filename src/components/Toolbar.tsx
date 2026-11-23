@@ -39,6 +39,8 @@ interface Props {
   onOpenLinkFiles: () => void;
   onOpenPrint: () => void;
   onImportTimes: () => void;
+  onImportJobs: () => void;
+  jobsCount: number;
   onExportWeekendNotes: () => void;
   // The notes button reads "Overnight Notes" Monday to Thursday and
   // "Weekend Notes" Friday to Sunday, so it names what it will generate.
@@ -48,7 +50,7 @@ export default function Toolbar({
   venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, filterSalespersonId, error, revision,
   saving, linkedFiles, editorLockName,
   onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onFilterSalespersonChange, onSetMarkupMode, onOpenConfiguration,
-  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint, onImportTimes, onExportWeekendNotes, weekendNotesTitle
+  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint, onImportTimes, onImportJobs, jobsCount, onExportWeekendNotes, weekendNotesTitle
 }: Props) {
   return (
     <header className="toolbar">
@@ -72,6 +74,9 @@ export default function Toolbar({
       )}
       {role === 'editor' && (
         <button onClick={onImportTimes} title="Import setup times from TimeTarget (one-off): a Date, Start Time, Function, Area, Event spreadsheet. Each row becomes a text note on the grid at that time in that room.">⏱️ Times</button>
+      )}
+      {role === 'editor' && (
+        <button onClick={onImportJobs} title={jobsCount ? `Import the sales system's jobs list (one-off): an Order Id, Description, Sales Person, Start Date, End Date spreadsheet. The list is kept in the board file, and the inspector offers the jobs that could match each booking. ${jobsCount} jobs loaded — importing again replaces the list.` : 'Import the sales system\'s jobs list (one-off): an Order Id, Description, Sales Person, Start Date, End Date spreadsheet. The list is kept in the board file, and the inspector offers the jobs that could match each booking.'}>📋 Jobs{jobsCount ? ` (${jobsCount})` : ''}</button>
       )}
       <button onClick={onSaveAndRefresh} disabled={saving} title="Re-read the linked files, so the board shows what everyone else has saved. Any edit made in the last moment is written out first, so the refresh cannot lose it.">
         {saving ? 'Refreshing…' : '🔄 Refresh'}

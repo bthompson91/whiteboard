@@ -75,6 +75,27 @@ export interface SharedBoardFile {
   bookings: Booking[];
   markup: MarkupItem[];
   editorLock?: EditorLock | null;
+  // The sales system's jobs list, imported with the 📋 Jobs button.
+  // It lives in the board file so every editor sees the same list and
+  // the inspector can offer possible matches without re-importing.
+  // Re-importing replaces it; it is never written by a venue import.
+  jobs?: JobEntry[];
+  jobsImportedAt?: string;
+}
+
+// One row of the sales system's jobs export: the Order Id IS the job
+// number, and the Description is "Area | Event" in the same format as
+// the TimeTarget rows. The event is the text after the last bar; the
+// area is what tells one job for a multi-room event from another.
+export interface JobEntry {
+  orderId: string;
+  description: string;
+  area: string;
+  event: string;
+  salesPerson: string;
+  company: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
 }
 
 export type MarkupItem =

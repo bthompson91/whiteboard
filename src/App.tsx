@@ -7,7 +7,7 @@ import PrintView from './components/PrintView';
 import SetupWizard from './components/SetupWizard';
 import Toolbar from './components/Toolbar';
 import ConfigurationPage from './components/ConfigurationPage';
-import { BoardRole, Booking, EditorLock, MarkupItem } from './types';
+import { BoardRole, Booking, EditorLock, JobEntry, MarkupItem } from './types';
 import {
   ImportResult,
   parseBookingWorkbook,
@@ -16,6 +16,7 @@ import {
 import { BookingChange, compareImports } from './lib/importComparison';
 import { mergeMatchedBooking } from './lib/reviewApply';
 import { applyTimetargetRows, parseTimetargetWorkbook, TimetargetSkipped } from './lib/timetargetImport';
+import { parseJobsWorkbook, JobsSkipped } from './lib/jobsImport';
 import { buildWeekendNotesDocx, overnightWindow } from './lib/weekendNotes';
 import {
   createSharedFile,
@@ -187,6 +188,12 @@ export default function App() {
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   // The last TimeTarget import's result, shown as a summary dialog.
   const [timetargetResult, setTimetargetResult] = useState<{ added: number; updated: number; skipped: TimetargetSkipped[] } | null>(null);
+  // The sales system's jobs list, kept in the shared board file so
+  // every editor sees it and the inspector can offer possible matches.
+  const [jobs, setJobs] = useState<JobEntry[]>([]);
+  const [jobsImportedAt, setJobsImportedAt] = useState<string | null>(null);
+  // The last Jobs import's result, shown as a summary dialog.
+  const [jobsResult, setJobsResult] = useState<{ count: number; skipped: JobsSkipped[] } | null>(null);
   const [printStart, setPrintStart] = useState('');
   const [printEnd, setPrintEnd] = useState('');
   const [printRange, setPrintRange] = useState<{ start: string; end: string } | null>(null);
@@ -277,7 +284,7 @@ export default function App() {
     const handle = boardHandleRef.current;
     if (!handle || role !== 'editor') return;
     const timer = window.setTimeout(() => {
-      writeSharedFileToHandle(handle, createSharedFile(bookings, revision, markup, editorLock)).catch(e => {
+      writeSharedFileToHandle(handle, createSharedFile(bookings, revision, markup, editorLock, jobs, jobsImportedAt)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }, 500);
@@ -399,7 +406,7 @@ export default function App() {
     if (role === 'editor' && next !== 'editor') {
       setEditorLock(null);
       if (boardHandleRef.current) {
-        writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, null)).catch(() => {});
+        writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, null, jobs, jobsImportedAt)).catch(() => {});
       }
     }
     setRole(next);
@@ -427,7 +434,7 @@ export default function App() {
     setEditorLock(claimed);
     setRole('editor');
     if (boardHandleRef.current) {
-      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, claimed)).catch(e => {
+      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, claimed, jobs, jobsImportedAt)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }
@@ -446,7 +453,7 @@ export default function App() {
     setEditorLock(claimed);
     setRole('editor');
     if (boardHandleRef.current) {
-      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, claimed)).catch(e => {
+      writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, claimed, jobs, jobsImportedAt)).catch(e => {
         setError(e instanceof Error ? e.message : String(e));
       });
     }
@@ -469,7 +476,7 @@ export default function App() {
     setBookings(next);
   };
   const exportPublishedBoard = () => downloadSharedFile(
-    createSharedFile(bookings, revision, markup, editorLock)
+    createSharedFile(bookings, revision, markup, editorLock, jobs, jobsImportedAt)
   ).catch(e => setError(e instanceof Error ? e.message : String(e)));
   const importPublishedBoard = async (file: File) => {
     try {
@@ -478,6 +485,8 @@ export default function App() {
       setRevision(shared.revision);
       setMarkup(shared.markup || []);
       setEditorLock(shared.editorLock ?? null);
+      setJobs(shared.jobs || []);
+      setJobsImportedAt(shared.jobsImportedAt || null);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -530,6 +539,8 @@ export default function App() {
       setRevision(shared.revision);
       setMarkup(shared.markup || []);
       setEditorLock(shared.editorLock ?? null);
+      setJobs(shared.jobs || []);
+      setJobsImportedAt(shared.jobsImportedAt || null);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -543,7 +554,7 @@ export default function App() {
       boardHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, board: handle.name }));
       await saveLinkedHandle('board', handle);
-      await writeSharedFileToHandle(handle, createSharedFile(bookings, revision, markup, editorLock));
+      await writeSharedFileToHandle(handle, createSharedFile(bookings, revision, markup, editorLock, jobs, jobsImportedAt));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -635,6 +646,31 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+  // Import the sales system's jobs list (one-off, not a linked file):
+  // pick the export, keep the list in the shared board file so the
+  // inspector can offer possible matches for each booking. Nothing is
+  // auto-assigned — the editor picks a job from the list, or types a
+  // number in. Re-importing replaces the list.
+  const importJobs = async () => {
+    try {
+      const file = await pickFileViaInput('.xls,.xlsx,.xml,.csv');
+      if (!file) return;
+      const parsed = await parseJobsWorkbook(file);
+      setJobs(parsed.jobs);
+      setJobsImportedAt(new Date().toISOString());
+      setJobsResult({ count: parsed.jobs.length, skipped: parsed.skipped });
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  // Drop the jobs list from the board. Job numbers already set on
+  // bookings are untouched — only the list of possible matches goes.
+  const clearJobs = () => {
+    setJobs([]);
+    setJobsImportedAt(null);
+    setJobsResult(null);
+  };
   // Weekend notes: a one-off Word download for the overnight crew. No
   // file picker, no linking — the button just spits the file out.
   const exportWeekendNotes = () => {
@@ -658,6 +694,8 @@ export default function App() {
       setRevision(shared.revision);
       setMarkup(shared.markup || []);
       setEditorLock(shared.editorLock ?? null);
+      setJobs(shared.jobs || []);
+      setJobsImportedAt(shared.jobsImportedAt || null);
     }
     setError(null);
   };
@@ -673,7 +711,7 @@ export default function App() {
     try {
       if (role !== 'viewer') {
         if (boardHandleRef.current && role === 'editor') {
-          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, editorLock));
+          await writeSharedFileToHandle(boardHandleRef.current, createSharedFile(bookings, revision, markup, editorLock, jobs, jobsImportedAt));
         }
         if (yamlHandleRef.current) {
           await writeLinkedFile(yamlHandleRef.current, yamlText, 'text/yaml');
@@ -733,6 +771,8 @@ export default function App() {
         onOpenLinkFiles={() => setLinkFilesOpen(true)}
         onOpenPrint={openPrintDialog}
         onImportTimes={importTimetargetTimes}
+        onImportJobs={importJobs}
+        jobsCount={jobs.length}
         onExportWeekendNotes={exportWeekendNotes}
         weekendNotesTitle={overnightWindow(new Date()).title}
       />
@@ -740,6 +780,7 @@ export default function App() {
         <BookingGrid
           venue={venue}
           bookings={bookings}
+          jobs={jobs}
           salespeople={settings?.salespeople || []}
           roomBorders={settings?.room_borders || []}
           operableWalls={settings?.operable_walls || []}
@@ -886,6 +927,28 @@ export default function App() {
             )}
             <footer>
               <button className="primary" onClick={() => setTimetargetResult(null)}>Done</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {jobsResult && (
+        <div className="review-overlay">
+          <section className="review-panel" aria-label="Jobs list imported">
+            <header>
+              <h2>Jobs list imported</h2>
+              <p>
+                {jobsResult.count} {jobsResult.count === 1 ? 'job' : 'jobs'} kept in the board — open a booking and the inspector will offer the jobs that could match it.
+                {jobsResult.skipped.length ? ` ${jobsResult.skipped.length} ${jobsResult.skipped.length === 1 ? 'row was' : 'rows were'} skipped:` : ' Nothing was skipped.'}
+              </p>
+            </header>
+            {jobsResult.skipped.length > 0 && (
+              <ul>
+                {jobsResult.skipped.map(s => <li key={s.row}>Row {s.row}: {s.reason}</li>)}
+              </ul>
+            )}
+            <footer>
+              <button onClick={() => { clearJobs(); }}>Clear jobs list</button>
+              <button className="primary" onClick={() => setJobsResult(null)}>Done</button>
             </footer>
           </section>
         </div>

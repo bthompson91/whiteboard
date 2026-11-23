@@ -747,6 +747,57 @@ against is `test-data/timetarget-sample.xlsx`, made by
   column in Configuration for the rooms (the Crown YAML has none yet),
   and lay out the real export in the sample's format.
 
+## Jobs import
+
+Shipped 2026-11-23 (harness 293 checks, live verified). In editor
+mode, the 📋 Jobs button next to ⏱️ Times imports the sales system's
+jobs export — columns Order Id, Description, Sales Person, Start Date,
+End Date, row 1 the header — as a one-off import, not a linked file.
+The Order Id IS the job number, and the Description is "Area | Event"
+in the same format as the TimeTarget rows. The list is kept in the
+shared board file (`jobs`, `jobsImportedAt` on `SharedBoardFile`), so
+every editor sees it and the inspector can offer possible matches
+without re-importing; re-importing replaces it, and the summary dialog
+has a Clear jobs list button. Clearing the list drops it from the file
+— job numbers already set on bookings are untouched. An old board file
+with no jobs field loads with an empty list. Nothing is auto-assigned:
+the editor picks a job from the list, or types a number in.
+
+- **Columns** (`src/lib/jobsImport.ts`): matched case-insensitively
+  (Order Id also answers to Order/Order No/Id, Sales Person to
+  Salesperson/Sales Rep/Sales, Start/End Date to Start/End). Dates are
+  Excel serials or ISO. A file missing Order Id, Description, Start
+  Date or End Date is refused with the missing columns named. Rows with
+  no Order Id are skipped and reported by row number.
+- **Candidates** (`findJobCandidates`): a job is offered for a booking
+  when its event name overlaps the booking title (word-overlap >= 0.5,
+  generic words like dinner/lunch/christmas/2026 dropped first, so a
+  one-word match like "TLC" alone only scores 0.5) and its dates cover
+  the booking — a day either side, because the two systems can disagree
+  by a day (the TLC dinner is dated the 28th in the sales system and
+  the 29th on the board; Omega Chemicals the 27th vs the 28th). The
+  salesperson lifts a candidate by 0.1 and breaks ties, so a multi-job
+  event's several jobs sort with the booking's salesperson on top — but
+  only when the jobs have different salespeople; the AI Care jobs are
+  all Lana Richards', so their Area (Prom 1 & 2, M1&2, Prom 3) is what
+  tells them apart. Salesperson names match by full name, by initial
+  ("C. Coughey"), or by last name only; a contradicting initial
+  ("M Carrasco" vs "Cecilia Carrasco") does not match.
+- **Inspector** (`BookingGrid.tsx`): under the Job number field, a
+  "Possible jobs" list shows each candidate's Order Id, Area, event,
+  salesperson (with a ✓ when it matches the booking's salesperson) and
+  its dates when it is a day out; the row already set on the booking is
+  marked Selected. Clicking Select fills the job number field (the
+  booking's level number; per-room numbers are still typed in by hand).
+  With no jobs list loaded the inspector shows a hint to use 📋 Jobs;
+  with a list loaded but no match it says so.
+- **Measured against the real export** (23 Nov–31 Dec, 132 board
+  events): 57 match one job confidently, 25 are too fuzzy (mostly one
+  event with several jobs, plus a few weak single matches), 50 have no
+  job at all (24 internal with no job to find, 26 client events not in
+  the export). The list Brendan ran is a from-today export to 31 Dec,
+  so events after that date have no jobs to match against.
+
 ## Weekend notes export
 
 Shipped 2026-11-21 (tests 248/248, live verified; reworked four times
@@ -859,7 +910,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-270 checks covering matching tiers and weights, booking identity, height and
+293 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,
@@ -867,7 +918,10 @@ night compression, and configuration validation (including `operable_walls`
 read, default, derivation, and rejection of a non-list value), note
 placement and the drag-from-rendered-position fix, SU/PD short names, the
 overnight-notes button title, the weekend-only duty-manager table and the
-After Hours Contact footer. Run it before pushing;
+After Hours Contact footer, and the Jobs import (column finding, area/event
+splitting, name scores, salesperson matching, candidate ranking with the
+salesperson tiebreak and the ±1 day window, and the board-file round-trip
+with the jobs list). Run it before pushing;
 the build (`npm run build`) must also be green.
 
 ## Known limitations

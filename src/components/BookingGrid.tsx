@@ -1,16 +1,20 @@
 import { CSSProperties, MutableRefObject, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
-import { Booking } from '../types';
+import { Booking, JobEntry } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
 import { Block, blocksFor, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { applyJobNumberEdits } from '../lib/reviewApply';
+import { findJobCandidates } from '../lib/jobsImport';
 import { dayKind } from '../lib/dateTime';
 import '../board.css';
 import './bookingInspector.css';
 interface Props {
   venue: ParsedVenueConfig | null;
   bookings: Booking[];
+  // The sales system's jobs list (imported with 📋 Jobs), for the
+  // inspector's possible-matches list. Empty when no list is loaded.
+  jobs?: JobEntry[];
   salespeople: Salesperson[];
   roomBorders: string[];
   // Operable walls: the rooms after which the wall to the next room can
@@ -141,7 +145,7 @@ function FitTitle({ text }: { text: string }) {
   }, [fit, text]);
   return <div ref={ref} className="booking-title" style={{ fontSize }}>{text}</div>;
 }
-export default function BookingGrid({venue,bookings,salespeople,roomBorders,operableWalls,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false,filterSalespersonId='',randomEventColours=false}:Props) {
+export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBorders,operableWalls,editingEnabled,selectedBookingId,onBookingsChange,onSelectedBookingChange,roomBaseWidths,roomWidthMin=125,scrollToTodayRef,showHidden=false,paintMode=false,paintSalespersonId='',paintApplyAll=false,filterSalespersonId='',randomEventColours=false}:Props) {
   const root=useRef<HTMLDivElement>(null),header=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({day:100,availableWidth:0});
   const selected=bookings.find(booking=>booking.id===selectedBookingId)||null;
@@ -323,7 +327,12 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
     setDraft({...draft,jobNumbers});
   };
   const jobField=draft?((inspectorRooms.length?blockJobNumber(draft,inspectorRooms):draft.jobNumber)||''):'';
-  const jobNumberInvalid=!!draft&&[jobField,...Object.values(draft.jobNumbers||{}),...Object.values(relatedJobNumbers)].some(v=>!!v&&!/^\d+$/.test(v.trim())&&!isNoAv(v));
+  // Possible jobs for the booking being edited: the jobs list filtered
+  // to this booking's title and dates, best first, with the
+  // salesperson lifting a match. Recomputed from the draft, so picking
+  // a salesperson in the inspector re-ranks the list.
+  const draftSalespersonName=draft?resolveSalesperson(salespeople,draft.salespersonId)?.name:undefined;
+  const jobCandidates=draft?findJobCandidates(jobs,draft,draftSalespersonName):[];  const jobNumberInvalid=!!draft&&[jobField,...Object.values(draft.jobNumbers||{}),...Object.values(relatedJobNumbers)].some(v=>!!v&&!/^\d+$/.test(v.trim())&&!isNoAv(v));
   // Related bookings: the same event on other days, or in other rooms
   // as its own booking. Bookings in this block are left out — they
   // share the block's number already. Staged here until Save.
@@ -405,6 +414,36 @@ export default function BookingGrid({venue,bookings,salespeople,roomBorders,oper
             <label style={{flex:1,paddingRight:0}}>Job number<input value={jobField} onChange={event=>setJobField(event.target.value)}/></label>
             <label className="checkbox" style={{paddingLeft:12}}><input type="checkbox" checked={isNoAv(jobField)} onChange={event=>setJobField(event.target.checked?'NO AV':'')}/>NO AV</label>
           </div>
+          {jobs.length>0&&(
+            <div style={{margin:'0 20px 10px'}}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>Possible jobs</div>
+              {jobCandidates.length===0?(
+                <p style={{fontSize:13,margin:0,color:'#666'}}>No jobs in the list match this booking.</p>
+              ):(
+                <div style={{maxHeight:180,overflow:'auto',border:'1px solid #d9d9d9',borderRadius:7,padding:'8px 10px'}}>
+                  {jobCandidates.map(c=>{
+                    const selected=normalizeJobNumber(jobField)===normalizeJobNumber(c.job.orderId);
+                    const start=format(parseISO(c.job.startDate),'d MMM');
+                    const end=format(parseISO(c.job.endDate),'d MMM');
+                    return (
+                      <div key={c.job.orderId} style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:6,padding:'4px 6px',borderRadius:5,background:selected?'#eef4fb':undefined}}>
+                        <span style={{flex:1,minWidth:0}}>
+                          <span style={{fontSize:13}}><strong>{c.job.orderId}</strong>{c.job.area?` · ${c.job.area}`:''}</span>
+                          <span style={{display:'block',fontSize:12,color:'#555',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={`${c.job.description}${c.job.salesPerson?` — ${c.job.salesPerson}`:''} — ${c.job.startDate} to ${c.job.endDate}`}>
+                            {c.job.event}{c.job.salesPerson?` — ${c.job.salesPerson}`:''}{c.salesPersonMatch?' ✓':''}{c.dateOffset!==0?` · job ${start}${start===end?'':`–${end}`}`:''}
+                          </span>
+                        </span>
+                        <button onClick={()=>setJobField(c.job.orderId)} disabled={selected} style={{flexShrink:0}}>{selected?'Selected':'Select'}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          {jobs.length===0&&(
+            <p style={{margin:'0 20px 10px',fontSize:13,color:'#666'}}>No jobs list imported — use 📋 Jobs in the top bar to import one, and possible matches will show here.</p>
+          )}
           {(draft.roomIds?.length||0)>1&&(
             <div style={{margin:'0 20px 10px',maxHeight:180,overflow:'auto',border:'1px solid #d9d9d9',borderRadius:7,padding:'8px 10px'}}>
               {(draft.roomIds||[]).map(roomId=>{
