@@ -48,7 +48,7 @@ try {
   const { dateValue, timeValue, dayKind } = await import(pathToFileURL(join(dir, 'dateTime.js')).href);
   const { resolveSalesperson, bookingColour, salespersonInitials, UNAVAILABLE_SALESPERSON, isNoAv, boardSettings, readConfiguration, normalizeConfigDoc, writeConfiguration, renameRoomInConfig } = await import(pathToFileURL(join(dir, 'configuration.js')).href);
   const { createSharedFile, parseSharedFile, serializeSharedFile } = await import(pathToFileURL(join(dir, 'sharedFile.js')).href);
-  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour, spanInRoom, notesMatch } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
+  const { blocksFor, blockJobNumber, blockHasJobNumber, blockSegments, strongBorders, operableWallAfter, likeBookings, relatedBookings, blockCountForBookings, timeFraction, fitFontSize, assignLanes, isBlockHidden, setBlockHidden, eventColour, spanInRoom, notesMatch, headerGroups, memberShortName, configTableRows } = await import(pathToFileURL(join(dir, 'blocks.js')).href);
   const { pointFromAnchor, anchorFromPoint } = await import(pathToFileURL(join(dir, 'markupAnchor.js')).href);
   const { bookingId, identityKey, matchJobNumber } = await import(pathToFileURL(join(dir, 'bookingIdentity.js')).href);
   const { parseVenueConfig, resolveRooms } = await import(pathToFileURL(join(dir, 'venueConfig.js')).href);
@@ -859,6 +859,26 @@ try {
       && JSON.stringify(back.timeline_items) === JSON.stringify(['Bump In', 'Bump Out'])
       && back.whiteboard.salespeople.length === 0;
   })());
+  check('wizard Other rooms go to the end of the order and under OTHER', (() => {
+    const yamlText = buildVenueYaml({
+      venueName: 'MCG',
+      headerRow: 2,
+      roomSeparator: ';',
+      mapping: mcgMapping,
+      dateFormat: 'DD/MM/YYYY',
+      rooms: ['Chadwick Room', 'Long Room'],
+      otherRooms: ['Store Room', 'Plant Room'],
+      excludedRooms: ['OB Van Compound'],
+      unassignedRoom: false,
+      allowedStatuses: [],
+      setupLabel: 'Setup',
+      teardownLabel: 'Teardown'
+    });
+    const back = readConfiguration(yamlText);
+    return JSON.stringify(back.rooms.order) === JSON.stringify(['Chadwick Room', 'Long Room', 'Store Room', 'Plant Room'])
+      && JSON.stringify(back.rooms.room_mappings.OTHER) === JSON.stringify(['Store Room', 'Plant Room'])
+      && back.rooms.exclude.includes('OB Van Compound');
+  })());
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], false);
   check('hidden bookings are skipped when the board is locked', blocks.length === 0);
   blocks = blocksFor([booking({ id: 'a', title: 'Hidden Event', roomId: 'Palladium A', roomIds: ['Palladium A'], hidden: true })], venue, [], true);
@@ -1327,6 +1347,23 @@ try {
   const wnEmpty = buildWeekendNotesDocx([], [], wnVenue, new Date(2026, 9, 2, 10, 0));
   const wnEmptyText = new TextDecoder().decode(wnEmpty.bytes);
   check('an empty window still produces a file that says so', wnEmpty.items === 0 && wnEmptyText.includes('No setups in this window.') && wnEmptyText.includes('After Hours Contact: 0427 421 821'), '');
+  // The two-row board header: a combined room spans its member columns
+  // on the top row with the members underneath; a room in no combined
+  // room spans both rows. A mapping that names one room, or rooms that
+  // are not on the board, makes no group. The combined name itself,
+  // when it is also a room on the board, stays a standalone column.
+  const hg = headerGroups(['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'Palladium C3', 'River Room 1', 'River Room 2'], { Palladium: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'Palladium C3'], 'River Room 1 & 2': ['River Room 1', 'River Room 2'], Single: ['Palladium A'], Missing: ['No Such Room', 'Also Missing'] });
+  check('header groups span their member columns', hg.groups.length === 2 && hg.groups[0].name === 'Palladium' && hg.groups[0].start === 0 && hg.groups[0].end === 4 && hg.groups[0].members.join(',') === '0,1,2,3,4' && hg.groups[1].name === 'River Room 1 & 2' && hg.groups[1].start === 5 && hg.groups[1].end === 6 && hg.memberOf.join(',') === '0,0,0,0,0,1,1', JSON.stringify(hg));
+  check('member short names drop the combined name', memberShortName('Palladium', 'Palladium C1') === 'C1' && memberShortName('Olympic Room', 'Olympic Room A') === 'A' && memberShortName('Olympic Room', 'Olympic Room') === 'Olympic Room' && memberShortName('Palladium', 'River Room 1') === 'River Room 1' && memberShortName('Jim Stynes Grill', 'Jim Stynes A') === 'A');
+  // The Configuration rooms table groups combined rooms: a parent room
+  // row followed by its member rows, a group header row when the
+  // combined name is not a room, and members only as children (never
+  // duplicated as top-level rows). A room in two groups goes under the
+  // first.
+  const ctr = configTableRows(['Members Dining Room', 'Olympic Room', 'Olympic Room A', 'Olympic Room B', 'Jim Stynes Grill', 'Jim Stynes A', 'Jim Stynes B', 'Long Room'], { 'Olympic Room': ['Olympic Room A', 'Olympic Room B'], 'Jim Stynes Grill': ['Jim Stynes A', 'Jim Stynes B'] });
+  check('config table groups a parent room with its members', ctr.map(r => `${r.kind}:${r.name}`).join('|') === 'room:Members Dining Room|room:Olympic Room|child:Olympic Room A|child:Olympic Room B|room:Jim Stynes Grill|child:Jim Stynes A|child:Jim Stynes B|room:Long Room', JSON.stringify(ctr));
+  const ctr2 = configTableRows(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1'], { Palladium: ['Palladium A', 'Palladium B', 'Palladium C1'] });
+  check('config table renders a group header when the combined name is not a room', ctr2.map(r => `${r.kind}:${r.name}`).join('|') === 'group:Palladium|child:Palladium A|child:Palladium B|child:Palladium C1|room:River Room 1', JSON.stringify(ctr2));
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

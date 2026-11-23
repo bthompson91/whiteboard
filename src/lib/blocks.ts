@@ -383,3 +383,114 @@ export function assignLanes(blocks: Block[]): void {
     }
   }
 }
+// The board header is two rows. A combined room (a room_mappings entry)
+// gets a merged cell on the top row spanning its member columns, with
+// each member listed underneath on the second row; a room that is in no
+// combined room gets one cell spanning both rows, vertically centred.
+// headerGroups() turns the room list and the mappings into that layout:
+// groups in room order, each with its member room indices, and memberOf
+// naming, for every room index, the group it belongs to (the first group
+// that claims it) or null. A mapping whose members are not rooms on the
+// board, or that names a single room, makes no group. The combined room
+// name itself, when it is also a room on the board, is a standalone
+// column: the group spans its members only.
+export interface RoomHeaderGroup { name: string; start: number; end: number; members: number[]; }
+export function headerGroups(roomNames: string[], mappings: Record<string, string[]>): { groups: RoomHeaderGroup[]; memberOf: (number | null)[] } {
+  const memberOf: (number | null)[] = roomNames.map(() => null);
+  const groups: RoomHeaderGroup[] = [];
+  for (const [name, members] of Object.entries(mappings)) {
+    const indices = members.map(m => roomNames.indexOf(m)).filter(i => i >= 0);
+    if (indices.length < 2) continue;
+    const start = Math.min(...indices), end = Math.max(...indices);
+    const groupIndex = groups.length;
+    for (const i of indices) if (memberOf[i] === null) memberOf[i] = groupIndex;
+    groups.push({ name, start, end, members: indices });
+  }
+  groups.sort((a, b) => a.start - b.start);
+  // Sorting reorders the groups, so memberOf (which holds group
+  // positions) must be rebuilt against the sorted order.
+  const sortedMemberOf: (number | null)[] = roomNames.map(() => null);
+  groups.forEach((g, gi) => { for (const i of g.members) if (sortedMemberOf[i] === null) sortedMemberOf[i] = gi; });
+  return { groups, memberOf: sortedMemberOf };
+}
+// The label for a member room under its combined room: the part of the
+// room name after the words it shares with the combined name ("Olympic
+// Room A" under "Olympic Room" is "A"; "Jim Stynes A" under "Jim Stynes
+// Grill" is "A", because the shared words are "Jim Stynes"), or the full
+// name when it shares no leading word. A room whose name is the combined
+// name itself shows the full name, so its cell is never blank.
+export function memberShortName(parentName: string, roomName: string): string {
+  if (roomName === parentName) return roomName;
+  const parentWords = parentName.split(/\s+/);
+  const roomWords = roomName.split(/\s+/);
+  let common = 0;
+  while (common < parentWords.length && common < roomWords.length && parentWords[common] === roomWords[common]) common++;
+  if (common === 0) return roomName;
+  const rest = roomWords.slice(common).join(' ');
+  return rest || roomName;
+}
+// The Configuration rooms table is grouped the same way as the board
+// header: a combined room renders as a parent row with its member rooms
+// as indented child rows beneath it, and the table is the only place
+// combined rooms are defined (the separate Combined rooms section is
+// gone). configTableRows() turns the room order and the mappings into
+// the rows to render, in order: a room row (a standalone room, or a
+// combined room whose name is itself a room), a group row (a combined
+// room whose name is not a room — a header for the group), or a child
+// row (a member room, indented under its parent). A room belongs to the
+// first group that claims it; a mapping with no members that are rooms
+// on the board renders its group row with no children.
+export type ConfigTableRow =
+  | { kind: 'room'; name: string; index: number }
+  | { kind: 'group'; name: string }
+  | { kind: 'child'; name: string; index: number; parent: string };
+export function configTableRows(roomNames: string[], mappings: Record<string, string[]>): ConfigTableRow[] {
+  const memberOf = new Map<string, string>();
+  for (const [groupName, members] of Object.entries(mappings)) {
+    for (const m of members) if (!memberOf.has(m)) memberOf.set(m, groupName);
+  }
+  const rows: ConfigTableRow[] = [];
+  const renderedChildren = new Set<string>();
+  const renderChildren = (groupName: string) => {
+    for (const m of mappings[groupName] || []) {
+      const index = roomNames.indexOf(m);
+      if (index < 0 || renderedChildren.has(m)) continue;
+      renderedChildren.add(m);
+      rows.push({ kind: 'child', name: m, index, parent: groupName });
+    }
+  };
+  const groupHeaderDone = new Set<string>();
+  roomNames.forEach((name, index) => {
+    const group = memberOf.get(name);
+    if (group) {
+      // A member room: it renders as a child under its parent, not as a
+      // top-level row. If the group's name is not a room, the group
+      // header row goes before the first member, with the children
+      // right after it.
+      if (!roomNames.includes(group) && !groupHeaderDone.has(group)) {
+        groupHeaderDone.add(group);
+        rows.push({ kind: 'group', name: group });
+        renderChildren(group);
+      }
+      return;
+    }
+    // Not a member of any group: a standalone room, or a combined room
+    // whose name is itself a room (its children follow it).
+    rows.push({ kind: 'room', name, index });
+    if (mappings[name]) renderChildren(name);
+  });
+  // A group whose members are all rooms that appear before a parent
+  // room in the order is already rendered (children follow the parent
+  // row). A group with no members on the board at all has no row yet:
+  // append its group header so it can still be seen and edited.
+  for (const groupName of Object.keys(mappings)) {
+    if (groupHeaderDone.has(groupName)) continue;
+    if (roomNames.includes(groupName)) continue;
+    const members = (mappings[groupName] || []).filter(m => roomNames.includes(m));
+    if (members.length === 0) {
+      groupHeaderDone.add(groupName);
+      rows.push({ kind: 'group', name: groupName });
+    }
+  }
+  return rows;
+}

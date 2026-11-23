@@ -163,6 +163,7 @@ export interface WizardChoices {
   mapping: Record<FieldKey, string>;
   dateFormat: string;
   rooms: string[];
+  otherRooms?: string[];
   excludedRooms: string[];
   unassignedRoom: boolean;
   allowedStatuses: string[];
@@ -188,14 +189,18 @@ export function buildVenueDoc(choices: WizardChoices): Record<string, any> {
       allowed_statuses: [...choices.allowedStatuses]
     },
     rooms: {
-      order: [...choices.rooms],
+      // Other rooms are kept as individual columns at the end of the
+      // board, after the main rooms, and grouped under a combined room
+      // called OTHER, so they read as one group in the overnight notes
+      // and in the grouped rooms table instead of as stray columns.
+      order: [...choices.rooms, ...(choices.otherRooms || [])],
       exclude: [...choices.excludedRooms],
       room_aliases: {},
-      room_mappings: {}
+      room_mappings: (choices.otherRooms || []).length ? { OTHER: [...(choices.otherRooms || [])] } : {}
     },
     timeline_items: [choices.setupLabel, choices.teardownLabel].filter(Boolean),
     whiteboard: {
-      room_types: Object.fromEntries(choices.rooms.map(r => [r, 'other'])),
+      room_types: Object.fromEntries([...choices.rooms, ...(choices.otherRooms || [])].map(r => [r, 'other'])),
       room_widths: { large: 200, small: 125, other: 150 },
       // Salespeople are always assigned by hand, in the inspector or
       // with paint mode: the people named in a venue's file are the

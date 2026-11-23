@@ -1,5 +1,6 @@
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { boardSettings, ConfigDocument, normalizeConfigDoc, readConfiguration, renameRoomInConfig, RoomType, Salesperson, starterConfiguration, writeConfiguration } from '../lib/configuration';
+import { configTableRows } from '../lib/blocks';
 import '../configuration.css';
 interface Props { yamlText:string; hasBookings:boolean; onSave:(text:string, renames?:Record<string,string>)=>void; onClose:()=>void }
 const FIELD_KEYS: Array<{ key:string; label:string; optional?:boolean }> = [
@@ -74,35 +75,12 @@ function StringList({ values, onChange, label }: { values:string[]; onChange:(ne
   </div>)}
   <button onClick={()=>onChange([...values,''])}>Add</button></div>;
 }
-// A key -> list editor, with an optional third column: one extra text
-// value per row. The Combined rooms section uses it for the TimeTarget
-// area of a combined room, so a combination has its own rostering area
-// the same way a single room does. Renaming a key moves its extra value
-// with it, and removing a row drops it.
-function MappingEditor({ map, onChange, onRenameKey, onRemoveKey, keyLabel, valueLabel, extraLabel, extra, onExtraChange }: { map:Record<string,string[]>; onChange:(next:Record<string,string[]>)=>void; onRenameKey:(oldKey:string,newKey:string)=>void; onRemoveKey:(key:string)=>void; keyLabel:string; valueLabel:string; extraLabel?:string; extra?:Record<string,string>; onExtraChange?:(next:Record<string,string>)=>void }) {
-  const rows = Object.entries(map);
-  // The row key is the row index, not the combined room name: the name
-  // input edits that name, so keying on it unmounts the row on every
-  // keystroke and the field loses focus after one character. The inputs
-  // are controlled, so the index stays stable while a name is typed.
-  // Renaming a key and removing a row each touch the map AND the extra
-  // (the TimeTarget area moves with its combined room), so they go
-  // through one change each: two separate change() calls clone the same
-  // draft, the second overwrites the first, and the map edit is lost —
-  // typing a name left it unchanged, and Remove left the row in place.
-  return <div>{rows.map(([key,values],i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-    <input aria-label={keyLabel} value={key} onChange={e=>onRenameKey(key,e.target.value)} />
-    <input aria-label={valueLabel} value={values.join(', ')} onChange={e=>{const next:Record<string,string[]>={};for(const [k,v] of rows)next[k]=k===key?e.target.value.split(',').map(s=>s.trim()).filter(Boolean):v;onChange(next);}} />
-    {extraLabel && extra && onExtraChange && <input aria-label={`${extraLabel} for ${key}`} placeholder={extraLabel} title={`${extraLabel} for this combined room, for the TimeTarget import`} value={extra[key] || ''} onChange={e=>{const value=e.target.value;const next={...extra};if(value.trim())next[key]=value;else delete next[key];onExtraChange(next);}} />}
-    <button onClick={()=>onRemoveKey(key)}>Remove</button>
-  </div>)}
-  <button onClick={()=>onChange({ ...map, '': [] })}>Add</button></div>;
-}
 export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:Props){
   const initial=yamlText||starterConfiguration;
   const [text,setText]=useState(initial);
   const [message,setMessage]=useState('');
   const [newRoom,setNewRoom]=useState('');
+  const [newCombinedRoom,setNewCombinedRoom]=useState('');
   // Rooms renamed in this editing session, as old name -> new name, so
   // Apply and save can carry the rename through to bookings and notes
   // (room names are the ids those carry). Chained renames compose:
@@ -129,11 +107,70 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
   const move=(i:number,delta:number)=>change(d=>{const list=d.rooms.order as string[];const j=i+delta;if(j<0||j>=list.length)return;[list[i],list[j]]=[list[j],list[i]];});
   const addRoom=()=>{const name=newRoom.trim();if(!name)return;change(d=>{const list=d.rooms.order as string[];if(!list.some(r=>r.toLowerCase()===name.toLowerCase()))list.push(name);});setNewRoom('');};
   const removeRoom=(room:string)=>change(d=>{d.rooms.order=(d.rooms.order as string[]).filter(r=>r!==room);updateSettingsInPlace(d,room);});
+  // Combined rooms live in the rooms table now, not in a separate
+  // section: a combined room is a room_mappings entry, shown as a parent
+  // row with its member rooms as indented children beneath it. Adding a
+  // member to a room that is not yet a combined room makes it one.
+  const addCombinedRoom=()=>{const name=newCombinedRoom.trim();if(!name)return;change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};if(!(name in map))map[name]=[];d.rooms.room_mappings=map;});setNewCombinedRoom('');};
+  const addMember=(parent:string,member:string)=>{if(!member)return;change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};const list=[...((map[parent] as string[])||[])];if(!list.includes(member))list.push(member);map[parent]=list;d.rooms.room_mappings=map;});};
+  const removeMember=(parent:string,member:string)=>change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};const list=((map[parent] as string[])||[]).filter(m=>m!==member);map[parent]=list;d.rooms.room_mappings=map;});
+  const ungroup=(parent:string)=>change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};delete map[parent];d.rooms.room_mappings=map;const extra={...((d.rooms.timetarget_areas as Record<string,string>)||{})};delete extra[parent];d.rooms.timetarget_areas=extra;});
+  // Renaming a combined room whose name is not a room: the mapping key
+  // and its TimeTarget area move together, in one change (two separate
+  // changes clone the same draft and the second overwrites the first).
+  // A combined room whose name IS a room is renamed by renaming the
+  // room, which renames it everywhere including the mapping. Returns
+  // false (so the name field resets) when the name is taken.
+  const renameCombinedRoom=(oldName:string,nextName:string):boolean=>{const name=nextName.trim();if(!name||name===oldName)return true;if(!doc)return false;const mappings=(doc.rooms.room_mappings as Record<string,string[]>)||{};if(name in mappings||(doc.rooms.order as string[]).includes(name)){setMessage(`A room or combined room called "${name}" already exists.`);return false;}change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};const next:Record<string,string[]>={};for(const [k,v] of Object.entries(map))next[k===oldName?name:k]=v;d.rooms.room_mappings=next;const extra={...((d.rooms.timetarget_areas as Record<string,string>)||{})};const nextExtra:Record<string,string>={};for(const [k,v] of Object.entries(extra))nextExtra[k===oldName?name:k]=v;d.rooms.timetarget_areas=nextExtra;});return true;};
   // Rename a room in the draft, recording the rename so Apply and save
   // can carry it through to bookings and notes. A name another room
   // already has is refused with a message and the field resets.
   const renameRoom=(oldName:string,nextName:string):boolean=>{if(!doc)return false;const next=structuredClone(doc);if(!renameRoomInConfig(next,oldName,nextName)){setMessage(`A room called "${nextName.trim()}" already exists.`);return false;}for(const k of Object.keys(renamesRef.current))if(renamesRef.current[k]===oldName)renamesRef.current[k]=nextName.trim();renamesRef.current[oldName]=nextName.trim();setText(writeConfiguration(next));setMessage('');return true;};
   function updateSettingsInPlace(d:ConfigDocument,room:string){const s=boardSettings(d);delete s.room_types[room.trim()];d.whiteboard={...(d.whiteboard||{}),...s};}
+  // The rooms table is grouped: a combined room renders as a parent row
+  // with its member rooms as indented child rows beneath it (see
+  // configTableRows in lib/blocks). The Combined room column holds the
+  // grouping controls: an Add-member dropdown on a parent or standalone
+  // room (picking one makes the room a combined room), Ungroup on a
+  // parent, and Member-of + Remove-from-group on a child row.
+  const mappingsForRows=((doc?.rooms.room_mappings as Record<string,string[]>)||{});
+  const memberRoomNames=new Set((Object.values(mappingsForRows).flat() as string[]));
+  const addableRooms=(name:string)=>((doc?.rooms.order as string[])||[]).filter(r=>r!==name&&!memberRoomNames.has(r));
+  const roomRow=(name:string,index:number,childOf?:string)=>{
+    const type=settings!.room_types[name]||'other';
+    const aliases=((doc!.rooms.room_aliases as Record<string,string[]>)||{})[name]||[];
+    const timetarget=((doc!.rooms.timetarget_areas as Record<string,string>)||{})[name]||'';
+    const last=index===doc!.rooms.order.length-1;
+    const isParent=!!mappingsForRows[name];
+    return <tr key={name} className={`${settings!.room_borders.includes(name)?'strong-border-after':''}${childOf?' room-child':''}`}>
+      <td>{index+1}</td>
+      <td>{childOf?<span className="room-child-indent" aria-hidden="true">↳ </span>:null}<RoomNameInput value={name} onRename={next=>renameRoom(name,next)} /></td>
+      <td><input aria-label={`Aliases for ${name}`} title="Other names this room is called in the export file, comma separated — each alias reads as this room" placeholder="Aliases, comma separated" value={aliases.join(', ')} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.room_aliases as Record<string,string[]>)||{})};const next=value.split(',').map(s=>s.trim()).filter(Boolean);if(next.length)map[name]=next;else delete map[name];d.rooms.room_aliases=map;});}} /></td>
+      <td><input aria-label={`TimeTarget area name for ${name}`} title="The TimeTarget area this room belongs to, for the rostering import" placeholder="TimeTarget area" value={timetarget} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.timetarget_areas as Record<string,string>)||{})};if(value.trim())map[name]=value;else delete map[name];d.rooms.timetarget_areas=map;});}} /></td>
+      <td><select aria-label={`${name} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[name]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td>
+      <td><input type="checkbox" aria-label={`Strong border after ${name}`} checked={settings!.room_borders.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,name]:s.room_borders.filter(r=>r!==name);});}} /></td>
+      <td className="operable-wall">{last?null:<span className="operable-wall-box"><input type="checkbox" aria-label={`Operable wall after ${name}`} title="Tick when the wall between this room and the next can be opened, so bookings can merge across them" checked={settings!.operable_walls.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.operable_walls=on?[...s.operable_walls,name]:s.operable_walls.filter(r=>r!==name);});}} /></span>}</td>
+      <td>{childOf?<><span>Member of {childOf}</span> <button onClick={()=>removeMember(childOf,name)} aria-label={`Remove ${name} from ${childOf}`}>Remove from group</button></>:<><select aria-label={`Add a member room to ${name}`} value="" onChange={e=>{const m=e.target.value;if(m)addMember(name,m);}}><option value="">Add member…</option>{addableRooms(name).map(r=><option key={r} value={r}>{r}</option>)}</select>{isParent?<button onClick={()=>ungroup(name)} aria-label={`Ungroup ${name}`}>Ungroup</button>:null}</>}</td>
+      <td><button disabled={index===0} onClick={()=>move(index,-1)} aria-label={`Move ${name} up`}>Up</button><button disabled={index===doc!.rooms.order.length-1} onClick={()=>move(index,1)} aria-label={`Move ${name} down`}>Down</button></td>
+      <td><button onClick={()=>removeRoom(name)} aria-label={`Remove ${name}`}>Remove</button></td>
+    </tr>;
+  };
+  // A combined room whose name is not a room on the board: a header row
+  // for the group, with its TimeTarget area and the same Add-member and
+  // Ungroup controls. It has no room settings of its own.
+  const groupRow=(groupName:string)=>{
+    const timetarget=((doc!.rooms.timetarget_areas as Record<string,string>)||{})[groupName]||'';
+    return <tr key={`group:${groupName}`} className="room-group">
+      <td>—</td>
+      <td><RoomNameInput value={groupName} onRename={next=>renameCombinedRoom(groupName,next)} /></td>
+      <td>—</td>
+      <td><input aria-label={`TimeTarget area name for ${groupName}`} title="The TimeTarget area this combined room belongs to, for the rostering import" placeholder="TimeTarget area" value={timetarget} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.timetarget_areas as Record<string,string>)||{})};if(value.trim())map[groupName]=value;else delete map[groupName];d.rooms.timetarget_areas=map;});}} /></td>
+      <td>—</td><td>—</td><td>—</td>
+      <td><select aria-label={`Add a member room to ${groupName}`} value="" onChange={e=>{const m=e.target.value;if(m)addMember(groupName,m);}}><option value="">Add member…</option>{addableRooms(groupName).map(r=><option key={r} value={r}>{r}</option>)}</select> <button onClick={()=>ungroup(groupName)} aria-label={`Ungroup ${groupName}`}>Ungroup</button></td>
+      <td>—</td>
+      <td><button onClick={()=>ungroup(groupName)} aria-label={`Remove combined room ${groupName}`}>Remove group</button></td>
+    </tr>;
+  };
   const fields:Record<string,string>=(doc?.fields as Record<string,string>)||{};
   return <section className="configuration-page" aria-label="Venue configuration">
     <header className="configuration-header"><h1>Configuration</h1><button onClick={close}>Back to board</button><button onClick={save} disabled={!!validation}>Apply and save</button><button onClick={exportFile} disabled={!!validation}>Export YAML</button></header>
@@ -172,13 +209,13 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
           <div className="configuration-widths">{(['small','other','large'] as RoomType[]).map(type=><WidthInput key={type} type={type} value={settings.room_widths[type]} min={settings.room_width_min} max={settings.room_width_max} onCommit={n=>updateSettings(s=>{s.room_widths[type]=n;})} onInvalid={()=>setMessage(`Use a width from ${settings.room_width_min} to ${settings.room_width_max} pixels.`)} />)}</div>
           <div aria-label="Room width preview" style={{display:'flex',gap:12,alignItems:'flex-end',marginTop:12}}>{(['small','other','large'] as RoomType[]).map(type=>{const w=settings.room_widths[type];const total=settings.room_widths.small+settings.room_widths.other+settings.room_widths.large;const scale=420/Math.max(total,1);const label=type==='other'?'Medium':type==='small'?'Small':'Large';return <div key={type} style={{textAlign:'center'}}><div style={{width:Math.max(28,Math.round(w*scale)),height:44,background:'#fff',border:'1px solid #141414',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,overflow:'hidden'}}>{w}</div><div style={{fontSize:12,marginTop:4}}>{label} {w}px</div></div>;})}</div>
           <p>Preview: the three columns at their set widths, scaled to fit — the numbers are the real pixel widths.</p>
-          <table><thead><tr><th>Order</th><th>Room</th><th>Alias</th><th>Timetarget Area Name</th><th>Type</th><th>Strong Border After</th><th>Operable wall</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{(doc.rooms.order as string[]).map((room,i)=>{const name=room.trim();const type=settings.room_types[name]||'other';const aliases=((doc.rooms.room_aliases as Record<string,string[]>)||{})[name]||[];const timetarget=((doc.rooms.timetarget_areas as Record<string,string>)||{})[name]||'';const last=i===doc!.rooms.order.length-1;return <tr key={room} className={settings.room_borders.includes(name)?'strong-border-after':undefined}><td>{i+1}</td><td><RoomNameInput value={name} onRename={next=>renameRoom(name,next)} /></td><td><input aria-label={`Aliases for ${name}`} title="Other names this room is called in the export file, comma separated — each alias reads as this room" placeholder="Aliases, comma separated" value={aliases.join(', ')} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.room_aliases as Record<string,string[]>)||{})};const next=value.split(',').map(s=>s.trim()).filter(Boolean);if(next.length)map[name]=next;else delete map[name];d.rooms.room_aliases=map;});}} /></td><td><input aria-label={`TimeTarget area name for ${name}`} title="The TimeTarget area this room belongs to, for the rostering import" placeholder="TimeTarget area" value={timetarget} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.timetarget_areas as Record<string,string>)||{})};if(value.trim())map[name]=value;else delete map[name];d.rooms.timetarget_areas=map;});}} /></td><td><select aria-label={`${name} type`} value={type} onChange={e=>{const value=e.target.value as RoomType;updateSettings(s=>{s.room_types[name]=value;});}}><option value="small">Small</option><option value="other">Medium</option><option value="large">Large</option></select></td><td><input type="checkbox" aria-label={`Strong border after ${name}`} checked={settings.room_borders.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.room_borders=on?[...s.room_borders,name]:s.room_borders.filter(r=>r!==name);});}} /></td><td className="operable-wall">{last?null:<span className="operable-wall-box"><input type="checkbox" aria-label={`Operable wall after ${name}`} title="Tick when the wall between this room and the next can be opened, so bookings can merge across them" checked={settings.operable_walls.includes(name)} onChange={e=>{const on=e.target.checked;updateSettings(s=>{s.operable_walls=on?[...s.operable_walls,name]:s.operable_walls.filter(r=>r!==name);});}} /></span>}</td><td><button disabled={i===0} onClick={()=>move(i,-1)} aria-label={`Move ${room} up`}>Up</button><button disabled={i===doc!.rooms.order.length-1} onClick={()=>move(i,1)} aria-label={`Move ${room} down`}>Down</button></td><td><button onClick={()=>removeRoom(room)} aria-label={`Remove ${room}`}>Remove</button></td></tr>;})}</tbody></table>
+          <table><thead><tr><th>Order</th><th>Room</th><th>Alias</th><th>Timetarget Area Name</th><th>Type</th><th>Strong Border After</th><th>Operable wall</th><th>Combined room</th><th>Reorder</th><th>Remove</th></tr></thead><tbody>{configTableRows((doc.rooms.order as string[]).map(r=>r.trim()), mappingsForRows).map(row=>row.kind==='group'?groupRow(row.name):roomRow(row.name, row.index, row.kind==='child'?row.parent:undefined))}</tbody></table>
           <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New room name" placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} /><button onClick={addRoom}>Add room</button></div>
+          <div style={{display:'flex',gap:8,marginTop:10}}><input aria-label="New combined room name" placeholder="New combined room name" value={newCombinedRoom} onChange={e=>setNewCombinedRoom(e.target.value)} /><button onClick={addCombinedRoom}>Add combined room</button></div>
+          <p>A combined room is a name the export file uses for a group of rooms — it expands to its member rooms, and the walls between them are filled in as operable, so a combined booking renders as one wide block. Add one per spelling the venue uses. Pick members with “Add member” on the combined room&apos;s row; a room that is already a member of one combined room cannot join another. The TimeTarget area column holds the area name TimeTarget uses for the whole combination.</p>
           <p>Medium uses the legacy YAML type key other for compatibility with saved configurations.</p>
         </section>
-        <section><h2>Combined rooms</h2><p>Each name on the left is a name the venue&apos;s export file uses for a combination of rooms; it expands to the rooms on its right. Add one entry per spelling the venue uses — “Palladium A &amp; B”, “Palladium AB” and “Palladium A and B” are three different names, so each needs its own entry. The walls between the rooms in each combination are filled in as operable, so a combined booking renders as one wide block — untick a wall in the room table above if two rooms in a combination should never merge. The TimeTarget area column holds the area name TimeTarget uses for the whole combination — the rostering import matches it the same way it matches a single room&apos;s area, so a “Palladium” row lands on the merged block instead of being skipped. Excluded rooms are not edited here: they stay in the YAML (<code>rooms.exclude</code>) and still skip rooms at import.</p>
-          <MappingEditor map={(doc.rooms.room_mappings as Record<string,string[]>)||{}} keyLabel="Combined room" valueLabel="Rooms, comma separated" extraLabel="TimeTarget area" extra={(doc.rooms.timetarget_areas as Record<string,string>)||{}} onExtraChange={next=>change(d=>{d.rooms.timetarget_areas=next;})} onChange={next=>change(d=>{d.rooms.room_mappings=next;})} onRenameKey={(oldKey,newKey)=>change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};const next:Record<string,string[]>={};for(const [k,v] of Object.entries(map))next[k===oldKey?newKey:k]=v;d.rooms.room_mappings=next;const extra={...((d.rooms.timetarget_areas as Record<string,string>)||{})};const nextExtra:Record<string,string>={};for(const [k,v] of Object.entries(extra))nextExtra[k===oldKey?newKey:k]=v;d.rooms.timetarget_areas=nextExtra;})} onRemoveKey={key=>change(d=>{const map={...((d.rooms.room_mappings as Record<string,string[]>)||{})};delete map[key];d.rooms.room_mappings=map;const extra={...((d.rooms.timetarget_areas as Record<string,string>)||{})};delete extra[key];d.rooms.timetarget_areas=extra;})} />
-        </section>
+
         <section><h2>Timeline items</h2><p>Rows such as Setup and Teardown are folded into their booking instead of shown as bookings of their own.</p>
           <StringList label="Timeline item" values={Array.isArray(doc.timeline_items)?(doc.timeline_items as string[]):[]} onChange={next=>change(d=>{d.timeline_items=next;})} />
         </section>

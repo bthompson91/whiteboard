@@ -20,6 +20,7 @@ import { parseJobsWorkbook, JobsSkipped } from './lib/jobsImport';
 import { buildWeekendNotesDocx, overnightWindow } from './lib/weekendNotes';
 import {
   createSharedFile,
+  deleteLinkedHandle,
   downloadSharedFile,
   hasFileSystemAccess,
   loadLinkedHandle,
@@ -346,6 +347,22 @@ export default function App() {
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
+      // A new venue gets its own blank board file, so it never reuses
+      // the old venue's board: an empty board (no bookings, no markup,
+      // revision 1) is saved as a new .json.gz and linked as the board
+      // file, and the wizard import below then populates it.
+      try {
+        const venueSlug = venueConfig.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'venue';
+        const handle = await pickLinkedFileToSave(`${venueSlug}-board.json.gz`, 'Whiteboard board', { 'application/gzip': ['.json.gz'] });
+        if (handle) {
+          boardHandleRef.current = handle;
+          setLinkedFiles(current => ({ ...current, board: handle.name }));
+          await saveLinkedHandle('board', handle);
+          await writeSharedFileToHandle(handle, createSharedFile([], 1, [], null));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
     try {
       const result = await parseBookingWorkbook(file, venueConfig, { dateRange });
@@ -577,6 +594,38 @@ export default function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+  };
+  // Delink a venue so another can be set up: forget every linked file,
+  // clear the venue and the board, and re-open the welcome overlay. The
+  // board handle is dropped first, before the bookings are cleared, so
+  // the auto-save cannot write an empty board over the old venue's
+  // board file on disk — the old venue's files stay untouched.
+  const unlinkVenue = async () => {
+    if (!window.confirm('Delink this venue? The board and the venue are cleared, and the files on disk are left untouched.')) return;
+    boardHandleRef.current = null;
+    yamlHandleRef.current = null;
+    bookingsHandleRef.current = null;
+    try {
+      await deleteLinkedHandle('board');
+      await deleteLinkedHandle('yaml');
+      await deleteLinkedHandle('bookings');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    localStorage.removeItem(VENUE_YAML_KEY);
+    localStorage.removeItem(BOARD_CACHE_KEY);
+    localStorage.removeItem(REVISION_KEY);
+    localStorage.removeItem(MARKUP_KEY);
+    localStorage.removeItem(WELCOME_DISMISSED_KEY);
+    setYamlText('');
+    setBookings([]);
+    setMarkup([]);
+    setJobs([]);
+    setJobsImportedAt(null);
+    setRevision(1);
+    setLinkedFiles({ board: null, yaml: null, bookings: null });
+    setWelcomeOpen(true);
+    setError(null);
   };
   const linkBookingsFile = async () => {
     if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
@@ -847,7 +896,7 @@ export default function App() {
             </header>
             <table><thead><tr><th>File</th><th>Linked</th><th></th></tr></thead><tbody>
               <tr><td>Bookings export (.xls)</td><td>{linkedFiles.bookings || 'Not linked'}</td><td><button onClick={linkBookingsFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Link</button> <button onClick={importEventsFile} disabled={!venue}>Import</button></td></tr>
-              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Save as</button></td></tr>
+              <tr><td>Venue YAML (.yaml)</td><td>{linkedFiles.yaml || 'Not linked'}</td><td><button onClick={linkYamlFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Link</button> <button onClick={exportVenueConfig} disabled={!venue}>Save as</button> <button onClick={unlinkVenue} disabled={!venue} title="Forget this venue and its linked files, so another venue can be set up. The files on disk are left untouched.">Unlink</button></td></tr>
               <tr><td>Board (.json.gz)</td><td>{linkedFiles.board || 'Not linked'}</td><td><button onClick={linkBoardFile} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Open</button> <button onClick={linkBoardFileAsNew} disabled={!hasFileSystemAccess()} title={hasFileSystemAccess() ? undefined : 'Linking needs Chrome or Edge on a desktop'}>Save as</button> <button onClick={exportPublishedBoard}>Download</button></td></tr>
             </tbody></table>
             <p>Linking the bookings export lets Refresh re-read it. The board file is written automatically whenever the editor changes the board.</p>

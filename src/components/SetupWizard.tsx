@@ -26,6 +26,7 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
   const [mapping, setMapping] = useState<Record<FieldKey, string>>({} as Record<FieldKey, string>);
   const [roomSeparator, setRoomSeparator] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [other, setOther] = useState<Set<string>>(new Set());
   const [roomFilter, setRoomFilter] = useState('');
   const [unassigned, setUnassigned] = useState(true);
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string> | null>(null);
@@ -76,7 +77,8 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
     () => (mapping.event_date ? countInRange(dataRows, mapping.event_date, dateFormat, dateRange) : 0),
     [dataRows, mapping.event_date, dateFormat, dateRange]
   );
-  const keptRooms = parts.filter(p => !excluded.has(p.name)).map(p => p.name);
+  const keptRooms = parts.filter(p => !excluded.has(p.name) && !other.has(p.name)).map(p => p.name);
+  const otherRooms = parts.filter(p => other.has(p.name)).map(p => p.name);
   const chosenStatuses = statuses.filter(s => (selectedStatuses ?? new Set(statuses.filter(x => !/cancel/i.test(x.value)).map(x => x.value))).has(s.value)).map(s => s.value);
 
   const pickFile = async (picked: File | undefined) => {
@@ -136,6 +138,7 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
         mapping,
         dateFormat,
         rooms: keptRooms,
+        otherRooms,
         excludedRooms: parts.filter(p => excluded.has(p.name)).map(p => p.name),
         unassignedRoom: unassigned && emptySpaceCount > 0,
         allowedStatuses: chosenStatuses,
@@ -202,25 +205,32 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
         )}
         {step === 2 && (
           <div>
-            <p>Every distinct space in the file, most-used first. Tick Exclude on the ones that are not rooms on the board. One cell can name several rooms — the separator below is how the file separates them.</p>
+            <p>Every distinct space in the file, most-used first. Keep the rooms on the board, put the minor ones in Other (they stay as individual columns at the end of the board, grouped under OTHER), or Exclude the ones that are not rooms at all. One cell can name several rooms — the separator below is how the file separates them.</p>
             <label>Room separator <input aria-label="Room separator" value={roomSeparator} onChange={e => setRoomSeparator(e.target.value)} placeholder="e.g. ;" /></label>
             {emptySpaceCount > 0 && (
               <label><input type="checkbox" checked={unassigned} onChange={e => setUnassigned(e.target.checked)} /> Put the {emptySpaceCount} event{emptySpaceCount === 1 ? '' : 's'} with no space in an “Unassigned” room</label>
             )}
             <label>Filter rooms <input aria-label="Filter rooms" value={roomFilter} onChange={e => setRoomFilter(e.target.value)} placeholder="Type to filter" /></label>
             <div className="setup-room-list">
-              {shownParts.map(p => (
-                <label key={p.name} className="setup-room-row">
-                  <input type="checkbox" checked={!excluded.has(p.name)} onChange={e => setExcluded(current => {
-                    const next = new Set(current);
-                    if (e.target.checked) next.delete(p.name); else next.add(p.name);
-                    return next;
-                  })} />
-                  <span>{p.name}</span><span>{p.count}</span>
-                </label>
-              ))}
+              {shownParts.map(p => {
+                const category = excluded.has(p.name) ? 'exclude' : other.has(p.name) ? 'other' : 'keep';
+                return (
+                  <label key={p.name} className="setup-room-row">
+                    <select aria-label={`Category for ${p.name}`} value={category} onChange={e => {
+                      const next = e.target.value;
+                      setExcluded(current => { const s = new Set(current); if (next === 'exclude') s.add(p.name); else s.delete(p.name); return s; });
+                      setOther(current => { const s = new Set(current); if (next === 'other') s.add(p.name); else s.delete(p.name); return s; });
+                    }}>
+                      <option value="keep">Keep</option>
+                      <option value="other">Other</option>
+                      <option value="exclude">Exclude</option>
+                    </select>
+                    <span>{p.name}</span><span>{p.count}</span>
+                  </label>
+                );
+              })}
             </div>
-            <p>{keptRooms.length} rooms kept, {excluded.size} excluded.</p>
+            <p>{keptRooms.length} rooms kept, {other.size} other, {excluded.size} excluded.</p>
           </div>
         )}
         {step === 3 && (
@@ -257,7 +267,7 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
             <label>Venue name <input aria-label="Venue name" value={venueName} onChange={e => setVenueName(e.target.value)} placeholder="e.g. MCG" /></label>
             <p>This is the name on the board and in the YAML. Saving asks where to put the YAML file, so it is linked like the other venues.</p>
             <ul>
-              <li>{keptRooms.length} rooms{excluded.size ? `, ${excluded.size} excluded` : ''}{unassigned && emptySpaceCount > 0 ? `, plus Unassigned for ${emptySpaceCount} events with no space` : ''}.</li>
+              <li>{keptRooms.length} rooms{other.size ? `, ${other.size} other` : ''}{excluded.size ? `, ${excluded.size} excluded` : ''}{unassigned && emptySpaceCount > 0 ? `, plus Unassigned for ${emptySpaceCount} events with no space` : ''}.</li>
               <li>{mapping.booking_status ? `${chosenStatuses.length} of ${statuses.length} statuses import` : 'No status column mapped — every event imports'}.</li>
               <li>{dateRange ? `${inRangeCount} events from ${dateRange.start} to ${dateRange.end}` : `${dataRows.length} events, all dates`}.</li>
               <li>{mapping.setup_start ? 'Setup and teardown times from the file' : 'No setup or teardown times'}.</li>

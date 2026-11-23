@@ -9,7 +9,7 @@ thick line the board draws (3px solid #141414, see .group-edge in
 styles.css), along the bottom of its row, so the room sections read
 in the table the way they read on the board. With border-collapse the
 wider border wins over the next row's 1px top border. */
-.configuration-page table tbody tr.strong-border-after td{border-bottom:3px solid #141414}.configuration-page td button+button{margin-left:6px}.configuration-page textarea{width:100%;min-height:360px;resize:vertical;padding:12px;font-family:monospace;font-size:13px;tab-size:2}.configuration-error{color:#a00}.configuration-swatch{display:inline-block;width:60px;height:24px;border:1px solid var(--ink)}
+.configuration-page table tbody tr.strong-border-after td{border-bottom:3px solid #141414}.configuration-page table tbody tr.room-group td{background:#e7e1d8;font-weight:700}.configuration-page table tbody tr.room-child td:first-child{color:transparent}.configuration-page .room-child-indent{color:#141414;font-weight:700}.configuration-page td button+button{margin-left:6px}.configuration-page textarea{width:100%;min-height:360px;resize:vertical;padding:12px;font-family:monospace;font-size:13px;tab-size:2}.configuration-error{color:#a00}.configuration-swatch{display:inline-block;width:60px;height:24px;border:1px solid var(--ink)}
 /* Operable wall: one tick box per wall between two rooms, sitting on
 the border between their rows. The cell is the wall's home; the box is
 centred on the cell's bottom edge, so half of it sits in this row and

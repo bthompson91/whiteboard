@@ -154,6 +154,18 @@ export async function loadLinkedHandle(key: string): Promise<LinkedFileHandle | 
     request.onerror = () => { db.close(); reject(request.error); };
   });
 }
+// Delinking a venue forgets its file handles, so a later save cannot
+// write to the old venue's files. Deleting a key that was never linked
+// is a no-op.
+export async function deleteLinkedHandle(key: string): Promise<void> {
+  const db = await openLinkedDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LINKED_STORE, 'readwrite');
+    tx.objectStore(LINKED_STORE).delete(key);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
 export function hasFileSystemAccess(): boolean {
   return typeof window !== 'undefined' && typeof (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker === 'function';
 }

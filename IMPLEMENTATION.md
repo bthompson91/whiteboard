@@ -242,6 +242,20 @@ unavailable?, hidden?, mergeRoom, mergeGroup?, lane?, laneCount? }`.
 `mainEnd` are the event times. **Start and end times are hard** — blocks
 render at their exact times with no snapping.
 
+- **Two-row header.** The board header is two rows. A combined room gets
+  a merged cell on the top row spanning its member columns (Palladium
+  spans its five rooms), with each member listed underneath on the second
+  row by the part of its name after the words it shares with the combined
+  name ("Palladium C1" is "C1", "Jim Stynes A" under "Jim Stynes Grill"
+  is "A"); a room in no combined room gets one cell spanning both rows,
+  vertically centred. The Date / time corner spans both rows too. A
+  mapping that names one room, or rooms that are not on the board, makes
+  no group; the combined room name itself, when it is also a room on the
+  board, stays a standalone column and the group spans its members only.
+  The group header fits its name across the spanned width, a member fits
+  its short name in its own column, and the header height is measured so
+  the day height adapts. Browser-verified on the real 2–3 Dec board.
+
 - **Height merge (tall blocks).** Same room, same title matched loosely
   (`mergeTitle` ignores case and spacing), overlapping or adjacent times:
   one tall block. The inspector's "Merge with the same booking at other
@@ -622,25 +636,37 @@ Operable wall | Reorder | Remove**:
   fields a preview shows the three columns at their set widths, scaled
   to fit, with the real pixel numbers — it resizes live as the fields
   are adjusted.
-- **Combined rooms** — its own section under the room table: each name on
-  the left is a name the export file uses for a combination of rooms, and
-  it expands to the rooms on the right. One entry per spelling the venue
+- **Combined rooms** — there is no separate section: a combined room
+  lives in the rooms table itself, as a parent row with its member rooms
+  as indented child rows beneath it. A combined room whose name is
+  itself a room on the board (Olympic Room, Jim Stynes Grill) is that
+  room's row, with its members underneath; a combined room whose name is
+  not a room (Palladium) is a group header row with its members
+  underneath. A room in two combined rooms shows under the first. The
+  Combined room column holds the grouping controls: an Add-member
+  dropdown on a parent or standalone room (picking one makes the room a
+  combined room), Ungroup on a parent, and Member-of plus Remove-from-
+  group on a child row; a new combined room is added below the table.
+  The TimeTarget area column holds the area name TimeTarget uses for
+  the whole combination. Each name is one entry per spelling the venue
   uses. A combined booking renders as one wide block because the walls
   between the rooms of a combination are filled in as operable (see
   Operable walls above); an operable wall merges
   separate bookings, it does not expand one booking, so the mapping is
   still what turns a combined export name into board rooms. Typing a
-  combined room name works: the row key is the row index, not the name
-  (keying on the name unmounted the row on every keystroke and dropped
-  focus after one character), renaming and removing a row each update
-  the mapping and the TimeTarget area in a single change (two separate
-  changes cloned the same draft, so the second overwrote the first and
-  the name edit was lost and Remove left the row in place), and
-  `change()` rebuilds the YAML from the latest text via a functional
-  updater so a keystroke that lands before React re-renders cannot
-  clone a stale draft and drop the edit that just landed. Browser-
-  verified on the real Crown YAML: Add then type a full name, rename
-  an existing entry, and Remove, all keeping focus and the right value.
+  combined room name works: the group row is keyed by its position, not
+  its name, and its name commits on blur (keying on the name unmounted
+  the row on every keystroke and dropped focus after one character);
+  renaming and removing a row each update the mapping and the TimeTarget
+  area in a single change (two separate changes cloned the same draft,
+  so the second overwrote the first and the name edit was lost and
+  Remove left the row in place), and `change()` rebuilds the YAML from
+  the latest text via a functional updater so a keystroke that lands
+  before React re-renders cannot clone a stale draft and drop the edit
+  that just landed. Browser-verified on the real Crown YAML: the table
+  groups Palladium over its five rooms, Add-member and Remove-from-
+  group move a room in and out of a group, and Add combined room
+  creates a new group header row.
 
 Salespeople are edited in their own table (Name, Short name, Colour), and
 the YAML can be exported with a save-location prompt. All three tables
@@ -735,9 +761,13 @@ Five steps, all driven by the file itself:
    only appears when the date column holds text like 09/11/2026; Excel
    dates and ISO dates read the same either way.
 3. **Rooms.** Every distinct space in the file, most-used first, with a
-   count — tick Exclude on the ones that are not rooms. One cell can name
-   several rooms; the separator is detected (`;` for MCG) and editable.
-   Events with no space go in an "Unassigned" room when the box is ticked.
+   count — each room is Keep, Other, or Exclude. Other rooms are kept as
+   individual columns at the end of the board, after the main rooms, and
+   grouped under a combined room called OTHER, so they read as one group
+   in the overnight notes and in the grouped rooms table instead of as
+   stray columns. One cell can name several rooms; the separator is
+   detected (`;` for MCG) and editable. Events with no space go in an
+   "Unassigned" room when the box is ticked.
    Only rows with a title count as events: the total and day-group rows
    below the header have no title, and would otherwise inflate the counts.
 4. **Statuses and dates.** Tick which statuses import ("To Be
@@ -749,9 +779,20 @@ Five steps, all driven by the file itself:
    none and the import attaches none.
 5. **Name the venue.** A summary of the choices, then "Create venue and
    import": the YAML is built (`buildVenueYaml`), a save picker asks where
-   to put it so it is linked like the other venues, and the file imports
-   straight onto the board through the normal review flow, with the chosen
-   date range.
+   to put it so it is linked like the other venues, then a second save
+   picker asks where to put the new venue's blank board — an empty board
+   (no bookings, no markup, revision 1) saved as a new `.json.gz` and
+   linked as the board file, so the new venue never reuses the old
+   venue's board — and the file imports straight onto the board through
+   the normal review flow, with the chosen date range.
+
+   A venue is delinked from the Link files panel: **Unlink** on the
+   Venue YAML row forgets every linked file (board, YAML, bookings
+   export), clears the venue and the board, and re-opens the welcome
+   overlay, so another venue can be set up. The board handle is dropped
+   first, before the bookings are cleared, so the auto-save cannot write
+   an empty board over the old venue's board file — the files on disk
+   are left untouched.
 
 The wizard's choices become the YAML: `file_input.header_row` and
 `room_separator` when they differ from the defaults, `rooms.unassigned_room`
@@ -981,7 +1022,7 @@ the file out.
 ## Tests
 
 `npm test` runs `scripts/check-matching.mjs` (esbuild, no new dependencies):
-301 checks covering matching tiers and weights, booking identity, height and
+306 checks covering matching tiers and weights, booking identity, height and
 width merges, operable-wall gating and derivation from combined rooms,
 exact-title cross-room merges, strong
 borders, merge groups, lanes, `likeBookings` / `blockCountForBookings`,

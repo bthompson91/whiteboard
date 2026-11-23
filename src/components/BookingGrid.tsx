@@ -3,7 +3,7 @@ import { addDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Booking, JobEntry } from '../types';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { bookingColour, isNoAv, readableText, resolveSalesperson, Salesperson, UNAVAILABLE_SALESPERSON } from '../lib/configuration';
-import { Block, blocksFor, blockHasJobNumber, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, isBlockHidden, likeBookings, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
+import { Block, blocksFor, blockHasJobNumber, blockJobNumber, blockSegments, clock, eventColour, fitFontSize, headerGroups, isBlockHidden, likeBookings, memberShortName, relatedBookings, blockCountForBookings, setBlockHidden, strongBorders, operableWallAfter, timeFraction } from '../lib/blocks';
 import { applyJobNumberEdits } from '../lib/reviewApply';
 import { findJobCandidates, jobSalesperson, salesPersonMatches, JobCandidate } from '../lib/jobsImport';
 import { dayKind } from '../lib/dateTime';
@@ -303,6 +303,14 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
   const columns=`160px ${widths.map(width=>`${width}px`).join(' ')}`;
   const style={'--columns':columns,'--day-height':`${size.day}px`,width:160+widths.reduce((sum,width)=>sum+width,0)} as CSSProperties;
   const roomFontSizes=roomNameFontSizes(venue.rooms.map(r=>r.name),widths);
+  // The header is two rows: a combined room gets a merged cell on the
+  // top row spanning its member columns, with each member listed
+  // underneath; a room in no combined room gets one cell spanning both
+  // rows, vertically centred. The group header fits its name across the
+  // spanned width; a member fits its short name in its own column.
+  const headerLayout=headerGroups(venue.rooms.map(r=>r.name),venue.mappings||{});
+  const groupFontSizes=roomNameFontSizes(headerLayout.groups.map(g=>g.name),headerLayout.groups.map(g=>g.members.reduce((sum,i)=>sum+(widths[i]||150),0)));
+  const memberFontSizes=venue.rooms.map((r,i)=>{const gi=headerLayout.memberOf[i];if(gi===null)return roomFontSizes[i];return roomNameFontSizes([memberShortName(headerLayout.groups[gi].name,r.name)],[widths[i]||150])[0];});
   const today=format(new Date(),'yyyy-MM-dd');
   // The salesperson filter's focus window starts at the previous day:
   // only the filtered salesperson's blocks from yesterday onward stay
@@ -398,7 +406,7 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
     scrollToToday(false);
   },[dates[0],dates[dates.length-1],today]);
   return <div className="booking-grid" ref={root} style={style}>
-    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns}}><div className="corner group-edge">Date / time</div>{venue.rooms.map((r,i)=><div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{fontSize:roomFontSizes[i]}}>{r.name}</div>)}</div>
+    <div className="grid-header" ref={header} style={{gridTemplateColumns:columns,gridTemplateRows:'auto auto'}}><div className="corner group-edge" style={{gridRow:'1 / 3',gridColumn:1}}>Date / time</div>{headerLayout.groups.map((g,gi)=><div className={`room-header room-header-group${strongAfter[g.end]?' group-edge':''}`} key={`group-${g.name}`} data-group={g.name} style={{gridRow:1,gridColumn:`${g.start+2} / ${g.end+3}`,fontSize:groupFontSizes[gi]}}>{g.name}</div>)}{venue.rooms.map((r,i)=>{const gi=headerLayout.memberOf[i];if(gi===null)return <div className={`room-header${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{gridRow:'1 / 3',gridColumn:i+2,fontSize:roomFontSizes[i]}}>{r.name}</div>;return <div className={`room-header room-header-member${strongAfter[i]?' group-edge':''}`} key={r.id} data-room={r.id} style={{gridRow:2,gridColumn:i+2,fontSize:memberFontSizes[i]}}>{memberShortName(headerLayout.groups[gi].name,r.name)}</div>;})}</div>
     {!dates.length&&<div className="empty-state">Load a booking file to display bookings.</div>}
     {dates.map((date,dateIndex)=><div className={`grid-row${date===today?' today':''}`} key={date} data-date={date} style={{gridTemplateColumns:columns}}>
       <div className={`date-cell ${dayKind(date, today)} group-edge day-edge`}><div className="date-label" style={{fontSize:dateFontSizesValue[dateIndex]}}>{format(parseISO(date),'EEE dd MMM')}</div></div>
