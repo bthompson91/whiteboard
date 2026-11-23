@@ -263,8 +263,12 @@ render at their exact times with no snapping.
   between the rooms of each `room_mappings` entry are operable, because a
   combination only exists where those rooms can be opened into one space.
   Only walls between rooms that sit next to each other in the board order
-  count. An explicit list, even an empty one, always wins — unticking a
-  wall in Configuration writes it back, and the derivation stops applying.
+  count. An explicit non-empty list wins — unticking a wall in
+  Configuration writes it back, and the derivation stops applying. An
+  explicit empty list is treated as unset and the walls derive: before
+  the derivation existed, any config save wrote `operable_walls: []`
+  into the YAML, and that stale empty list blocked every merge even
+  though nobody chose to remove a wall (fixed 2026-11-23).
 - **Manual merge.** The inspector's "Merge left" / "Merge right" buttons set
   a shared `mergeGroup` on two bookings in neighbouring rooms (same day,
   overlapping main times, same loose title preferred). A merge group joins
@@ -443,7 +447,7 @@ measure() re-rendered on every one of those DOM mutations because it
 set fresh state objects even when nothing moved, so the page never
 settled and the duplicated note count grew until it died. measure()
 now only sets size/layout when the numbers actually changed (fixed
-2026-11-23, harness 271 checks).
+2026-11-23, harness 276 checks).
 
 ## Roles and the editor lock
 
@@ -484,10 +488,18 @@ persistence (`saveLinkedHandle` / `loadLinkedHandle`, DB
   written.
 - **Venue YAML** — written back on config save when linked; "Export YAML"
   prompts for a location so it can save over the existing file.
-- **Board** (shared JSON) — the live board. The editor auto-writes it
-  (debounced 500ms) whenever bookings, revision, history, markup or the
-  editor lock change. So editor changes save immediately as they are made;
-  the top-bar button is just "🔄 Refresh" (re-read the board file).
+- **Board** (shared board file, gzipped JSON, `.json.gz`) — the live board.
+  The editor auto-writes it (debounced 500ms) whenever bookings, revision,
+  markup or the editor lock change. So editor changes save immediately as
+  they are made; the top-bar button is just "🔄 Refresh" (re-read the board
+  file). It is compact JSON through gzip, not pretty text — a 1,500-booking
+  board is ~49KB instead of 4.62MB. Old plain `.json` board files still
+  open (gzip is detected by magic bytes). There is no import history in
+  the file any more: it was only the undo for a bad import, and the
+  bookings export is the source of truth, so a bad import is fixed by
+  re-importing the right export. The single previous-import snapshot in
+  localStorage (for carrying job numbers and colours across a re-import)
+  is separate and stays.
 
 Handles are stored in IndexedDB so the links persist across app versions;
 on mount each handle is restored only if its permission is still `granted`.
@@ -707,7 +719,7 @@ against is `test-data/timetarget-sample.xlsx`, made by
   grouped by date once, so a large file applies in linear time: a
   20,000-row file took 55 seconds and hung the page when every row
   rescanned the whole board, and now applies in 108ms with identical
-  notes (fixed 2026-11-23, harness 271 checks).
+  notes (fixed 2026-11-23, harness 276 checks).
 - **Still to do on Brendan's side:** fill in the Timetarget Area Name
   column in Configuration for the rooms (the Crown YAML has none yet),
   and lay out the real export in the sample's format.
