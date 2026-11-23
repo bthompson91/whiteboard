@@ -54,9 +54,9 @@ export function findJobsColumns(headers: string[]): { orderId: string; descripti
   return { orderId: orderId!, description: description!, salesPerson, company, startDate: startDate!, endDate: endDate! };
 }
 
-// The event name is the text after the last bar ("Pall | CBA and SBV
-// Retired Staff Christmas Lunch 2026" -> "CBA and SBV Retired Staff
-// Christmas Lunch 2026"), with a leading dash stripped. The area is
+// The event name is the text after the last bar ("Sample | Test Staff
+// Christmas Lunch 2026" -> "Test Staff Christmas Lunch 2026"), with a
+// leading dash stripped. The area is
 // everything before it — it is what tells one job for a multi-room
 // event from another ("Prom 1 & 2" vs "M1&2" vs "Prom 3").
 export function jobEvent(description: string): string {

@@ -498,26 +498,26 @@ try {
   })());
   throws('TimeTarget import refuses a file without the Area column', () => findTimetargetColumns(['Date', 'Start Time', 'Function', 'Event']));
   check('a TimeTarget area resolves through timetarget_areas, a room name, and an alias', resolveTimetargetRoom('Crown Melbourne - Garden Room 3', ttVenue) === 'Garden Room 3' && resolveTimetargetRoom('M9', ttVenue) === 'M9' && resolveTimetargetRoom('M Nine', ttVenue) === 'M9' && resolveTimetargetRoom('Nowhere', ttVenue) === null);
-  check('an event name matches a board title loosely, one containing the other', eventMatchesEvent('2026 Carji Greeves Medal Dinner', '2026 Carji Greeves Medal') && eventMatchesEvent('Gala', 'Annual Gala Dinner') && !eventMatchesEvent('Gala', 'Dinner') && !eventMatchesEvent('', 'Dinner'));
-  check('an event with a job/area prefix and cut short still matches its title', eventMatchesEvent('1020926 - Pall | CBA and SBV Retired Staff Christmas Lunch 2026', 'CBA and SBV Retired Staff Christmas Lunch 2026') && eventMatchesEvent('1020926 - pall | cba and sbv retired staff christmas lunch 2', 'CBA and SBV Retired Staff Christmas Lunch 2026') && !eventMatchesEvent('1020926 - pall | cba and sbv retired staff christmas lunch 2', 'Wantirna College Valedictory Dinner 2026'));
+  check('an event name matches a board title loosely, one containing the other', eventMatchesEvent('Sample Gala Dinner 2026', 'Sample Gala Dinner') && eventMatchesEvent('Gala', 'Annual Gala Dinner') && !eventMatchesEvent('Gala', 'Dinner') && !eventMatchesEvent('', 'Dinner'));
+  check('an event with a job/area prefix and cut short still matches its title', eventMatchesEvent('999999 - Sample | Test Staff Christmas Lunch 2026', 'Test Staff Christmas Lunch 2026') && eventMatchesEvent('999999 - sample | test staff christmas lunch 2', 'Test Staff Christmas Lunch 2026') && !eventMatchesEvent('999999 - sample | test staff christmas lunch 2', 'Sample College Valedictory Dinner 2026'));
   const ttBookings = [
-    booking({ id: 'b-carji', title: '2026 Carji Greeves Medal', date: '2026-10-01', roomId: 'Garden Room 3', roomIds: ['Garden Room 3'], startTime: '17:00', endTime: '23:00' }),
-    booking({ id: 'b-carlisle', title: '2026 Carlisle Homes Supplier of the Year Awards', date: '2026-10-02', roomId: 'Crown Aviary', roomIds: ['Crown Aviary'], startTime: '11:00', endTime: '15:00' }),
-    booking({ id: 'b-charlize', title: "Charlize's 18th Birthday & Year 12 Graduation", date: '2026-10-03', roomId: 'Evergreen', roomIds: ['Evergreen'], startTime: '18:30', endTime: '23:30' }),
-    booking({ id: 'b-nicholls', title: '2026 John Nicholls Medal', date: '2026-10-04', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '15:00', endTime: '23:00' }),
-    booking({ id: 'b-barker', title: '2026 Trevor Barker Award and Hall of Fame', date: '2026-10-05', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '23:00' }),
-    booking({ id: 'b-cfo', title: 'CFO Day', date: '2026-10-06', roomId: 'M8', roomIds: ['M8'], startTime: '08:45', endTime: '17:00' }),
-    booking({ id: 'b-hello-1', title: 'Helloworld / MTA Conference', date: '2026-10-01', roomId: 'M9', roomIds: ['M9'], startTime: '15:00', endTime: '22:00' }),
-    booking({ id: 'b-hello-2', title: 'Helloworld / MTA Conference', date: '2026-10-01', roomId: 'M9', roomIds: ['M9'], startTime: '22:00', endTime: '07:00' })
+    booking({ id: 'b-gala', title: 'Sample Gala Dinner', date: '2026-10-01', roomId: 'Garden Room 3', roomIds: ['Garden Room 3'], startTime: '17:00', endTime: '23:00' }),
+    booking({ id: 'b-supplier', title: 'Test Supplier Awards 2026', date: '2026-10-02', roomId: 'Crown Aviary', roomIds: ['Crown Aviary'], startTime: '11:00', endTime: '15:00' }),
+    booking({ id: 'b-birthday', title: 'Sample 18th Birthday & Graduation', date: '2026-10-03', roomId: 'Evergreen', roomIds: ['Evergreen'], startTime: '18:30', endTime: '23:30' }),
+    booking({ id: 'b-medal', title: 'Sample Medal Night 2026', date: '2026-10-04', roomId: 'River Room 2', roomIds: ['River Room 2'], startTime: '15:00', endTime: '23:00' }),
+    booking({ id: 'b-awards', title: 'Test Awards Night 2026', date: '2026-10-05', roomId: 'River Room 1', roomIds: ['River Room 1'], startTime: '18:00', endTime: '23:00' }),
+    booking({ id: 'b-finance', title: 'Sample Finance Day', date: '2026-10-06', roomId: 'M8', roomIds: ['M8'], startTime: '08:45', endTime: '17:00' }),
+    booking({ id: 'b-conf-1', title: 'Sample Industry Conference', date: '2026-10-01', roomId: 'M9', roomIds: ['M9'], startTime: '15:00', endTime: '22:00' }),
+    booking({ id: 'b-conf-2', title: 'Sample Industry Conference', date: '2026-10-01', roomId: 'M9', roomIds: ['M9'], startTime: '22:00', endTime: '07:00' })
   ];
   const ttFile = new File([readFileSync(join(root, 'test-data', 'timetarget-sample.xlsx'))], 'timetarget-sample.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const ttParsed = await parseTimetargetWorkbook(ttFile, ttVenue, ttBookings);
   check('the sample TimeTarget file parses to 10 rows with 1 skipped (the ghost area)', ttParsed.rows.length === 10 && ttParsed.skipped.length === 1 && ttParsed.skipped[0].reason.includes('Imaginary Room'), JSON.stringify(ttParsed.skipped));
   check('a fuzzy event name still finds its booking, and the two sessions find theirs', (() => {
-    const carji = ttParsed.rows.find(r => r.roomId === 'Garden Room 3');
-    const hello1 = ttParsed.rows.find(r => r.roomId === 'M9' && r.startTime === '13:00');
-    const hello2 = ttParsed.rows.find(r => r.roomId === 'M9' && r.startTime === '20:00');
-    return carji?.bookingId === 'b-carji' && hello1?.bookingId === 'b-hello-1' && hello2?.bookingId === 'b-hello-2';
+    const gala = ttParsed.rows.find(r => r.roomId === 'Garden Room 3');
+    const conf1 = ttParsed.rows.find(r => r.roomId === 'M9' && r.startTime === '13:00');
+    const conf2 = ttParsed.rows.find(r => r.roomId === 'M9' && r.startTime === '20:00');
+    return gala?.bookingId === 'b-gala' && conf1?.bookingId === 'b-conf-1' && conf2?.bookingId === 'b-conf-2';
   })());
   check('a setup with no event name still imports, with no booking attached', (() => {
     const blank = ttParsed.rows.find(r => r.roomId === 'M15');

@@ -871,8 +871,7 @@ against is `test-data/timetarget-sample.xlsx`, made from real Crown bookings.
   row number, never silently dropped. The import ends with a summary:
   notes added, notes updated, skipped rows with reasons.
 - **Event (fuzzy):** the event name may not match the board title
-  exactly ("2026 Carji Greeves Medal Dinner" against "2026 Carji
-  Greeves Medal"), so the match is loose — one name contains the other
+  exactly ("Sample Gala Dinner 2026" against "Sample Gala Dinner"), so the match is loose — one name contains the other
   once both are normalised. The date and room already pin the booking
   down. When several sessions of one event share the room and day, the
   closest start time wins (a setup precedes its session). A row with no
