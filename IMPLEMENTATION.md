@@ -436,7 +436,14 @@ or an arrow end re-anchors it.
 Markup travels in the shared board file (it used to live only in each
 browser's localStorage, so it never showed across devices). The lowlight
 overlay never blocks it: the overlay sits at z 2500, the toolbar at 2600,
-the inspector at 3000/3002, dialogs at 4000.
+the inspector at 3000/3002, dialogs at 4000. Loading a board file
+drops a duplicate markup id, keeping the first copy: two notes with one
+id made React duplicate the note on every render, and MarkupLayer's
+measure() re-rendered on every one of those DOM mutations because it
+set fresh state objects even when nothing moved, so the page never
+settled and the duplicated note count grew until it died. measure()
+now only sets size/layout when the numbers actually changed (fixed
+2026-11-23, harness 271 checks).
 
 ## Roles and the editor lock
 
@@ -700,7 +707,7 @@ against is `test-data/timetarget-sample.xlsx`, made by
   grouped by date once, so a large file applies in linear time: a
   20,000-row file took 55 seconds and hung the page when every row
   rescanned the whole board, and now applies in 108ms with identical
-  notes (fixed 2026-11-23, harness 270 checks).
+  notes (fixed 2026-11-23, harness 271 checks).
 - **Still to do on Brendan's side:** fill in the Timetarget Area Name
   column in Configuration for the rooms (the Crown YAML has none yet),
   and lay out the real export in the sample's format.
