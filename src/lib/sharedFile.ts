@@ -169,8 +169,10 @@ export async function deleteLinkedHandle(key: string): Promise<void> {
 export function hasFileSystemAccess(): boolean {
   return typeof window !== 'undefined' && typeof (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker === 'function';
 }
-export async function pickLinkedFile(options: { types: { description: string; accept: Record<string, string[]> }[]; multiple?: boolean }): Promise<LinkedFileHandle | null> {
+export async function pickLinkedFile(options: { types?: { description: string; accept: Record<string, string[]> }[]; multiple?: boolean } = {}): Promise<LinkedFileHandle | null> {
   const w = window as unknown as { showOpenFilePicker: (o: unknown) => Promise<LinkedFileHandle[]> };
+  // No types means no filter: the picker shows every file. The bookings
+  // export can be any file type, so its pickers pass no types at all.
   const [handle] = await w.showOpenFilePicker({ ...options, multiple: false });
   return handle || null;
 }

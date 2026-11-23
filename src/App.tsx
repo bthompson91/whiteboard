@@ -638,7 +638,9 @@ export default function App() {
   const linkBookingsFile = async () => {
     if (!hasFileSystemAccess()) { setError('This browser cannot link files. Use Chrome or Edge on desktop.'); return; }
     try {
-      const handle = await pickLinkedFile({ types: [{ description: 'Events file', accept: { 'application/vnd.ms-excel': ['.xls', '.xlsx'] } }] });
+      // The bookings export can be any file type, so the picker is not
+      // filtered to .xls/.xlsx — the reader sniffs the content.
+      const handle = await pickLinkedFile();
       if (!handle) return;
       bookingsHandleRef.current = handle;
       setLinkedFiles(current => ({ ...current, bookings: handle.name }));
@@ -659,9 +661,10 @@ export default function App() {
     input.oncancel = () => resolve(null);
     input.click();
   });
-  // Import the bookings export (.xls): from the linked file when one is
-  // linked, otherwise pick a file first. This is the import that used
-  // to live on the top bar; it now lives in the Link files panel.
+  // Import the bookings export (any file type): from the linked file
+  // when one is linked, otherwise pick a file first. This is the import
+  // that used to live on the top bar; it now lives in the Link files
+  // panel.
   const importEventsFile = async () => {
     if (!venue) return;
     try {
@@ -669,14 +672,16 @@ export default function App() {
       if (handle) {
         handleBookingsLoaded(await parseBookingWorkbook(await handle.getFile(), venue));
       } else if (hasFileSystemAccess()) {
-        const picked = await pickLinkedFile({ types: [{ description: 'Events file', accept: { 'application/vnd.ms-excel': ['.xls', '.xlsx'] } }] });
+        // The bookings export can be any file type, so the picker is not
+        // filtered to .xls/.xlsx — the reader sniffs the content.
+        const picked = await pickLinkedFile();
         if (!picked) return;
         bookingsHandleRef.current = picked;
         setLinkedFiles(current => ({ ...current, bookings: picked.name }));
         await saveLinkedHandle('bookings', picked);
         handleBookingsLoaded(await parseBookingWorkbook(await picked.getFile(), venue));
       } else {
-        const file = await pickFileViaInput('.xls,.xlsx,.xml,.csv');
+        const file = await pickFileViaInput('');
         if (!file) return;
         handleBookingsLoaded(await parseBookingWorkbook(file, venue));
       }

@@ -163,7 +163,7 @@ export default function SetupWizard({ onCreateVenue, onClose }: Props) {
         {step === 0 && (
           <div>
             <p>Upload the venue&apos;s booking file — the export it sends you, in whatever layout it comes in. The wizard reads the columns and rooms from the file and builds the venue YAML from them.</p>
-            <label>Booking file <input type="file" accept=".xls,.xlsx,.xml,.csv" onChange={e => pickFile(e.target.files?.[0])} /></label>
+            <label>Booking file <input type="file" onChange={e => pickFile(e.target.files?.[0])} /></label>
             {file && <p>{file.name} — {dataRows.length} events in the file.</p>}
           </div>
         )}

@@ -39,6 +39,12 @@ export default function ImportReviewPanel({ result, hasDuplicate, canUndoLink, o
   // different bookings.
   useEffect(() => { setSelected(allSelected(result)); }, [result]);
   const toggle = (key: string) => setSelected(current => ({ ...current, [key]: !(current[key] !== false) }));
+  // Select all ticks every change, including the under-80% matches that
+  // start unchecked — a long import with many possible matches is
+  // otherwise a click per row. Select none unticks them all, so the
+  // editor can tick only the ones they want.
+  const selectAll = () => setSelected(Object.fromEntries(actionable.map(change => [changeKey(change), true])));
+  const selectNone = () => setSelected(Object.fromEntries(actionable.map(change => [changeKey(change), false])));
   const apply = () => onApply(applyReview(result.comparison.changes, selected));
   return (
     <div className="review-overlay">
@@ -51,6 +57,7 @@ export default function ImportReviewPanel({ result, hasDuplicate, canUndoLink, o
           </p>
           {hasDuplicate && <p className="duplicate-warning">This file has the same content fingerprint as the most recent import.</p>}
           <p>Untick a disappeared booking to keep it on the board. Untick a matched new booking to keep the previous booking instead.</p>
+          <p><button onClick={selectAll}>Select all</button> <button onClick={selectNone}>Select none</button></p>
         </header>
         <div className="review-list">
           {actionable.length === 0 && <p className="review-empty">No changes require review.</p>}

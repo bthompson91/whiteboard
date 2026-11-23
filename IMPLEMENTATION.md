@@ -212,7 +212,10 @@ Name + date is 70 of 100, so a match that gets either wrong cannot reach 80.
 Date gives no partial credit for a day off. **Strong is ≥ 80, possible is
 ≥ 45.** In the review, a `new` change whose match scores under 80 is left
 unchecked, so the user must tick it to apply it. A differing job number on
-both sides vetoes a match outright.
+both sides vetoes a match outright. The review header has Select all and
+Select none buttons — Select all ticks every change, including the
+under-80% matches that start unchecked, so a long import is not a click
+per row; Select none unticks them all.
 
 `src/lib/reviewApply.ts` (`mergeMatchedBooking`, `applyReview`) is the pure
 merge used by both the accept and link paths: accepting or linking a match
@@ -555,8 +558,12 @@ Three files, linked through the File System Access API
 persistence (`saveLinkedHandle` / `loadLinkedHandle`, DB
 `whiteboard-linked-files`, keys `board`, `yaml`, `bookings`).
 
-- **Bookings export** (`.xls`) — read-only, linked for re-import, never
-  written.
+- **Bookings export** (any file type) — read-only, linked for re-import, never
+  written. The pickers are not filtered by extension: the export can be
+  any file type, and the reader sniffs the content (HTML table vs
+  SheetJS) rather than the name. `pickLinkedFile` takes no types for
+  it, and the plain-input fallback and the wizard booking file have no
+  `accept` filter.
 - **Venue YAML** — written back on config save when linked; "Export YAML"
   prompts for a location so it can save over the existing file.
 - **Board** (shared board file, gzipped JSON, `.json.gz`) — the live board.
