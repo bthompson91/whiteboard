@@ -82,9 +82,12 @@ try {
   result = compareImports([booking()], [booking({ id: 'booking-9', title: 'Charity Dinner' })], 'Venue');
   check('title-only change matches strong', result.changes[0].match?.classification === 'strong' && result.changes[0].match?.reason === 'Title changed', JSON.stringify(result.changes[0].match));
   result = compareImports([booking()], [booking({ id: 'booking-9', startTime: '19:00', endTime: '23:00' })], 'Venue');
-  // Time is not part of the identity hash, so a time-only change is caught
-  // by the exact-identity path as a changed booking, not a tier-2 match.
-  check('time-only change is a changed booking', result.changes[0].type === 'changed' && result.changes[0].changedFields.includes('startTime') && result.changes[0].changedFields.includes('endTime'), JSON.stringify(result.changes[0]));
+  // The start time is part of the identity now, so a time-only change
+  // misses the exact-identity path and is caught by the single-field
+  // tier instead: a new booking with a strong "Time changed" match.
+  // Accepting it merges onto the previous booking, so the colour and
+  // job number carry over.
+  check('time-only change is a matched new booking', result.changes[0].type === 'new' && result.changes[0].match?.classification === 'strong' && result.changes[0].match?.reason === 'Time changed', JSON.stringify(result.changes[0]));
   result = compareImports([booking()], [booking({ id: 'booking-9', roomIds: ['Room 2'], roomId: 'Room 2' })], 'Venue');
   check('rooms-only change matches strong', result.changes[0].match?.classification === 'strong' && result.changes[0].match?.reason === 'Rooms changed');
 
@@ -109,7 +112,10 @@ try {
     [booking({ id: 'booking-9', jobNumber: '900099', startTime: '19:00', endTime: '23:00' })],
     'Venue'
   );
-  check('a changed booking never lists jobNumber as changed', result.changes[0].type === 'changed' && !result.changes[0].changedFields.includes('jobNumber') && result.changes[0].changedFields.includes('startTime'), JSON.stringify(result.changes[0]));
+  // A re-timed booking is a matched new booking now, and the match
+  // carries the job number over on accept — the number is never listed
+  // as a changed field.
+  check('a re-timed booking keeps its job number through its match', result.changes[0].type === 'new' && result.changes[0].match?.previous.jobNumber === '900099' && !result.changes[0].changedFields.includes('jobNumber'), JSON.stringify(result.changes[0]));
 
   // --- Tier 2 uniqueness: two one-field candidates fall through to fuzzy ---
   result = compareImports(
@@ -224,15 +230,17 @@ try {
   const kept = published.find(b => b.id === 'booking-1');
   check('rejecting a matched new booking keeps the previous one', !!kept && kept.title === 'Charity Gala' && kept.colour === '#ff0000');
 
-  // Changed bookings: rejecting keeps the previous version.
+  // Changed bookings: rejecting keeps the previous version. The end
+  // time is not part of the identity, so an end-time-only change still
+  // matches by identity and comes through as changed.
   result = compareImports(
-    [booking({ startTime: '18:00' })],
-    [booking({ id: 'booking-9', startTime: '19:00', endTime: '23:00' })],
+    [booking({ startTime: '18:00', endTime: '22:00' })],
+    [booking({ id: 'booking-9', startTime: '18:00', endTime: '23:00' })],
     'Venue'
   );
   const changedKey = changeKey(result.changes.find(c => c.type === 'changed'));
   published = applyReview(result.changes, { [changedKey]: false });
-  check('rejecting a changed booking keeps the previous version', published[0].startTime === '18:00');
+  check('rejecting a changed booking keeps the previous version', published[0].endTime === '22:00');
 
   // --- Date and time parsing ---
   check('DD/MM/YYYY parses day-first', dateValue('19/11/2026', false, 'DD/MM/YYYY') === '2026-11-19');
@@ -435,6 +443,17 @@ try {
 
   // --- Per-room job numbers ---
   check('the event identity ignores the job number, so a number set in the inspector does not hide the booking on re-import', identityKey(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') === identityKey(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '900099' }), 'MCG'));
+  // The identity is per session: a daytime session and a dinner session
+  // of the same event in the same rooms are different bookings, so a
+  // job number or NO AV on one cannot leak onto the other on re-import.
+  // The real Crown board has this: "2026 Carji Greeves Medal" on
+  // 2026-10-01 in the full Palladium has a Setup (09:00), a Dinner
+  // (18:45), a Children session (18:46) and a Teardown (23:30).
+  const daytime = booking({ id: 'd', title: '2026 Tax Institute', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '09:00', endTime: '17:00', activity: 'Conference' });
+  const dinner = booking({ id: 'e', title: '2026 Tax Institute', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '18:30', endTime: '23:00', activity: 'Dinner' });
+  check('daytime and dinner sessions of one event are different identities', identityKey(daytime, 'MCG') !== identityKey(dinner, 'MCG'));
+  check('the same session re-timed keeps its identity only through fuzzy matching, not the exact identity', identityKey(daytime, 'MCG') !== identityKey(booking({ ...daytime, startTime: '09:30', endTime: '17:30' }), 'MCG'));
+  check('a session that runs long is the same identity (end time is not in it)', identityKey(dinner, 'MCG') === identityKey(booking({ ...dinner, endTime: '23:30' }), 'MCG'));
   check('the booking id still folds the job number in', bookingId(booking({ id: 'a', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00' }), 'MCG') !== bookingId(booking({ id: 'b', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A'], startTime: '19:00', endTime: '23:00', jobNumber: '900099' }), 'MCG'));
   const numbered = booking({ id: 'n', title: 'MCG Dinner', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00', jobNumber: '900099', jobNumbers: { 'Palladium B': 'NO AV' } });
   check('a block shows its own room number, or the booking number', blockJobNumber(numbered, ['Palladium A']) === '900099' && blockJobNumber(numbered, ['Palladium B']) === 'NO AV');
