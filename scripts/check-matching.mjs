@@ -733,16 +733,36 @@ try {
     const p = placeNote({ x: 300, y: 50 }, 29, []);
     return p.x === 300 && p.y === 50 && p.squeezed === false;
   })(), JSON.stringify(placeNote({ x: 300, y: 50 }, 29, [])));
-  // An imported TimeTarget note stays at its room and time, centred on
-  // its TimeTarget room — it is not moved above its block, and not
-  // re-centred on a merged block's full width. It is only highlighted
-  // when it overlaps a block, so it reads against the board.
-  check('an imported note overlaps a block when its centre is inside the block', noteOverlapsBlock({ x: 200, y: 80 }, 29, [noteSpan]) === true && noteOverlapsBlock({ x: 200, y: 50 }, 29, [noteSpan]) === false && noteOverlapsBlock({ x: 200, y: 210 }, 29, [noteSpan]) === false);
-  check('an imported note outside a block horizontally does not overlap it', noteOverlapsBlock({ x: 100, y: 80 }, 29, [noteSpan]) === false && noteOverlapsBlock({ x: 400, y: 80 }, 29, [noteSpan]) === false);
+  // An imported TimeTarget note sticks to its block: it always sits
+  // directly above the block it belongs to, centred on the merged
+  // block's full width, even when its anchor is clear of the block (a
+  // 07:00 setup for an 18:30 event). The setup time is in the note's
+  // text, so the note is a label for the block, not a marker at the
+  // setup time. But it only sticks when it has an own block: a note
+  // whose event is not on the board (no match) stays at its room and
+  // time instead of landing above some unrelated block. A hand-typed
+  // note keeps the old behaviour and stays at its anchor.
+  check('an imported note sticks directly above its block even when clear of it', (() => {
+    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', true);
+    return p.x === 260 && p.y === 69 && p.squeezed === false && p.stuck === true;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', true)));
+  check('an imported note with no block on the board stays at its room and time', (() => {
+    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b9', true);
+    return p.x === 200 && p.y === 50 && p.squeezed === false && p.stuck === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b9', true)));
+  check('an imported note with no block on the board is highlighted when it overlaps a block', (() => {
+    const p = placeNote({ x: 200, y: 120 }, 29, [noteSpan], 'b9', true);
+    return p.x === 200 && p.y === 120 && p.squeezed === true && p.stuck === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 120 }, 29, [noteSpan], 'b9', true)));
+  check('an imported note squeezed above its block is highlighted', (() => {
+    const above = { top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } };
+    const p = placeNote({ x: 200, y: 50 }, 29, [above, noteSpan], 'b1', true);
+    return p.x === 260 && p.y === 73 && p.squeezed === true && p.stuck === true;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [{ top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } }, noteSpan], 'b1', true)));
   check('a hand-typed note clear of its block still stays at its anchor', (() => {
-    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1');
-    return p.x === 260 && p.y === 50 && p.squeezed === false;
-  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1')));
+    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', false);
+    return p.x === 260 && p.y === 50 && p.squeezed === false && p.stuck === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', false)));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);
