@@ -42,6 +42,12 @@ interface Props {
   onImportJobs: () => void;
   jobsCount: number;
   onClearJobs: () => void;
+  // Markup counts, for the bulk-clear buttons: shown only when there
+  // is something of that kind to delete.
+  textNoteCount: number;
+  arrowCount: number;
+  onClearTextNotes: () => void;
+  onClearArrows: () => void;
   onExportWeekendNotes: () => void;
   // The notes button reads "Overnight Notes" Monday to Thursday and
   // "Weekend Notes" Friday to Sunday, so it names what it will generate.
@@ -51,7 +57,7 @@ export default function Toolbar({
   venue, bookingCount, role, displayName, editingEnabled, markupMode, showHidden, paintMode, paintSalespersonId, paintApplyAll, salespeople, filterSalespersonId, error, revision,
   saving, linkedFiles, editorLockName,
   onToggleEditing, onToggleShowHidden, onTogglePaintMode, onPaintSalespersonChange, onPaintApplyAllChange, onFilterSalespersonChange, onSetMarkupMode, onOpenConfiguration,
-  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint, onImportTimes, onImportJobs, jobsCount, onClearJobs, onExportWeekendNotes, weekendNotesTitle
+  onRoleChange, onDisplayNameChange, onSaveAndRefresh, onToday, onOpenLinkFiles, onOpenPrint, onImportTimes, onImportJobs, jobsCount, onClearJobs, textNoteCount, arrowCount, onClearTextNotes, onClearArrows, onExportWeekendNotes, weekendNotesTitle
 }: Props) {
   return (
     <header className="toolbar">
@@ -134,6 +140,12 @@ export default function Toolbar({
         <>
           <button className={markupMode === 'text' ? 'active' : ''} onClick={() => onSetMarkupMode(markupMode === 'none' ? 'text' : 'none')} title="Text note">📝</button>
           <button className={markupMode === 'arrow' ? 'active' : ''} onClick={() => onSetMarkupMode(markupMode === 'none' ? 'arrow' : 'none')} title="Arrow">➡️</button>
+          {textNoteCount > 0 && (
+            <button onClick={onClearTextNotes} title={`Delete all ${textNoteCount} text note${textNoteCount === 1 ? '' : 's'} from the board (asks first)`}>🗑️ Notes</button>
+          )}
+          {arrowCount > 0 && (
+            <button onClick={onClearArrows} title={`Delete all ${arrowCount} arrow${arrowCount === 1 ? '' : 's'} from the board (asks first)`}>🗑️ Arrows</button>
+          )}
         </>
       )}
       {error && <div className="error" role="alert">{error}</div>}

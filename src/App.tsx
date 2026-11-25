@@ -18,6 +18,7 @@ import { mergeMatchedBooking } from './lib/reviewApply';
 import { applyTimetargetRows, parseTimetargetWorkbook, TimetargetSkipped } from './lib/timetargetImport';
 import { parseJobsWorkbook, JobsSkipped } from './lib/jobsImport';
 import { buildWeekendNotesDocx, overnightWindow } from './lib/weekendNotes';
+import { clearMarkupOfType, countMarkupOfType } from './lib/markup';
 import {
   createSharedFile,
   deleteLinkedHandle,
@@ -733,6 +734,26 @@ export default function App() {
     setJobsImportedAt(null);
     setJobsResult(null);
   };
+  // Drop all text notation, or all arrows, behind a confirmation gate.
+  // The count is in the prompt so the scope is visible before
+  // confirming. TimeTarget setup notes are text items too, so they go
+  // with the rest — re-import the TimeTarget file to restore them.
+  // Arrows are untouched by clearing notes, and notes are untouched by
+  // clearing arrows. The auto-save writes the board out after.
+  const clearTextNotes = () => {
+    const notes = markup.filter(m => m.type === 'text');
+    if (!notes.length) return;
+    const timetarget = notes.filter(m => m.source === 'timetarget').length;
+    const extra = timetarget ? ` This includes ${timetarget} TimeTarget setup note${timetarget === 1 ? '' : 's'} — re-import the TimeTarget file to restore ${timetarget === 1 ? 'it' : 'them'}.` : '';
+    if (!window.confirm(`Delete all ${notes.length} text note${notes.length === 1 ? '' : 's'} from the board?${extra} This cannot be undone.`)) return;
+    setMarkup(ms => clearMarkupOfType(ms, 'text'));
+  };
+  const clearArrows = () => {
+    const arrows = markup.filter(m => m.type === 'arrow');
+    if (!arrows.length) return;
+    if (!window.confirm(`Delete all ${arrows.length} arrow${arrows.length === 1 ? '' : 's'} from the board? This cannot be undone.`)) return;
+    setMarkup(ms => clearMarkupOfType(ms, 'arrow'));
+  };
   // Weekend notes: a one-off Word download for the overnight crew. No
   // file picker, no linking — the button just spits the file out.
   const exportWeekendNotes = () => {
@@ -836,6 +857,10 @@ export default function App() {
         onImportJobs={importJobs}
         jobsCount={jobs.length}
         onClearJobs={clearJobs}
+        textNoteCount={countMarkupOfType(markup, 'text')}
+        arrowCount={countMarkupOfType(markup, 'arrow')}
+        onClearTextNotes={clearTextNotes}
+        onClearArrows={clearArrows}
         onExportWeekendNotes={exportWeekendNotes}
         weekendNotesTitle={overnightWindow(new Date()).title}
       />

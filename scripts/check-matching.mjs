@@ -34,7 +34,8 @@ try {
       join(root, 'src/lib/jobsImport.ts'),
       join(root, 'src/lib/docx.ts'),
       join(root, 'src/lib/weekendNotes.ts'),
-      join(root, 'src/lib/notePlacement.ts')
+      join(root, 'src/lib/notePlacement.ts'),
+      join(root, 'src/lib/markup.ts')
     ],
     outdir: dir,
     bundle: true,
@@ -58,6 +59,7 @@ try {
   const { findJobsColumns, jobArea, jobEvent, jobNameScore, salesPersonMatches, jobSalesperson, findJobCandidates, parseJobsWorkbook } = await import(pathToFileURL(join(dir, 'jobsImport.js')).href);
   const { overnightWindow, headerRangeLabel, headerTableDays, parseHhmm, roomDisplayName, roomGroupName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
   const { placeNote } = await import(pathToFileURL(join(dir, 'notePlacement.js')).href);
+  const { countMarkupOfType, clearMarkupOfType } = await import(pathToFileURL(join(dir, 'markup.js')).href);
   const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
 
   let failures = 0;
@@ -289,6 +291,18 @@ try {
   const boardText = JSON.stringify(createSharedFile([], 1, sampleMarkup));
   const parsedBoard = parseSharedFile(boardText);
   check('markup round-trips through the shared board file', parsedBoard.markup.length === 1 && parsedBoard.markup[0].text === 'Turn here' && parsedBoard.markup[0].highlight === true, boardText);
+  // Bulk clear: clearing notes keeps the arrows, clearing arrows keeps
+  // the notes, and the counts feed the toolbar buttons. TimeTarget
+  // setup notes are text items, so they go with the rest of the notes.
+  const clearSample = [
+    { id: 't1', type: 'text', x: 0, y: 0, text: 'Hand note' },
+    { id: 't2', type: 'text', x: 0, y: 0, text: 'SU 09:00', source: 'timetarget' },
+    { id: 'a1', type: 'arrow', x1: 0, y1: 0, x2: 10, y2: 10 },
+    { id: 'a2', type: 'arrow', x1: 0, y1: 0, x2: 20, y2: 20 }
+  ];
+  check('clearing notes keeps the arrows', clearMarkupOfType(clearSample, 'text').map(m => m.id).join('|') === 'a1|a2');
+  check('clearing arrows keeps the notes', clearMarkupOfType(clearSample, 'arrow').map(m => m.id).join('|') === 't1|t2');
+  check('markup counts feed the clear buttons', countMarkupOfType(clearSample, 'text') === 2 && countMarkupOfType(clearSample, 'arrow') === 2 && countMarkupOfType([], 'text') === 0);
   check('a board file written before markup default to no markup', parseSharedFile(JSON.stringify({ format: 'whiteboard-shared-board', version: 1, bookings: [], submissions: [] })).markup.length === 0);
   // The board file is gzipped JSON, not pretty text: serialize it and
   // parse the bytes back, and confirm an old plain .json still reads.
