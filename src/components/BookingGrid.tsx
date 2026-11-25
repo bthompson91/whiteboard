@@ -392,7 +392,8 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
   // column, the same way the room names fill theirs.
   const dateFontSizesValue=dateFontSizes(dates.map(d=>format(parseISO(d),'EEE dd MMM')),160);
   // Snap to today: scroll so today's row (or the next date after it,
-  // when today is not on the board) sits just below the sticky header.
+  // when today is not on the board) sits just below the sticky header,
+  // and scroll all the way left, so the first rooms are in view too.
   // This is what the Today button calls, and what the board does on
   // load. The Today button scrolls smoothly; the initial load jumps
   // straight there, so the board does not animate down on every load.
@@ -405,8 +406,8 @@ export default function BookingGrid({venue,bookings,jobs=[],salespeople,roomBord
     if(!row)return;
     const headerHeight=header.current?.offsetHeight||0;
     const top=row.offsetTop-headerHeight;
-    if(smooth)container.scrollTo({top,behavior:'smooth'});
-    else container.scrollTop=top;
+    if(smooth)container.scrollTo({top,left:0,behavior:'smooth'});
+    else { container.scrollTop=top; container.scrollLeft=0; }
   };
   useLayoutEffect(()=>{ if(scrollToTodayRef)scrollToTodayRef.current=()=>scrollToToday(true); });
   // The board opens scrolled to the current day: on load, and whenever
