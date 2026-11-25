@@ -67,22 +67,35 @@ export function shortFunctionName(fn: string): string {
   return fn;
 }
 
+// TimeTarget area names are abbreviations, and a doubled letter is a
+// common spelling slip — the export writes "CROWN PAL AB" while the
+// venue writes "Palladium", so "PALL" and "PAL" are the same area.
+// Collapse doubled letters before comparing, so either spelling
+// matches. This only applies to the area lookup, not to booking
+// identity or event matching.
 // A TimeTarget area is the name TimeTarget uses for a room, with the
 // venue name on the front. It matches a board room through
 // timetarget_areas first, then a board room name itself, then an alias.
 // A combined room's area is set in the Combined rooms section of
 // Configuration, and it expands to the combination's rooms — a
 // "Palladium" row lands on the merged block instead of being skipped.
+// A room can belong to more than one combined room (Palladium C1 is
+// in Palladium C1 & C2, Palladium C and Palladium), and the mapping for
+// the named combination is what expands it — the area resolves through
+// the combination's own entry, not through any one room's membership.
+export const normalizeTimetargetArea = (value: string) =>
+  normalizeIdentity(value).replace(/(.)\1+/g, '$1');
+
 export function resolveTimetargetRooms(area: string, venue: ParsedVenueConfig): string[] {
-  const key = normalizeIdentity(area);
+  const key = normalizeTimetargetArea(area);
   if (!key) return [];
   for (const [name, areaName] of Object.entries(venue.timetargetAreas || {})) {
-    if (normalizeIdentity(areaName) === key) return resolveRooms(name, venue);
+    if (normalizeTimetargetArea(areaName) === key) return resolveRooms(name, venue);
   }
-  const room = venue.rooms.find(r => normalizeIdentity(r.name) === key);
+  const room = venue.rooms.find(r => normalizeTimetargetArea(r.name) === key);
   if (room) return [room.id];
   for (const [roomId, aliases] of Object.entries(venue.aliases || {})) {
-    if ((aliases || []).some(a => normalizeIdentity(a) === key)) return [roomId];
+    if ((aliases || []).some(a => normalizeTimetargetArea(a) === key)) return [roomId];
   }
   return [];
 }

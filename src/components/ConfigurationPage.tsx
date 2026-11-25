@@ -157,12 +157,18 @@ export default function ConfigurationPage({yamlText,hasBookings,onSave,onClose}:
   };
   // A combined room whose name is not a room on the board: a header row
   // for the group, with its TimeTarget area and the same Add-member and
-  // Ungroup controls. It has no room settings of its own.
+  // Ungroup controls. It has no room settings of its own. The member
+  // rooms are listed under the name — a room can belong to more than
+  // one combined room (Palladium C1 is in Palladium C1 & C2, Palladium
+  // C and Palladium), so the list is what shows which rooms this group
+  // actually covers; the editable room row itself lives under the
+  // group's first (largest) parent.
   const groupRow=(groupName:string)=>{
     const timetarget=((doc!.rooms.timetarget_areas as Record<string,string>)||{})[groupName]||'';
+    const members=(mappingsForRows[groupName]||[]);
     return <tr key={`group:${groupName}`} className="room-group">
       <td>—</td>
-      <td><RoomNameInput value={groupName} onRename={next=>renameCombinedRoom(groupName,next)} /></td>
+      <td><RoomNameInput value={groupName} onRename={next=>renameCombinedRoom(groupName,next)} />{members.length?<div className="room-group-members" title="Rooms in this combined room">{members.join(', ')}</div>:null}</td>
       <td>—</td>
       <td><input aria-label={`TimeTarget area name for ${groupName}`} title="The TimeTarget area this combined room belongs to, for the rostering import" placeholder="TimeTarget area" value={timetarget} onChange={e=>{const value=e.target.value;change(d=>{const map={...((d.rooms.timetarget_areas as Record<string,string>)||{})};if(value.trim())map[groupName]=value;else delete map[groupName];d.rooms.timetarget_areas=map;});}} /></td>
       <td>—</td><td>—</td><td>—</td>
