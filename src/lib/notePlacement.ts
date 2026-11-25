@@ -2,7 +2,10 @@
 // belongs to, moved up when it would overlap that block, and centred
 // between two blocks with a highlight when it would overlap the block
 // above too. Pure: the board's block spans go in, the note's position
-// comes out, so the rule can be checked without a browser.
+// comes out, so the rule can be checked without a browser. An imported
+// TimeTarget note does not use this: it stays at its room and time,
+// centred on its TimeTarget room, and is only highlighted when it
+// overlaps a block (see noteOverlapsBlock).
 import type { Block } from './blocks';
 
 // One block's span in one room on one day, in board pixels. left/right
@@ -27,7 +30,15 @@ export interface NotePlacement {
   x: number; // the note's centre
   y: number; // the note's top
   squeezed: boolean; // centred between two blocks, so it renders highlighted
-  stuck: boolean; // placed directly above its block (so several notes for one block can stack)
+}
+
+// Does a note at (anchorX, anchorY) with the given height overlap any
+// block span? An imported TimeTarget note stays at its room and time,
+// so it is highlighted when it overlaps a block, not moved. The note
+// is centred on its room, so its centre is within the block's span
+// when the block covers that room.
+export function noteOverlapsBlock(anchor: { x: number; y: number }, height: number, spans: BlockSpan[]): boolean {
+  return spans.some(s => anchor.x >= s.left && anchor.x <= s.right && anchor.y < s.bottom && anchor.y + height > s.top);
 }
 
 // Place a note anchored at (anchorX, anchorY) in board pixels. The
@@ -36,14 +47,10 @@ export interface NotePlacement {
 // its anchor sits in or the first block below its anchor; a note with
 // no block keeps its anchor. The note is centred on its block's span
 // (a merged block's whole width), or on its anchor when it has no block.
-// A note that sticks to its block (an imported TimeTarget note) always
-// sits directly above its block, not just when it would overlap it —
-// the setup time is in the note's text, so the note is a label for the
-// block, not a marker at the setup time. A hand-typed note keeps its
-// anchor and only moves above its block when it would overlap it.
-// Either way, a note that would overlap the block above too is centred
-// between the two blocks, and highlighted so it reads against the board.
-export function placeNote(anchor: { x: number; y: number }, height: number, spans: BlockSpan[], bookingId?: string, stickToBlock = false): NotePlacement {
+// A note that would overlap its block sits just above it; a note that
+// would overlap the block above too is centred between the two blocks,
+// and highlighted so it reads against the board.
+export function placeNote(anchor: { x: number; y: number }, height: number, spans: BlockSpan[], bookingId?: string): NotePlacement {
   const own = bookingId
     ? spans.find(s => s.block.ids.includes(bookingId))
     : undefined;
@@ -51,12 +58,9 @@ export function placeNote(anchor: { x: number; y: number }, height: number, span
   const x = block ? (block.left + block.right) / 2 : anchor.x;
   let y = anchor.y;
   let squeezed = false;
-  let stuck = false;
-  if (block && (stickToBlock || (y < block.bottom && y + height > block.top))) {
-    // Sit just above the block: always, for a note that sticks to its
-    // block; only when it would overlap, for a hand-typed note.
+  if (block && y < block.bottom && y + height > block.top) {
+    // The note would overlap its block: sit just above it.
     y = block.top - height - NOTE_GAP_PX;
-    stuck = true;
     const above = spans.filter(s => s.bottom <= block.top).sort((a, b) => b.bottom - a.bottom)[0];
     if (above && y < above.bottom) {
       // It would overlap the block above too: centre it between the
@@ -65,5 +69,5 @@ export function placeNote(anchor: { x: number; y: number }, height: number, span
       squeezed = true;
     }
   }
-  return { x, y, squeezed, stuck };
+  return { x, y, squeezed };
 }

@@ -58,7 +58,7 @@ try {
   const { findTimetargetColumns, resolveTimetargetRoom, resolveTimetargetRooms, normalizeTimetargetArea, shortFunctionName, eventMatchesEvent, timetargetNoteKey, timetargetNoteText, parseTimetargetWorkbook, applyTimetargetRows } = await import(pathToFileURL(join(dir, 'timetargetImport.js')).href);
   const { findJobsColumns, jobArea, jobEvent, jobNameScore, salesPersonMatches, jobSalesperson, findJobCandidates, parseJobsWorkbook } = await import(pathToFileURL(join(dir, 'jobsImport.js')).href);
   const { overnightWindow, headerRangeLabel, headerTableDays, parseHhmm, roomDisplayName, roomGroupName, collectOvernightItems, buildWeekendNotesDocx } = await import(pathToFileURL(join(dir, 'weekendNotes.js')).href);
-  const { placeNote } = await import(pathToFileURL(join(dir, 'notePlacement.js')).href);
+  const { placeNote, noteOverlapsBlock } = await import(pathToFileURL(join(dir, 'notePlacement.js')).href);
   const { countMarkupOfType, clearMarkupOfType } = await import(pathToFileURL(join(dir, 'markup.js')).href);
   const { buildDocx, zipStore } = await import(pathToFileURL(join(dir, 'docx.js')).href);
 
@@ -733,25 +733,16 @@ try {
     const p = placeNote({ x: 300, y: 50 }, 29, []);
     return p.x === 300 && p.y === 50 && p.squeezed === false;
   })(), JSON.stringify(placeNote({ x: 300, y: 50 }, 29, [])));
-  // An imported TimeTarget note sticks to its block: it always sits
-  // directly above the block it belongs to, centred on the block's full
-  // width, even when its anchor is clear of the block (a 07:00 setup for
-  // an 18:30 event). The setup time is in the note's text, so the note
-  // is a label for the block, not a marker at the setup time. A
-  // hand-typed note keeps the old behaviour and stays at its anchor.
-  check('an imported note sticks directly above its block even when clear of it', (() => {
-    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', true);
-    return p.x === 260 && p.y === 69 && p.squeezed === false && p.stuck === true;
-  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', true)));
-  check('an imported note squeezed above its block is highlighted', (() => {
-    const above = { top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } };
-    const p = placeNote({ x: 200, y: 50 }, 29, [above, noteSpan], 'b1', true);
-    return p.x === 260 && p.y === 73 && p.squeezed === true && p.stuck === true;
-  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [{ top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } }, noteSpan], 'b1', true)));
+  // An imported TimeTarget note stays at its room and time, centred on
+  // its TimeTarget room — it is not moved above its block, and not
+  // re-centred on a merged block's full width. It is only highlighted
+  // when it overlaps a block, so it reads against the board.
+  check('an imported note overlaps a block when its centre is inside the block', noteOverlapsBlock({ x: 200, y: 80 }, 29, [noteSpan]) === true && noteOverlapsBlock({ x: 200, y: 50 }, 29, [noteSpan]) === false && noteOverlapsBlock({ x: 200, y: 210 }, 29, [noteSpan]) === false);
+  check('an imported note outside a block horizontally does not overlap it', noteOverlapsBlock({ x: 100, y: 80 }, 29, [noteSpan]) === false && noteOverlapsBlock({ x: 400, y: 80 }, 29, [noteSpan]) === false);
   check('a hand-typed note clear of its block still stays at its anchor', (() => {
-    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', false);
-    return p.x === 260 && p.y === 50 && p.squeezed === false && p.stuck === false;
-  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', false)));
+    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1');
+    return p.x === 260 && p.y === 50 && p.squeezed === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1')));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);

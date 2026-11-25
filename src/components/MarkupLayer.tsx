@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, PointerEvent as 
 import { Booking, MarkupItem } from '../types';
 import { AnchorLayout, anchorFromPoint, pointFromAnchor } from '../lib/markupAnchor';
 import { blocksFor, blockSegments, timeFraction } from '../lib/blocks';
-import { BlockSpan, NOTE_GAP_PX, NOTE_HEIGHT_ESTIMATE_PX, placeNote } from '../lib/notePlacement';
+import { BlockSpan, NOTE_HEIGHT_ESTIMATE_PX, noteOverlapsBlock, placeNote } from '../lib/notePlacement';
 import { ParsedVenueConfig } from '../lib/venueConfig';
 import { Salesperson } from '../lib/configuration';
 
@@ -257,47 +257,38 @@ export default function MarkupLayer({ markup, mode, selectedBookingId, editingEn
     });
   });
 
-  // Where a text note renders: centred above the block it belongs to,
-  // moved up when it would overlap that block, centred between two
-  // blocks with a highlight when it would overlap the block above too.
-  // A note with no block keeps its anchor. The x it returns is the
-  // note's centre, which the CSS centres on with a translate. An
-  // imported TimeTarget note sticks to its block: it always sits
-  // directly above the block it belongs to, because the setup time is
-  // in the note's text and the note is a label for the block. A
-  // hand-typed note keeps its anchor and only moves above its block
-  // when it would overlap it.
-  const notePlacement = (item: Extract<MarkupItem, { type: 'text' }>): { x: number; y: number; squeezed: boolean; stuck: boolean } | null => {
+  // Where a text note renders. A hand-typed note is centred above the
+  // block it belongs to, moved up when it would overlap that block,
+  // centred between two blocks with a highlight when it would overlap
+  // the block above too; a note with no block keeps its anchor. The x
+  // it returns is the note's centre, which the CSS centres on with a
+  // translate. An imported TimeTarget note stays at its room and time:
+  // the import anchors it at the centre of its TimeTarget room
+  // (fx 0.5) and at its setup time, so it renders exactly there,
+  // centred on that room — not on a merged block's full width, and not
+  // moved above the block. When it overlaps a block it renders
+  // highlighted, so it reads against the board.
+  const notePlacement = (item: Extract<MarkupItem, { type: 'text' }>): { x: number; y: number; squeezed: boolean } | null => {
     const anchor = textPos(item);
     if (!anchor) return null;
     const height = noteHeights.get(item.id) ?? NOTE_HEIGHT_ESTIMATE_PX;
-    if (!item.date || !item.roomId || !layout) return { x: anchor.x, y: anchor.y, squeezed: false, stuck: false };
+    if (!item.date || !item.roomId || !layout) return { x: anchor.x, y: anchor.y, squeezed: false };
     const spans = spansByCell.get(`${item.date}|${item.roomId}`) || [];
-    return placeNote(anchor, height, spans, item.bookingId, item.source === 'timetarget');
+    if (item.source === 'timetarget') return { x: anchor.x, y: anchor.y, squeezed: noteOverlapsBlock(anchor, height, spans) };
+    return placeNote(anchor, height, spans, item.bookingId);
   };
 
   const positions = new Map<string, { x: number; y: number; x2?: number; y2?: number }>();
   // A note squeezed between two blocks renders highlighted: a
   // render-time state, not a stored one, so it follows the board as
-  // bookings change instead of sticking to the note.
+  // bookings change instead of sticking to the note. An imported note
+  // that overlaps a block is highlighted the same way.
   const squeezed = new Map<string, boolean>();
-  // Several imported notes can belong to one block (a setup row for the
-  // combined room and one for each of its rooms). They all stick above
-  // the same block, so they would land on top of each other. Stack them:
-  // each note for a booking sits above the previous one for that booking.
-  const stackTops = new Map<string, number>();
   for (const item of markup) {
     if (item.type === 'text') {
       const placed = notePlacement(item);
       if (placed) {
-        let y = placed.y;
-        if (placed.stuck && item.bookingId) {
-          const height = noteHeights.get(item.id) ?? NOTE_HEIGHT_ESTIMATE_PX;
-          const top = stackTops.get(item.bookingId);
-          if (top !== undefined && y + height > top) y = top - height - NOTE_GAP_PX;
-          stackTops.set(item.bookingId, Math.min(top ?? Infinity, y));
-        }
-        positions.set(item.id, { x: placed.x, y });
+        positions.set(item.id, { x: placed.x, y: placed.y });
         if (placed.squeezed) squeezed.set(item.id, true);
       }
     } else {
