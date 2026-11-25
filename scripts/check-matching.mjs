@@ -733,6 +733,25 @@ try {
     const p = placeNote({ x: 300, y: 50 }, 29, []);
     return p.x === 300 && p.y === 50 && p.squeezed === false;
   })(), JSON.stringify(placeNote({ x: 300, y: 50 }, 29, [])));
+  // An imported TimeTarget note sticks to its block: it always sits
+  // directly above the block it belongs to, centred on the block's full
+  // width, even when its anchor is clear of the block (a 07:00 setup for
+  // an 18:30 event). The setup time is in the note's text, so the note
+  // is a label for the block, not a marker at the setup time. A
+  // hand-typed note keeps the old behaviour and stays at its anchor.
+  check('an imported note sticks directly above its block even when clear of it', (() => {
+    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', true);
+    return p.x === 260 && p.y === 69 && p.squeezed === false && p.stuck === true;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', true)));
+  check('an imported note squeezed above its block is highlighted', (() => {
+    const above = { top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } };
+    const p = placeNote({ x: 200, y: 50 }, 29, [above, noteSpan], 'b1', true);
+    return p.x === 260 && p.y === 73 && p.squeezed === true && p.stuck === true;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [{ top: 0, bottom: 75, left: 160, right: 360, block: { ...noteBlock, ids: ['b0'], title: 'Earlier' } }, noteSpan], 'b1', true)));
+  check('a hand-typed note clear of its block still stays at its anchor', (() => {
+    const p = placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', false);
+    return p.x === 260 && p.y === 50 && p.squeezed === false && p.stuck === false;
+  })(), JSON.stringify(placeNote({ x: 200, y: 50 }, 29, [noteSpan], 'b1', false)));
   blocks = blocksFor([
     booking({ id: 'a', title: 'Palladium Party', roomId: 'Palladium A', roomIds: ['Palladium A', 'Palladium B'], startTime: '19:00', endTime: '23:00' })
   ], venue, [], false, [], ['Palladium A']);
