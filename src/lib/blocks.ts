@@ -550,16 +550,20 @@ export function configTableRows(roomNames: string[], mappings: Record<string, st
   });
   // A group whose members are all rooms that appear before a parent
   // room in the order is already rendered (children follow the parent
-  // row). A group with no members on the board at all has no row yet:
-  // append its group header so it can still be seen and edited.
+  // row). Any other group with no row yet gets its header appended so
+  // it can still be seen and edited — that includes a subset group
+  // (Palladium A & B) whose members are already shown under the full
+  // room (Palladium), and a group with no members on the board at all.
+  // Without a row the subset has nowhere to put its TimeTarget area
+  // name, so a "CROWN PALL AB" row in the rostering import cannot
+  // resolve to it. The appended header is just the group row; its
+  // members are already listed under the parent, so they are not
+  // rendered again here.
   for (const groupName of Object.keys(mappings)) {
     if (groupHeaderDone.has(groupName)) continue;
     if (roomNames.includes(groupName)) continue;
-    const members = (mappings[groupName] || []).filter(m => roomNames.includes(m));
-    if (members.length === 0) {
-      groupHeaderDone.add(groupName);
-      rows.push({ kind: 'group', name: groupName });
-    }
+    groupHeaderDone.add(groupName);
+    rows.push({ kind: 'group', name: groupName });
   }
   return rows;
 }

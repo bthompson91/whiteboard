@@ -1403,6 +1403,12 @@ try {
   check('config table groups a parent room with its members', ctr.map(r => `${r.kind}:${r.name}`).join('|') === 'room:Members Dining Room|room:Olympic Room|child:Olympic Room A|child:Olympic Room B|room:Jim Stynes Grill|child:Jim Stynes A|child:Jim Stynes B|room:Long Room', JSON.stringify(ctr));
   const ctr2 = configTableRows(['Palladium A', 'Palladium B', 'Palladium C1', 'River Room 1'], { Palladium: ['Palladium A', 'Palladium B', 'Palladium C1'] });
   check('config table renders a group header when the combined name is not a room', ctr2.map(r => `${r.kind}:${r.name}`).join('|') === 'group:Palladium|child:Palladium A|child:Palladium B|child:Palladium C1|room:River Room 1', JSON.stringify(ctr2));
+  // A subset combined room (Palladium A & B) still gets a group row, so
+  // it has somewhere to put its TimeTarget area name ("CROWN PALL AB").
+  // Its members are already shown under the full room, so the row is a
+  // header only — no children are rendered twice.
+  const ctr3 = configTableRows(['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'Palladium C3', 'River Room 1'], { Palladium: ['Palladium A', 'Palladium B', 'Palladium C1', 'Palladium C2', 'Palladium C3'], 'Palladium A & B': ['Palladium A', 'Palladium B'], 'Palladium C': ['Palladium C1', 'Palladium C2', 'Palladium C3'] });
+  check('config table renders a group row for subset combined rooms', ctr3.map(r => `${r.kind}:${r.name}`).join('|') === 'group:Palladium|child:Palladium A|child:Palladium B|child:Palladium C1|child:Palladium C2|child:Palladium C3|room:River Room 1|group:Palladium A & B|group:Palladium C', JSON.stringify(ctr3));
 
   console.log(failures === 0 ? 'all checks passed' : `${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;
